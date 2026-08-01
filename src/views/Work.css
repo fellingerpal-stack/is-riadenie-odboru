@@ -148,3 +148,25 @@
   .workload-list button{grid-template-columns:1fr auto}
   .workload-meter{grid-column:1/-1}
 }
+
+/* Release 0.12 – samostatné Supabase tabuľky a stav synchronizácie */
+.work-database-banner{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;margin:0 0 16px;padding:13px 15px;border:1px solid #cfe0ea;border-radius:14px;background:linear-gradient(135deg,#f8fcff,#eef8fc);box-shadow:0 5px 16px rgba(30,70,95,.05)}
+.work-database-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#dceff8;color:#23739f}
+.work-database-copy{display:flex;min-width:0;flex-direction:column;gap:4px}
+.work-database-copy strong{color:#25435a;font-size:11px}
+.work-database-copy span{color:#667c8e;font-size:9px;line-height:1.45}
+.work-database-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;white-space:nowrap}
+.work-database-actions b{padding:7px 10px;border-radius:999px;background:#dff3eb;color:#217451;font-size:9px}
+.work-database-actions .button{min-height:36px;padding:7px 11px;font-size:9px}
+.work-database-loading .work-database-actions b,.work-database-saving .work-database-actions b{background:#fff1d8;color:#8b5b11}
+.work-database-error{border-color:#edc1c5;background:linear-gradient(135deg,#fffafa,#fff1f2)}
+.work-database-error .work-database-icon{background:#ffe3e6;color:#b3333e}
+.work-database-error .work-database-actions b{background:#ffe2e5;color:#a52f39}
+.work-database-local{border-color:#dfe5ea;background:#f7f9fb}
+.work-database-local .work-database-icon{background:#e7edf2;color:#66798a}
+.work-database-local .work-database-actions b{background:#e8edf1;color:#607282}
+
+@media(max-width:760px){
+  .work-database-banner{grid-template-columns:auto minmax(0,1fr)}
+  .work-database-actions{grid-column:1/-1;justify-content:space-between}
+}

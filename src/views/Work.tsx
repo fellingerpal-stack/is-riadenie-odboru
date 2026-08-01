@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Employee, Project, Task } from '../types'
+import type { WorkDatabaseState } from '../lib/workCloud'
 import { Badge, Empty, Field, Icon, Modal, PageHeader, Progress } from '../components/UI'
 import './Work.css'
 
@@ -88,6 +89,14 @@ function blankTask(): Task {
   }
 }
 
+function databaseStateLabel(state: WorkDatabaseState) {
+  if (state === 'loading') return 'Načítavam z databázy'
+  if (state === 'saving') return 'Ukladám zmeny'
+  if (state === 'synced') return 'Synchronizované'
+  if (state === 'error') return 'Chyba synchronizácie'
+  return 'Lokálny režim'
+}
+
 function blankProject(): Project {
   return {
     id: '',
@@ -110,6 +119,10 @@ export default function Work({
   tasks,
   employees,
   canEdit,
+  databaseMode,
+  databaseState,
+  databaseError,
+  onReload,
   onProjectsChange,
   onTasksChange,
 }: {
@@ -117,6 +130,10 @@ export default function Work({
   tasks: Task[]
   employees: Employee[]
   canEdit: boolean
+  databaseMode: 'local' | 'cloud'
+  databaseState: WorkDatabaseState
+  databaseError: string
+  onReload: () => void
   onProjectsChange: (projects: Project[]) => void
   onTasksChange: (tasks: Task[]) => void
 }) {
@@ -336,6 +353,26 @@ export default function Work({
           ) : undefined
         }
       />
+
+      <section className={`work-database-banner work-database-${databaseState}`} aria-label="Stav databázy projektov a úloh">
+        <div className="work-database-icon"><Icon name={databaseState === 'error' ? 'warning' : 'database'} size={20} /></div>
+        <div className="work-database-copy">
+          <strong>{databaseMode === 'cloud' ? 'Samostatné Supabase tabuľky' : 'Lokálny pracovný režim'}</strong>
+          <span>
+            {databaseMode === 'cloud'
+              ? databaseError || 'Projekty a úlohy sa ukladajú po jednotlivých záznamoch a zmeny ostatných používateľov sa načítajú automaticky.'
+              : 'Po pripojení Supabase sa tento modul prepne na samostatné databázové tabuľky.'}
+          </span>
+        </div>
+        <div className="work-database-actions">
+          <b>{databaseStateLabel(databaseState)}</b>
+          {databaseMode === 'cloud' && (
+            <button className="button button-secondary" type="button" onClick={onReload} disabled={databaseState === 'loading' || databaseState === 'saving'}>
+              <Icon name="refresh" size={16} /> Obnoviť
+            </button>
+          )}
+        </div>
+      </section>
 
       <section className="work-kpi-grid" aria-label="Súhrn projektov a úloh">
         <button
