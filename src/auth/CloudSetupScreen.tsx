@@ -16,7 +16,7 @@ export default function CloudSetupScreen() {
         <div className={supabaseConfiguration.urlConfigured ? 'is-ok' : 'is-missing'}><Icon name={supabaseConfiguration.urlConfigured ? 'check' : 'warning'} size={18}/><span><strong>VITE_SUPABASE_URL</strong><small>{supabaseConfiguration.urlConfigured ? supabaseConfiguration.projectHost : 'premenná chýba'}</small></span></div>
         <div className={supabaseConfiguration.keyConfigured ? 'is-ok' : 'is-missing'}><Icon name={supabaseConfiguration.keyConfigured ? 'check' : 'warning'} size={18}/><span><strong>VITE_SUPABASE_PUBLISHABLE_KEY</strong><small>{supabaseConfiguration.keyConfigured ? `nastavený ${supabaseConfiguration.keyType} kľúč` : 'premenná chýba'}</small></span></div>
       </div>
-      <div className="setup-code"><code>VITE_APP_MODE=cloud</code><code>VITE_SUPABASE_URL=https://...supabase.co</code><code>VITE_SUPABASE_PUBLISHABLE_KEY=...</code><code>VITE_APP_URL=https://adresa-aplikacie</code></div>
+      <div className="setup-code"><code>VITE_DATA_MODE=cloud</code><code>VITE_SUPABASE_URL=https://...supabase.co</code><code>VITE_SUPABASE_PUBLISHABLE_KEY=...</code><code>VITE_APP_URL=https://adresa-aplikacie</code></div>
       <div className="auth-message auth-error"><Icon name="shield" size={17}/><span>Service-role alebo secret kľúč nikdy nevkladajte do klientskych premenných aplikácie.</span></div>
       <footer><Icon name="database" size={14}/><span>Po doplnení premenných reštartujte Vite alebo vytvorte nový deployment.</span></footer>
     </section>
