@@ -1,7 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AppRole, UserAuditEntry, UserProfile } from '../types'
-import { inviteUser, listProfiles, listUserAudit, sendUserPasswordReset, updateProfile } from '../lib/cloud'
-import { appendLocalAudit, inviteLocalUser, loadLocalAudit, loadLocalUsers, resetLocalUsers, saveLocalUser } from '../lib/localUsers'
+import {
+  cancelUserInvitation,
+  friendlyUserOperationError,
+  inviteUser,
+  listProfiles,
+  listUserAudit,
+  resendUserAccess,
+  sendUserPasswordReset,
+  updateProfile,
+} from '../lib/cloud'
+import {
+  appendLocalAudit,
+  cancelLocalInvitation,
+  inviteLocalUser,
+  loadLocalAudit,
+  loadLocalUsers,
+  resendLocalInvitation,
+  resetLocalUsers,
+  saveLocalUser,
+} from '../lib/localUsers'
+import { useAuth } from '../auth/AuthContext'
 import { Badge, Field, Icon, Modal, PageHeader } from '../components/UI'
 
 const roles: { value: AppRole; label: string; description: string }[] = [
@@ -11,6 +30,11 @@ const roles: { value: AppRole; label: string; description: string }[] = [
   { value: 'employee', label: 'Zamestnanec', description: 'Používateľský prístup k vlastným požiadavkám a prideleným záznamom.' },
   { value: 'viewer', label: 'Čitateľ', description: 'Prístup iba na čítanie povolených informácií.' },
 ]
+
+type AccountState = 'active' | 'invited' | 'expired' | 'cancelled' | 'inactive'
+type UserTab = 'users' | 'onboarding' | 'audit'
+
+const INVITE_WINDOW_HOURS = 24
 
 function roleInfo(role: AppRole) {
   return roles.find((item) => item.value === role) ?? roles[4]
@@ -34,22 +58,50 @@ function formatDate(value: string) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('sk-SK', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function blankInvite(): Omit<UserProfile, 'id' | 'organizationId' | 'isActive' | 'lastLoginAt' | 'invitedAt' | 'createdAt' | 'updatedAt'> {
+function inviteExpiry(profile: UserProfile): string {
+  if (profile.inviteExpiresAt) return profile.inviteExpiresAt
+  if (!profile.invitedAt) return ''
+  const invited = new Date(profile.invitedAt)
+  if (Number.isNaN(invited.getTime())) return ''
+  invited.setHours(invited.getHours() + INVITE_WINDOW_HOURS)
+  return invited.toISOString()
+}
+
+function accountState(profile: UserProfile): AccountState {
+  if (!profile.isActive) return profile.lastLoginAt ? 'inactive' : 'cancelled'
+  if (profile.lastLoginAt) return 'active'
+  const expiresAt = inviteExpiry(profile)
+  if (expiresAt && new Date(expiresAt).getTime() < Date.now()) return 'expired'
+  return 'invited'
+}
+
+const accountStateInfo: Record<AccountState, { label: string; tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral'; description: string }> = {
+  active: { label: 'Aktívny', tone: 'success', description: 'Používateľ sa už prihlásil a má povolený prístup.' },
+  invited: { label: 'Pozvaný', tone: 'info', description: 'Pozvánka bola odoslaná, čaká sa na prvé prihlásenie.' },
+  expired: { label: 'Pozvánka expirovala', tone: 'warning', description: 'Prístupový odkaz je starší ako 24 hodín. Odošlite nový odkaz.' },
+  cancelled: { label: 'Pozvánka zrušená', tone: 'neutral', description: 'Účet sa ešte neprihlásil a jeho prístup bol zablokovaný.' },
+  inactive: { label: 'Deaktivovaný', tone: 'danger', description: 'Používateľ sa už v minulosti prihlásil, ale prístup je vypnutý.' },
+}
+
+function blankInvite(): Omit<UserProfile, 'id' | 'organizationId' | 'isActive' | 'lastLoginAt' | 'acceptedAt' | 'invitedAt' | 'inviteExpiresAt' | 'createdAt' | 'updatedAt'> {
   return { fullName: '', email: '', department: 'Odbor 3.2', jobTitle: '', phone: '', role: 'employee' }
 }
 
 export default function Users({ currentUserId, currentUserName, configured }: { currentUserId: string; currentUserName: string; configured: boolean }) {
+  const { updatePassword } = useAuth()
   const [profiles, setProfiles] = useState<UserProfile[]>([])
   const [audit, setAudit] = useState<UserAuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<'users' | 'audit'>('users')
+  const [tab, setTab] = useState<UserTab>('users')
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState<'all' | AppRole>('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | AccountState>('all')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editProfile, setEditProfile] = useState<UserProfile | null>(null)
+  const [detailProfile, setDetailProfile] = useState<UserProfile | null>(null)
+  const [passwordOpen, setPasswordOpen] = useState(false)
   const [invite, setInvite] = useState(blankInvite())
   const [busy, setBusy] = useState(false)
 
@@ -66,7 +118,7 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
         setAudit(loadLocalAudit())
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Používateľov sa nepodarilo načítať.')
+      setError(friendlyUserOperationError(caught, 'Používateľov sa nepodarilo načítať.'))
     } finally {
       setLoading(false)
     }
@@ -75,19 +127,31 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
   useEffect(() => { void load() }, [configured])
 
   const filtered = useMemo(() => profiles.filter((profile) => {
-    const haystack = `${profile.fullName} ${profile.email} ${profile.department} ${profile.jobTitle} ${roleInfo(profile.role).label}`.toLowerCase()
+    const state = accountState(profile)
+    const haystack = `${profile.fullName} ${profile.email} ${profile.department} ${profile.jobTitle} ${roleInfo(profile.role).label} ${accountStateInfo[state].label}`.toLowerCase()
     const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase())
     const matchesRole = roleFilter === 'all' || profile.role === roleFilter
-    const matchesStatus = statusFilter === 'all' || (statusFilter === 'active' ? profile.isActive : !profile.isActive)
+    const matchesStatus = statusFilter === 'all' || state === statusFilter
     return matchesQuery && matchesRole && matchesStatus
   }), [profiles, query, roleFilter, statusFilter])
 
-  const counts = useMemo(() => ({
-    total: profiles.length,
-    active: profiles.filter((profile) => profile.isActive).length,
-    admins: profiles.filter((profile) => profile.role === 'admin' && profile.isActive).length,
-    pending: profiles.filter((profile) => profile.isActive && !profile.lastLoginAt).length,
-  }), [profiles])
+  const counts = useMemo(() => {
+    const states = profiles.map(accountState)
+    return {
+      total: profiles.length,
+      active: states.filter((state) => state === 'active').length,
+      onboarding: states.filter((state) => state === 'invited' || state === 'expired').length,
+      disabled: states.filter((state) => state === 'cancelled' || state === 'inactive').length,
+      admins: profiles.filter((profile) => profile.role === 'admin' && accountState(profile) === 'active').length,
+    }
+  }, [profiles])
+
+  const onboardingProfiles = useMemo(() => profiles
+    .filter((profile) => ['invited', 'expired', 'cancelled'].includes(accountState(profile)))
+    .sort((a, b) => {
+      const priority: Record<AccountState, number> = { expired: 0, invited: 1, cancelled: 2, inactive: 3, active: 4 }
+      return priority[accountState(a)] - priority[accountState(b)]
+    }), [profiles])
 
   async function save(profile: UserProfile) {
     setBusy(true)
@@ -107,7 +171,7 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
       setEditProfile(null)
       setMessage(`Profil ${profile.fullName || profile.email} bol uložený.`)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Profil sa nepodarilo uložiť.')
+      setError(friendlyUserOperationError(caught, 'Profil sa nepodarilo uložiť.'))
     } finally {
       setBusy(false)
     }
@@ -131,7 +195,7 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
       setInviteOpen(false)
       setInvite(blankInvite())
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Pozvanie sa nepodarilo odoslať.')
+      setError(friendlyUserOperationError(caught, 'Pozvanie sa nepodarilo odoslať.'))
     } finally {
       setBusy(false)
     }
@@ -153,7 +217,65 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
         setMessage('V lokálnom režime bola obnova hesla iba zaznamenaná do auditu.')
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Obnovu hesla sa nepodarilo odoslať.')
+      setError(friendlyUserOperationError(caught, 'Obnovu hesla sa nepodarilo odoslať.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function resendAccess(profile: UserProfile) {
+    if (!confirm(`Odoslať nový prístupový odkaz používateľovi ${profile.email}?`)) return
+    setBusy(true)
+    setMessage('')
+    setError('')
+    try {
+      if (configured) {
+        await resendUserAccess(profile)
+        setMessage(`Nový prístupový odkaz bol odoslaný na ${profile.email}.`)
+        await load()
+      } else {
+        setProfiles(resendLocalInvitation(profile, currentUserName))
+        setAudit(loadLocalAudit())
+        setMessage('Demo pozvánka bola obnovená. V lokálnom režime sa e-mail neposiela.')
+      }
+    } catch (caught) {
+      setError(friendlyUserOperationError(caught, 'Nový prístupový odkaz sa nepodarilo odoslať.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function cancelInvitation(profile: UserProfile) {
+    if (!confirm(`Zrušiť pozvánku používateľa ${profile.email}? Účet zostane evidovaný, ale prístup bude zablokovaný.`)) return
+    setBusy(true)
+    setMessage('')
+    setError('')
+    try {
+      if (configured) {
+        await cancelUserInvitation(profile)
+        await load()
+      } else {
+        setProfiles(cancelLocalInvitation(profile, currentUserName))
+        setAudit(loadLocalAudit())
+      }
+      setMessage(`Pozvánka používateľa ${profile.email} bola zrušená.`)
+    } catch (caught) {
+      setError(friendlyUserOperationError(caught, 'Pozvánku sa nepodarilo zrušiť.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function changeOwnPassword(password: string) {
+    setBusy(true)
+    setMessage('')
+    setError('')
+    try {
+      await updatePassword(password)
+      setPasswordOpen(false)
+      setMessage('Heslo bolo úspešne zmenené.')
+    } catch (caught) {
+      setError(friendlyUserOperationError(caught, 'Heslo sa nepodarilo zmeniť.'))
     } finally {
       setBusy(false)
     }
@@ -167,23 +289,25 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
   }
 
   return <div className="users-page">
-    <PageHeader eyebrow="Administrácia" title="Používatelia a oprávnenia" description="Správa účtov aplikácie, rolí, aktívnosti, organizačných údajov a auditných zmien." actions={<div className="page-actions">{!configured && <button className="button button-secondary" onClick={resetDemoAccounts}><Icon name="refresh"/> Obnoviť demo účty</button>}<button className="button button-primary" onClick={() => setInviteOpen(true)}><Icon name="plus"/> Pozvať používateľa</button></div>} />
+    <PageHeader eyebrow="Administrácia" title="Používatelia a onboarding" description="Správa účtov, rolí, pozvánok, prístupov, hesiel a auditných zmien." actions={<div className="page-actions">{!configured && <button className="button button-secondary" onClick={resetDemoAccounts}><Icon name="refresh"/> Obnoviť demo účty</button>}{configured && <button className="button button-secondary" onClick={() => setPasswordOpen(true)}><Icon name="lock"/> Zmeniť moje heslo</button>}<button className="button button-primary" onClick={() => setInviteOpen(true)}><Icon name="plus"/> Pozvať používateľa</button></div>} />
 
     <div className={`environment-banner ${configured ? 'is-cloud' : 'is-local'}`}>
       <Icon name={configured ? 'shield' : 'database'} size={20}/>
-      <div><strong>{configured ? 'Supabase Auth je aktívny' : 'Lokálny demo režim'}</strong><span>{configured ? 'Zmeny účtov sa zapisujú do Supabase a chránia pravidlami RLS.' : 'Účty sú uložené iba v tomto prehliadači. Prihlásenie sa aktivuje po nastavení Supabase premenných.'}</span></div>
+      <div><strong>{configured ? 'Supabase Auth je aktívny' : 'Lokálny demo režim'}</strong><span>{configured ? 'Účty, pozvánky a zmeny oprávnení sa zapisujú do Supabase a chránia pravidlami RLS.' : 'Účty sú uložené iba v tomto prehliadači. Prihlásenie sa aktivuje po nastavení Supabase premenných.'}</span></div>
       <Badge tone={configured ? 'success' : 'warning'}>{configured ? 'produkčný režim' : 'bez reálneho prihlásenia'}</Badge>
     </div>
 
-    <div className="user-kpi-grid">
+    <div className="user-kpi-grid user-kpi-grid-five">
       <article><span>Všetky účty</span><strong>{counts.total}</strong><small>evidovaných používateľov</small></article>
-      <article><span>Aktívne účty</span><strong>{counts.active}</strong><small>môžu používať aplikáciu</small></article>
+      <article><span>Aktívni</span><strong>{counts.active}</strong><small>už sa úspešne prihlásili</small></article>
+      <article><span>Onboarding</span><strong>{counts.onboarding}</strong><small>čakajú na prvé prihlásenie</small></article>
+      <article><span>Blokované</span><strong>{counts.disabled}</strong><small>zrušené alebo deaktivované</small></article>
       <article><span>Administrátori</span><strong>{counts.admins}</strong><small>aktívne správcovské účty</small></article>
-      <article><span>Bez prihlásenia</span><strong>{counts.pending}</strong><small>pozvaní alebo demo používatelia</small></article>
     </div>
 
     <div className="module-tabs user-tabs">
       <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}><Icon name="people" size={18}/> Účty <span>{profiles.length}</span></button>
+      <button className={tab === 'onboarding' ? 'active' : ''} onClick={() => setTab('onboarding')}><Icon name="roadmap" size={18}/> Onboarding <span>{onboardingProfiles.length}</span></button>
       <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}><Icon name="shield" size={18}/> Audit zmien <span>{audit.length}</span></button>
     </div>
 
@@ -191,24 +315,30 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
 
     {tab === 'users' && <>
       <section className="panel user-toolbar">
-        <div className="search-box"><Icon name="search"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Hľadať podľa mena, e-mailu, útvaru alebo pozície…"/></div>
+        <div className="search-box"><Icon name="search"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Hľadať podľa mena, e-mailu, útvaru, roly alebo stavu…"/></div>
         <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as 'all' | AppRole)}><option value="all">Všetky roly</option>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select>
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | 'active' | 'inactive')}><option value="all">Všetky stavy</option><option value="active">Aktívne</option><option value="inactive">Deaktivované</option></select>
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | AccountState)}><option value="all">Všetky stavy</option><option value="active">Aktívni</option><option value="invited">Pozvaní</option><option value="expired">Expirované pozvánky</option><option value="cancelled">Zrušené pozvánky</option><option value="inactive">Deaktivovaní</option></select>
         <Badge tone="info">{filtered.length} z {profiles.length}</Badge>
       </section>
       <section className="panel users-panel">
-        {loading ? <div className="loading-block">Načítavam používateľov…</div> : filtered.length ? <div className="table-scroll users-table-shell" role="region" aria-label="Zoznam používateľov" tabIndex={0}><table className="data-table users-table"><thead><tr><th>Používateľ</th><th>Útvar a pozícia</th><th>Aplikačná rola</th><th>Stav</th><th>Posledné prihlásenie</th><th></th></tr></thead><tbody>{filtered.map((profile) => <tr key={profile.id} className={!profile.isActive ? 'is-inactive' : ''}>
-          <td><div className="user-cell"><div className="avatar avatar-small">{initials(profile.fullName || profile.email)}</div><div><strong>{profile.fullName || 'Meno nedoplnené'} {profile.id === currentUserId && <Badge tone="info">Vy</Badge>}</strong><small>{profile.email}</small><small>{profile.phone || 'Telefón nedoplnený'}</small></div></div></td>
-          <td><strong className="table-main-value">{profile.department || 'Útvar neurčený'}</strong><small className="table-sub-value">{profile.jobTitle || 'Pozícia neurčená'}</small></td>
-          <td><Badge tone={roleTone(profile.role)}>{roleInfo(profile.role).label}</Badge><small className="table-sub-value role-copy">{roleInfo(profile.role).description}</small></td>
-          <td><Badge tone={profile.isActive ? 'success' : 'danger'}>{profile.isActive ? 'Aktívny' : 'Deaktivovaný'}</Badge><small className="table-sub-value">{profile.invitedAt ? `Pozvaný ${formatDate(profile.invitedAt)}` : 'Vytvorený priamo'}</small></td>
-          <td><strong className="table-main-value">{formatDate(profile.lastLoginAt)}</strong><small className="table-sub-value">Zmena profilu {formatDate(profile.updatedAt)}</small></td>
-          <td><div className="row-actions"><button className="icon-button" title="Upraviť profil" onClick={() => setEditProfile(profile)}><Icon name="edit" size={17}/></button><button className="icon-button" title="Odoslať obnovu hesla" disabled={busy || !profile.isActive} onClick={() => void resetPassword(profile)}><Icon name="lock" size={17}/></button></div></td>
-        </tr>)}</tbody></table></div> : <div className="empty"><div className="empty-icon"><Icon name="search" size={26}/></div><strong>Žiadny používateľ nezodpovedá filtru</strong><p>Upravte vyhľadávanie alebo filtre.</p></div>}
+        {loading ? <div className="loading-block">Načítavam používateľov…</div> : filtered.length ? <div className="table-scroll users-table-shell" role="region" aria-label="Zoznam používateľov" tabIndex={0}><table className="data-table users-table"><thead><tr><th>Používateľ</th><th>Útvar a pozícia</th><th>Aplikačná rola</th><th>Stav účtu</th><th>Prihlásenie</th><th></th></tr></thead><tbody>{filtered.map((profile) => {
+          const state = accountState(profile)
+          const stateInfo = accountStateInfo[state]
+          return <tr key={profile.id} className={!profile.isActive ? 'is-inactive' : ''}>
+            <td><div className="user-cell"><div className="avatar avatar-small">{initials(profile.fullName || profile.email)}</div><div><strong>{profile.fullName || 'Meno nedoplnené'} {profile.id === currentUserId && <Badge tone="info">Vy</Badge>}</strong><small>{profile.email}</small><small>{profile.phone || 'Telefón nedoplnený'}</small></div></div></td>
+            <td><strong className="table-main-value">{profile.department || 'Útvar neurčený'}</strong><small className="table-sub-value">{profile.jobTitle || 'Pozícia neurčená'}</small></td>
+            <td><Badge tone={roleTone(profile.role)}>{roleInfo(profile.role).label}</Badge><small className="table-sub-value role-copy">{roleInfo(profile.role).description}</small></td>
+            <td><Badge tone={stateInfo.tone}>{stateInfo.label}</Badge><small className="table-sub-value">{state === 'invited' || state === 'expired' ? `Platnosť do ${formatDate(inviteExpiry(profile))}` : stateInfo.description}</small></td>
+            <td><strong className="table-main-value">{formatDate(profile.lastLoginAt)}</strong><small className="table-sub-value">{profile.acceptedAt ? `Prijaté ${formatDate(profile.acceptedAt)}` : profile.invitedAt ? `Pozvaný ${formatDate(profile.invitedAt)}` : 'Vytvorený priamo'}</small></td>
+            <td><UserRowActions profile={profile} state={state} current={profile.id === currentUserId} cloud={configured} busy={busy} onDetail={() => setDetailProfile(profile)} onEdit={() => setEditProfile(profile)} onReset={() => void resetPassword(profile)} onResend={() => void resendAccess(profile)} onCancel={() => void cancelInvitation(profile)} onOwnPassword={() => setPasswordOpen(true)}/></td>
+          </tr>
+        })}</tbody></table></div> : <div className="empty"><div className="empty-icon"><Icon name="search" size={26}/></div><strong>Žiadny používateľ nezodpovedá filtru</strong><p>Upravte vyhľadávanie alebo filtre.</p></div>}
       </section>
     </>}
 
-    {tab === 'audit' && <section className="panel audit-panel">{loading ? <div className="loading-block">Načítavam audit…</div> : audit.length ? <div className="audit-list">{audit.map((entry) => <article key={entry.id}><div className="audit-icon"><Icon name="shield" size={16}/></div><div><header><strong>{entry.action}</strong><span>{formatDate(entry.createdAt)}</span></header><p>{entry.detail}</p><small>{entry.actorName || 'Systém'} → {entry.targetUserName || 'bez cieľového účtu'}</small></div></article>)}</div> : <div className="empty"><div className="empty-icon"><Icon name="shield" size={26}/></div><strong>Audit je zatiaľ prázdny</strong><p>Záznamy vzniknú pri pozvaní, úprave účtu alebo obnove hesla.</p></div>}</section>}
+    {tab === 'onboarding' && <OnboardingPanel profiles={onboardingProfiles} busy={busy} onResend={(profile) => void resendAccess(profile)} onCancel={(profile) => void cancelInvitation(profile)} onDetail={setDetailProfile}/>} 
+
+    {tab === 'audit' && <section className="panel audit-panel">{loading ? <div className="loading-block">Načítavam audit…</div> : audit.length ? <div className="audit-list">{audit.map((entry) => <article key={entry.id}><div className="audit-icon"><Icon name="shield" size={16}/></div><div><header><strong>{entry.action}</strong><span>{formatDate(entry.createdAt)}</span></header><p>{entry.detail}</p><small>{entry.actorName || 'Systém'} → {entry.targetUserName || 'bez cieľového účtu'}</small></div></article>)}</div> : <div className="empty"><div className="empty-icon"><Icon name="shield" size={26}/></div><strong>Audit je zatiaľ prázdny</strong><p>Záznamy vzniknú pri pozvaní, úprave účtu, zmene prístupu alebo obnove hesla.</p></div>}</section>}
 
     {inviteOpen && <Modal title="Pozvať používateľa" onClose={() => setInviteOpen(false)}><div className="form-grid">
       <Field label="Meno a priezvisko"><input value={invite.fullName} onChange={(event) => setInvite({ ...invite, fullName: event.target.value })} placeholder="Meno Priezvisko"/></Field>
@@ -217,9 +347,41 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
       <Field label="Pracovná pozícia"><input value={invite.jobTitle} onChange={(event) => setInvite({ ...invite, jobTitle: event.target.value })} placeholder="Názov pozície"/></Field>
       <Field label="Telefón"><input value={invite.phone} onChange={(event) => setInvite({ ...invite, phone: event.target.value })} placeholder="+421…"/></Field>
       <Field label="Aplikačná rola" hint={roleInfo(invite.role).description}><select value={invite.role} onChange={(event) => setInvite({ ...invite, role: event.target.value as AppRole })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
-    </div><div className="modal-actions"><button className="button button-secondary" onClick={() => setInviteOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={busy || !invite.email || !invite.fullName} onClick={() => void sendInvite()}>{busy ? 'Spracúvam…' : configured ? 'Odoslať pozvanie' : 'Vytvoriť demo účet'}</button></div></Modal>}
+    </div><div className="invite-note"><Icon name="calendar" size={17}/><div><strong>Prístupový odkaz je určený na prvotné nastavenie hesla.</strong><span>Ak používateľ odkaz neotvorí včas, v záložke Onboarding mu odošlete nový.</span></div></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setInviteOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={busy || !invite.email || !invite.fullName} onClick={() => void sendInvite()}>{busy ? 'Spracúvam…' : configured ? 'Odoslať pozvanie' : 'Vytvoriť demo účet'}</button></div></Modal>}
 
     {editProfile && <UserEditModal profile={editProfile} current={editProfile.id === currentUserId} busy={busy} onClose={() => setEditProfile(null)} onSave={save}/>} 
+    {detailProfile && <UserDetailModal profile={profiles.find((item) => item.id === detailProfile.id) ?? detailProfile} audit={audit.filter((entry) => entry.targetUserId === detailProfile.id || entry.targetUserName === detailProfile.fullName)} current={detailProfile.id === currentUserId} cloud={configured} busy={busy} onClose={() => setDetailProfile(null)} onEdit={() => { setDetailProfile(null); setEditProfile(detailProfile) }} onReset={() => void resetPassword(detailProfile)} onResend={() => void resendAccess(detailProfile)} onCancel={() => void cancelInvitation(detailProfile)} onOwnPassword={() => { setDetailProfile(null); setPasswordOpen(true) }}/>} 
+    {passwordOpen && <ChangePasswordModal busy={busy} onClose={() => setPasswordOpen(false)} onSave={changeOwnPassword}/>} 
+  </div>
+}
+
+function UserRowActions({ profile, state, current, cloud, busy, onDetail, onEdit, onReset, onResend, onCancel, onOwnPassword }: { profile: UserProfile; state: AccountState; current: boolean; cloud: boolean; busy: boolean; onDetail: () => void; onEdit: () => void; onReset: () => void; onResend: () => void; onCancel: () => void; onOwnPassword: () => void }) {
+  const pending = state === 'invited' || state === 'expired' || state === 'cancelled'
+  return <div className="row-actions">
+    <button className="icon-button" title="Detail účtu" onClick={onDetail}><Icon name="eye" size={17}/></button>
+    <button className="icon-button" title="Upraviť profil" onClick={onEdit}><Icon name="edit" size={17}/></button>
+    {current ? cloud ? <button className="icon-button" title="Zmeniť moje heslo" disabled={busy} onClick={onOwnPassword}><Icon name="lock" size={17}/></button> : null : pending ? <>
+      <button className="icon-button" title="Odoslať nový prístupový odkaz" disabled={busy} onClick={onResend}><Icon name="refresh" size={17}/></button>
+      {state !== 'cancelled' && <button className="icon-button icon-button-danger" title="Zrušiť pozvánku" disabled={busy} onClick={onCancel}><Icon name="close" size={17}/></button>}
+    </> : <button className="icon-button" title="Odoslať obnovu hesla" disabled={busy || !profile.isActive} onClick={onReset}><Icon name="lock" size={17}/></button>}
+  </div>
+}
+
+function OnboardingPanel({ profiles, busy, onResend, onCancel, onDetail }: { profiles: UserProfile[]; busy: boolean; onResend: (profile: UserProfile) => void; onCancel: (profile: UserProfile) => void; onDetail: (profile: UserProfile) => void }) {
+  return <div className="onboarding-layout">
+    <section className="panel onboarding-flow-panel"><header><div><span className="section-kicker">Proces prvého prístupu</span><h2>Od pozvánky po aktívny účet</h2></div><Badge tone="info">4 kroky</Badge></header><div className="onboarding-flow">
+      <article><span>1</span><div><strong>Pozvanie</strong><small>Administrátor odošle prístupový e-mail.</small></div></article>
+      <article><span>2</span><div><strong>Nastavenie hesla</strong><small>Používateľ otvorí odkaz a nastaví si heslo.</small></div></article>
+      <article><span>3</span><div><strong>Prvé prihlásenie</strong><small>Systém overí profil, rolu a aktívny stav.</small></div></article>
+      <article><span>4</span><div><strong>Aktívny účet</strong><small>Zapíše sa prijatie pozvánky a posledné prihlásenie.</small></div></article>
+    </div></section>
+    <section className="panel onboarding-queue"><header><div><span className="section-kicker">Vyžaduje pozornosť</span><h2>Rozpracované pozvánky</h2></div><Badge tone={profiles.some((profile) => accountState(profile) === 'expired') ? 'warning' : 'info'}>{profiles.length}</Badge></header>
+      {profiles.length ? <div className="onboarding-list">{profiles.map((profile) => {
+        const state = accountState(profile)
+        const info = accountStateInfo[state]
+        return <article key={profile.id}><div className="avatar avatar-small">{initials(profile.fullName || profile.email)}</div><div className="onboarding-person"><strong>{profile.fullName || profile.email}</strong><span>{profile.email}</span><small>{state === 'cancelled' ? 'Prístup je zablokovaný.' : `Platnosť odkazu do ${formatDate(inviteExpiry(profile))}`}</small></div><Badge tone={info.tone}>{info.label}</Badge><div className="onboarding-actions"><button className="button button-small button-secondary" onClick={() => onDetail(profile)}>Detail</button><button className="button button-small button-primary" disabled={busy} onClick={() => onResend(profile)}>{state === 'cancelled' ? 'Obnoviť pozvanie' : 'Nový odkaz'}</button>{state !== 'cancelled' && <button className="icon-button icon-button-danger" title="Zrušiť pozvánku" disabled={busy} onClick={() => onCancel(profile)}><Icon name="close" size={16}/></button>}</div></article>
+      })}</div> : <div className="empty"><div className="empty-icon"><Icon name="check" size={26}/></div><strong>Onboarding je vybavený</strong><p>Nie sú tu žiadne čakajúce, expirované ani zrušené pozvánky.</p></div>}
+    </section>
   </div>
 }
 
@@ -232,6 +394,39 @@ function UserEditModal({ profile, current, busy, onClose, onSave }: { profile: U
     <Field label="Pracovná pozícia"><input value={draft.jobTitle} onChange={(event) => setDraft({ ...draft, jobTitle: event.target.value })}/></Field>
     <Field label="Telefón"><input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })}/></Field>
     <Field label="Aplikačná rola" hint={roleInfo(draft.role).description}><select value={draft.role} disabled={current} onChange={(event) => setDraft({ ...draft, role: event.target.value as AppRole })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
-    <Field label="Stav účtu" hint={current ? 'Vlastný účet nemožno deaktivovať.' : 'Deaktivovaný používateľ sa neprihlási.'}><label className="account-status-switch"><input type="checkbox" checked={draft.isActive} disabled={current} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })}/><span>{draft.isActive ? 'Aktívny účet' : 'Deaktivovaný účet'}</span></label></Field>
+    <Field label="Stav účtu" hint={current ? 'Vlastný účet nemožno deaktivovať.' : 'Deaktivovaný používateľ sa neprihlási.'}><label className="account-status-switch"><input type="checkbox" checked={draft.isActive} disabled={current} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })}/><span>{draft.isActive ? 'Prístup povolený' : 'Prístup zablokovaný'}</span></label></Field>
   </div><div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !draft.fullName.trim()} onClick={() => void onSave(draft)}>{busy ? 'Ukladám…' : 'Uložiť zmeny'}</button></div></Modal>
+}
+
+function UserDetailModal({ profile, audit, current, cloud, busy, onClose, onEdit, onReset, onResend, onCancel, onOwnPassword }: { profile: UserProfile; audit: UserAuditEntry[]; current: boolean; cloud: boolean; busy: boolean; onClose: () => void; onEdit: () => void; onReset: () => void; onResend: () => void; onCancel: () => void; onOwnPassword: () => void }) {
+  const state = accountState(profile)
+  const info = accountStateInfo[state]
+  const pending = state === 'invited' || state === 'expired' || state === 'cancelled'
+  return <Modal title="Detail používateľského účtu" onClose={onClose} wide><div className="user-detail-hero"><div className="avatar avatar-large">{initials(profile.fullName || profile.email)}</div><div><div className="user-detail-title"><h3>{profile.fullName || 'Meno nedoplnené'}</h3>{current && <Badge tone="info">Vy</Badge>}</div><p>{profile.email}</p><div className="user-detail-badges"><Badge tone={roleTone(profile.role)}>{roleInfo(profile.role).label}</Badge><Badge tone={info.tone}>{info.label}</Badge></div></div></div>
+    <div className="user-detail-grid"><article><span>Útvar</span><strong>{profile.department || 'Neurčený'}</strong><small>{profile.jobTitle || 'Pozícia neurčená'}</small></article><article><span>Telefón</span><strong>{profile.phone || 'Nedoplnený'}</strong><small>Kontaktný údaj</small></article><article><span>Pozvaný</span><strong>{formatDate(profile.invitedAt)}</strong><small>{pending ? `Platnosť do ${formatDate(inviteExpiry(profile))}` : 'Prvotné vytvorenie účtu'}</small></article><article><span>Prijatie pozvánky</span><strong>{formatDate(profile.acceptedAt)}</strong><small>{profile.acceptedAt ? 'Prvé úspešné prihlásenie' : 'Zatiaľ nezaznamenané'}</small></article><article><span>Posledné prihlásenie</span><strong>{formatDate(profile.lastLoginAt)}</strong><small>Aktivita používateľa</small></article><article><span>Posledná zmena</span><strong>{formatDate(profile.updatedAt)}</strong><small>Profil alebo oprávnenia</small></article></div>
+    <section className="detail-status-explainer"><Icon name={state === 'active' ? 'check' : 'warning'} size={18}/><div><strong>{info.label}</strong><span>{info.description}</span></div></section>
+    <section className="user-detail-audit"><header><div><span className="section-kicker">História účtu</span><h3>Posledné administrátorské zmeny</h3></div><Badge tone="neutral">{audit.length}</Badge></header>{audit.length ? <div>{audit.slice(0, 8).map((entry) => <article key={entry.id}><span>{formatDate(entry.createdAt)}</span><div><strong>{entry.action}</strong><small>{entry.detail}</small></div></article>)}</div> : <p className="muted-copy">Pre tento účet zatiaľ nie je evidovaná administrátorská zmena.</p>}</section>
+    <div className="modal-actions modal-actions-between"><button className="button button-secondary" onClick={onClose}>Zavrieť</button><div><button className="button button-secondary" onClick={onEdit}><Icon name="edit"/> Upraviť profil</button>{current ? cloud ? <button className="button button-primary" disabled={busy} onClick={onOwnPassword}><Icon name="lock"/> Zmeniť heslo</button> : null : pending ? <><button className="button button-primary" disabled={busy} onClick={onResend}><Icon name="refresh"/> {state === 'cancelled' ? 'Obnoviť pozvanie' : 'Odoslať nový odkaz'}</button>{state !== 'cancelled' && <button className="button button-danger" disabled={busy} onClick={onCancel}>Zrušiť pozvánku</button>}</> : <button className="button button-primary" disabled={busy || !profile.isActive} onClick={onReset}><Icon name="lock"/> Obnoviť heslo</button>}</div></div>
+  </Modal>
+}
+
+function ChangePasswordModal({ busy, onClose, onSave }: { busy: boolean; onClose: () => void; onSave: (password: string) => Promise<void> }) {
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [localError, setLocalError] = useState('')
+
+  function submit() {
+    setLocalError('')
+    if (password.length < 10) {
+      setLocalError('Nové heslo musí mať aspoň 10 znakov.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setLocalError('Zadané heslá sa nezhodujú.')
+      return
+    }
+    void onSave(password)
+  }
+
+  return <Modal title="Zmeniť moje heslo" onClose={onClose}><div className="password-guidance"><Icon name="shield" size={20}/><div><strong>Bezpečné heslo</strong><span>Použite aspoň 10 znakov a nekombinujte ho s heslom z iného systému.</span></div></div><div className="form-grid form-grid-single"><Field label="Nové heslo"><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimálne 10 znakov"/></Field><Field label="Zopakujte nové heslo"><input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Zadajte heslo znova"/></Field></div>{localError && <div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={17}/><span>{localError}</span></div>}<div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !password || !confirmPassword} onClick={submit}>{busy ? 'Ukladám…' : 'Zmeniť heslo'}</button></div></Modal>
 }
