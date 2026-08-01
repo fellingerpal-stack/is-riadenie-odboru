@@ -51,7 +51,9 @@ function normalizeProfile(row: unknown): UserProfile | null {
     role: normalizeRole(item.role),
     isActive: Boolean(item.is_active),
     lastLoginAt: String(item.last_login_at ?? ''),
+    acceptedAt: String(item.accepted_at ?? ''),
     invitedAt: String(item.invited_at ?? ''),
+    inviteExpiresAt: String(item.invite_expires_at ?? ''),
     createdAt: String(item.created_at ?? ''),
     updatedAt: String(item.updated_at ?? ''),
   }
@@ -68,7 +70,7 @@ function friendlyAuthError(error: unknown): string {
   if (lower.includes('invalid login credentials')) return 'Nesprávny e-mail alebo heslo.'
   if (lower.includes('email not confirmed')) return 'E-mail ešte nebol potvrdený.'
   if (lower.includes('user not found')) return 'Používateľský účet neexistuje.'
-  if (lower.includes('rate limit')) return 'Bolo vykonaných príliš veľa pokusov. Skúste to neskôr.'
+  if (lower.includes('email rate limit') || lower.includes('rate limit')) return 'Bol prekročený limit odosielania e-mailov. Počkajte približne hodinu alebo nastavte vlastné SMTP v Supabase.'
   return message || 'Operáciu prihlásenia sa nepodarilo dokončiť.'
 }
 
@@ -83,13 +85,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function queryProfile(userId: string): Promise<UserProfile | null> {
     if (!supabase) return null
-    const { data, error: profileError } = await supabase
+    const detailed = await supabase
+      .from('profiles')
+      .select('id, organization_id, full_name, email, department, job_title, phone, role, is_active, last_login_at, accepted_at, invited_at, invite_expires_at, created_at, updated_at')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (!detailed.error) return normalizeProfile(detailed.data)
+
+    const legacy = await supabase
       .from('profiles')
       .select('id, organization_id, full_name, email, department, job_title, phone, role, is_active, last_login_at, invited_at, created_at, updated_at')
       .eq('id', userId)
       .maybeSingle()
-    if (profileError) throw profileError
-    return normalizeProfile(data)
+    if (legacy.error) throw legacy.error
+    return normalizeProfile(legacy.data)
   }
 
   async function loadProfile(userId?: string) {
