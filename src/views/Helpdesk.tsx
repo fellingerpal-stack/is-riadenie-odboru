@@ -10,6 +10,7 @@ import type {
   TicketComment,
 } from '../types'
 import { Badge, Empty, Field, Icon, Modal, PageHeader } from '../components/UI'
+import type { HelpdeskDatabaseState } from '../lib/helpdeskCloud'
 import './Helpdesk.css'
 
 const ticketTypes = ['Incident', 'Požiadavka']
@@ -31,6 +32,14 @@ const closedStatuses = ['Vyriešená', 'Uzatvorená', 'Zrušená']
 
 type DeskView = 'queue' | 'mine' | 'sla'
 type SlaTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+function databaseStateLabel(state: HelpdeskDatabaseState) {
+  if (state === 'loading') return 'Načítavam z databázy'
+  if (state === 'saving') return 'Ukladám zmeny'
+  if (state === 'synced') return 'Synchronizované'
+  if (state === 'error') return 'Chyba synchronizácie'
+  return 'Lokálny režim'
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
@@ -189,7 +198,12 @@ export default function Helpdesk({
   supportQueues,
   slaPolicies,
   canEdit,
+  canConfigure,
   currentUser,
+  databaseMode,
+  databaseState,
+  databaseError,
+  onReload,
   onTicketsChange,
   onTasksChange,
   onSupportQueuesChange,
@@ -202,7 +216,12 @@ export default function Helpdesk({
   supportQueues: SupportQueue[]
   slaPolicies: SlaPolicy[]
   canEdit: boolean
+  canConfigure: boolean
   currentUser: string
+  databaseMode: 'local' | 'cloud'
+  databaseState: HelpdeskDatabaseState
+  databaseError: string
+  onReload: () => void
   onTicketsChange: (tickets: Ticket[]) => void
   onTasksChange: (tasks: Task[]) => void
   onSupportQueuesChange: (queues: SupportQueue[]) => void
@@ -493,6 +512,22 @@ export default function Helpdesk({
       </div>}
     />
 
+    <section className={`helpdesk-database-banner helpdesk-database-${databaseState}`} aria-label="Stav databázy Helpdesku">
+      <div className="helpdesk-database-icon"><Icon name={databaseState === 'error' ? 'warning' : 'database'} size={20} /></div>
+      <div className="helpdesk-database-copy">
+        <strong>{databaseMode === 'cloud' ? 'Samostatné Supabase tabuľky ServiceDesku' : 'Lokálny pracovný režim'}</strong>
+        <span>{databaseState === 'error' && databaseError
+          ? databaseError
+          : databaseMode === 'cloud'
+            ? 'Tickety, fronty a SLA politiky sa ukladajú samostatne a zmeny sa načítajú aj ostatným používateľom.'
+            : 'Dáta sú uložené iba v tomto prehliadači.'}</span>
+      </div>
+      <div className="helpdesk-database-actions">
+        <b>{databaseStateLabel(databaseState)}</b>
+        {databaseMode === 'cloud' && <button className="button button-secondary" type="button" onClick={onReload} disabled={databaseState === 'loading' || databaseState === 'saving'}><Icon name="refresh" size={15} /> Obnoviť</button>}
+      </div>
+    </section>
+
     <div className="helpdesk-view-tabs" role="tablist">
       <button className={deskView === 'queue' ? 'active' : ''} onClick={() => setDeskView('queue')}><Icon name="helpdesk" size={18} /> Fronta ticketov <span>{openTickets.length}</span></button>
       <button className={deskView === 'mine' ? 'active' : ''} onClick={() => setDeskView('mine')}><Icon name="user" size={18} /> Moje tickety <span>{tickets.filter((ticket) => ticket.requester === currentUser || ticket.assignee === currentUser).length}</span></button>
@@ -541,13 +576,13 @@ export default function Helpdesk({
     </>}
 
     {deskView === 'sla' && <div className="servicedesk-report-grid">
-      <section className="panel sla-policy-panel"><div className="panel-heading"><div><span className="eyebrow">Riadenie úrovne služby</span><h3>SLA politiky</h3></div><Badge tone="info">kalendárne hodiny</Badge></div><div className="sla-policy-grid">{slaPolicies.map((policy) => <article key={policy.id}><header><Badge tone={priorityTone(policy.priority)}>{policy.priority}</Badge><strong>{policy.name}</strong></header><div><label>Prvá reakcia<input type="number" min="1" value={policy.firstResponseHours} disabled={!canEdit} onChange={(event) => updatePolicy(policy.id, 'firstResponseHours', Number(event.target.value))} /><span>h</span></label><label>Vyriešenie<input type="number" min="1" value={policy.resolutionHours} disabled={!canEdit} onChange={(event) => updatePolicy(policy.id, 'resolutionHours', Number(event.target.value))} /><span>h</span></label></div></article>)}</div><p className="panel-note">Zmena politiky sa použije na nové tickety. Pri zmene priority existujúceho ticketu sa SLA prepočíta od času jeho vytvorenia.</p></section>
+      <section className="panel sla-policy-panel"><div className="panel-heading"><div><span className="eyebrow">Riadenie úrovne služby</span><h3>SLA politiky</h3></div><Badge tone="info">kalendárne hodiny</Badge></div><div className="sla-policy-grid">{slaPolicies.map((policy) => <article key={policy.id}><header><Badge tone={priorityTone(policy.priority)}>{policy.priority}</Badge><strong>{policy.name}</strong></header><div><label>Prvá reakcia<input type="number" min="1" value={policy.firstResponseHours} disabled={!canConfigure} onChange={(event) => updatePolicy(policy.id, 'firstResponseHours', Number(event.target.value))} /><span>h</span></label><label>Vyriešenie<input type="number" min="1" value={policy.resolutionHours} disabled={!canConfigure} onChange={(event) => updatePolicy(policy.id, 'resolutionHours', Number(event.target.value))} /><span>h</span></label></div></article>)}</div><p className="panel-note">Zmena politiky sa použije na nové tickety. Pri zmene priority existujúceho ticketu sa SLA prepočíta od času jeho vytvorenia.</p></section>
 
-      <section className="panel queue-panel"><div className="panel-heading"><div><span className="eyebrow">Organizácia podpory</span><h3>Fronty riešiteľov</h3></div><Badge tone="neutral">{supportQueues.filter((queue) => queue.isActive).length} aktívne</Badge></div><div className="support-queue-grid">{supportQueues.map((queue) => <article key={queue.id} className={!queue.isActive ? 'is-disabled' : ''}><header><span className="queue-icon"><Icon name="helpdesk" size={18} /></span><div><strong>{queue.name}</strong><small>{queue.email}</small></div>{canEdit && <label className="switch"><input type="checkbox" checked={queue.isActive} onChange={(event) => onSupportQueuesChange(supportQueues.map((item) => item.id === queue.id ? { ...item, isActive: event.target.checked } : item))} /><span /></label>}</header><p>{queue.description}</p><div className="queue-members">{queue.members.map((member) => <span key={member}>{initials(member)} <small>{member}</small></span>)}</div></article>)}</div></section>
+      <section className="panel queue-panel"><div className="panel-heading"><div><span className="eyebrow">Organizácia podpory</span><h3>Fronty riešiteľov</h3></div><Badge tone="neutral">{supportQueues.filter((queue) => queue.isActive).length} aktívne</Badge></div><div className="support-queue-grid">{supportQueues.map((queue) => <article key={queue.id} className={!queue.isActive ? 'is-disabled' : ''}><header><span className="queue-icon"><Icon name="helpdesk" size={18} /></span><div><strong>{queue.name}</strong><small>{queue.email}</small></div>{canConfigure && <label className="switch"><input type="checkbox" checked={queue.isActive} onChange={(event) => onSupportQueuesChange(supportQueues.map((item) => item.id === queue.id ? { ...item, isActive: event.target.checked } : item))} /><span /></label>}</header><p>{queue.description}</p><div className="queue-members">{queue.members.map((member) => <span key={member}>{initials(member)} <small>{member}</small></span>)}</div></article>)}</div></section>
 
       <section className="panel analytics-panel"><div className="panel-heading"><div><span className="eyebrow">Manažérsky report</span><h3>Rozloženie ticketov</h3></div><button className="text-button" onClick={exportTickets}><Icon name="download" size={15} /> Export pre Excel</button></div><div className="analytics-grid"><ReportList title="Podľa stavu" items={analytics.status} total={tickets.length} /><ReportList title="Podľa služby" items={analytics.service} total={tickets.length} /><ReportList title="Podľa riešiteľa" items={analytics.assignee} total={openTickets.length} /><ReportList title="Vek otvorených ticketov" items={analytics.age} total={openTickets.length} /></div></section>
 
-      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>SQL návrh je súčasťou releasu</small></span><Badge tone="warning">Na nasadenie</Badge></div><div><Icon name="roadmap" /><span><strong>E-mailové notifikácie</strong><small>Vyžadujú Edge Function a odosielaciu doménu</small></span><Badge tone="neutral">Ďalší krok</Badge></div></div></section>
+      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, fronty, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="roadmap" /><span><strong>E-mailové notifikácie</strong><small>Vyžadujú Edge Function a odosielaciu doménu</small></span><Badge tone="neutral">Ďalší krok</Badge></div></div></section>
     </div>}
 
     {alertsOpen && <Modal title={`Upozornenia ServiceDesku (${alertItems.length})`} onClose={() => setAlertsOpen(false)}><div className="servicedesk-alert-list">{alertItems.length ? alertItems.map(({ ticket, sla }) => <button key={ticket.id} onClick={() => { setAlertsOpen(false); openTicket(ticket) }}><span className={`alert-dot alert-${sla.tone}`} /><div><strong>{ticket.id} · {ticket.title}</strong><small>{sla.label} · {sla.detail}{!ticket.assignee ? ' · bez riešiteľa' : ''}</small></div><Icon name="chevron" size={17} /></button>) : <Empty title="Bez upozornení" text="Žiadny otvorený ticket momentálne nevyžaduje zásah." />}</div></Modal>}
