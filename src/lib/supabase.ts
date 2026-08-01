@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 export type AppMode = 'auto' | 'local' | 'cloud'
 
-const rawMode = String(import.meta.env.VITE_APP_MODE ?? 'auto').trim().toLowerCase()
+const rawMode = String(import.meta.env.VITE_DATA_MODE ?? import.meta.env.VITE_APP_MODE ?? 'auto').trim().toLowerCase()
 export const appMode: AppMode = rawMode === 'cloud' || rawMode === 'local' ? rawMode : 'auto'
 
 const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL ?? '').trim()
