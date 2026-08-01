@@ -1,0 +1,433 @@
+import seed from '../data/seed.json'
+import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, SlaPolicy, Task, Ticket } from '../types'
+
+const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
+const ROLE_KEY = 'cvti-is-riadenie-role'
+const CURRENT_VERSION = '0.9.0'
+
+export function cloneSeed(): AppState {
+  return structuredClone(seed) as AppState
+}
+
+function migrateTask(task: Task): Task {
+  return {
+    type: 'Úloha',
+    start: '',
+    estimateHours: 0,
+    spentHours: 0,
+    progress: task.status === 'Hotovo' ? 100 : 0,
+    dependency: '',
+    note: '',
+    ...task,
+  }
+}
+
+function migrateProject(project: Project): Project {
+  return {
+    note: '',
+    ...project,
+  }
+}
+
+function addHours(value: string, hours: number): string {
+  const base = new Date(value)
+  const safe = Number.isNaN(base.getTime()) ? new Date() : base
+  safe.setTime(safe.getTime() + hours * 60 * 60 * 1000)
+  return safe.toISOString()
+}
+
+function policyFor(priority: string, policies: SlaPolicy[]): SlaPolicy {
+  return policies.find((policy) => policy.isActive && policy.priority === priority)
+    ?? policies.find((policy) => policy.priority === 'Stredná')
+    ?? { id: 'SLA00', name: 'Predvolené SLA', priority: 'Stredná', firstResponseHours: 8, resolutionHours: 40, isActive: true }
+}
+
+function migrateTicket(ticket: Ticket, policies: SlaPolicy[]): Ticket {
+  const source = (ticket ?? {}) as Partial<Ticket>
+  const createdAt = typeof source.createdAt === 'string' && source.createdAt
+    ? source.createdAt
+    : new Date().toISOString()
+  const updatedAt = typeof source.updatedAt === 'string' && source.updatedAt
+    ? source.updatedAt
+    : createdAt
+  const priority = typeof source.priority === 'string' && source.priority
+    ? source.priority
+    : 'Stredná'
+  const policy = policyFor(priority, policies)
+
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    type: typeof source.type === 'string' ? source.type : 'Požiadavka',
+    title: typeof source.title === 'string' ? source.title : 'Bez názvu',
+    description: typeof source.description === 'string' ? source.description : '',
+    requester: typeof source.requester === 'string' ? source.requester : '',
+    requesterEmail: typeof source.requesterEmail === 'string' ? source.requesterEmail : '',
+    serviceId: typeof source.serviceId === 'string' ? source.serviceId : '',
+    category: typeof source.category === 'string' ? source.category : 'Ostatné',
+    subcategory: typeof source.subcategory === 'string' ? source.subcategory : 'Iné',
+    queueId: typeof source.queueId === 'string' ? source.queueId : '',
+    priority,
+    impact: typeof source.impact === 'string' ? source.impact : 'Stredný',
+    urgency: typeof source.urgency === 'string' ? source.urgency : 'Stredná',
+    status: typeof source.status === 'string' ? source.status : 'Nová',
+    assignee: typeof source.assignee === 'string' ? source.assignee : '',
+    channel: typeof source.channel === 'string' ? source.channel : 'Formulár',
+    createdAt,
+    updatedAt,
+    due: typeof source.due === 'string' ? source.due : '',
+    firstResponseDueAt: typeof source.firstResponseDueAt === 'string' && source.firstResponseDueAt
+      ? source.firstResponseDueAt
+      : addHours(createdAt, policy.firstResponseHours),
+    resolutionDueAt: typeof source.resolutionDueAt === 'string' && source.resolutionDueAt
+      ? source.resolutionDueAt
+      : addHours(createdAt, policy.resolutionHours),
+    firstRespondedAt: typeof source.firstRespondedAt === 'string' ? source.firstRespondedAt : undefined,
+    resolvedAt: typeof source.resolvedAt === 'string' ? source.resolvedAt : undefined,
+    linkedTaskId: typeof source.linkedTaskId === 'string' ? source.linkedTaskId : '',
+    resolution: typeof source.resolution === 'string' ? source.resolution : '',
+    internalNote: typeof source.internalNote === 'string' ? source.internalNote : '',
+    comments: Array.isArray(source.comments) ? source.comments : [],
+    history: Array.isArray(source.history) ? source.history : [],
+    attachments: Array.isArray(source.attachments) ? source.attachments : [],
+  }
+}
+
+
+function migrateApproval(approval: ChangeApproval, role: string): ChangeApproval {
+  const source = (approval ?? {}) as Partial<ChangeApproval>
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
+    role: typeof source.role === 'string' && source.role ? source.role : role,
+    approver: typeof source.approver === 'string' ? source.approver : '',
+    decision: typeof source.decision === 'string' && source.decision ? source.decision : 'Čaká',
+    note: typeof source.note === 'string' ? source.note : '',
+    decidedAt: typeof source.decidedAt === 'string' ? source.decidedAt : '',
+  }
+}
+
+function migrateChange(change: ChangeRequest): ChangeRequest {
+  const source = (change ?? {}) as Partial<ChangeRequest>
+  const createdAt = typeof source.createdAt === 'string' && source.createdAt ? source.createdAt : new Date().toISOString()
+  const approvals = Array.isArray(source.approvals) && source.approvals.length
+    ? source.approvals.map((approval, index) => migrateApproval(approval, ['Vecný vlastník', 'Technický vlastník', 'Bezpečnosť / prevádzka'][index] ?? 'Schvaľovateľ'))
+    : [migrateApproval({} as ChangeApproval, 'Vecný vlastník'), migrateApproval({} as ChangeApproval, 'Technický vlastník'), migrateApproval({} as ChangeApproval, 'Bezpečnosť / prevádzka')]
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    title: typeof source.title === 'string' ? source.title : 'Bez názvu',
+    description: typeof source.description === 'string' ? source.description : '',
+    type: typeof source.type === 'string' && source.type ? source.type : 'Normálna',
+    category: typeof source.category === 'string' && source.category ? source.category : 'Iné',
+    serviceId: typeof source.serviceId === 'string' ? source.serviceId : '',
+    requester: typeof source.requester === 'string' ? source.requester : '',
+    owner: typeof source.owner === 'string' ? source.owner : '',
+    approver: typeof source.approver === 'string' ? source.approver : '',
+    priority: typeof source.priority === 'string' && source.priority ? source.priority : 'Stredná',
+    risk: typeof source.risk === 'string' && source.risk ? source.risk : 'Stredné',
+    impact: typeof source.impact === 'string' && source.impact ? source.impact : 'Jeden útvar',
+    status: typeof source.status === 'string' && source.status ? source.status : 'Návrh',
+    reason: typeof source.reason === 'string' ? source.reason : '',
+    plannedStart: typeof source.plannedStart === 'string' ? source.plannedStart : '',
+    plannedEnd: typeof source.plannedEnd === 'string' ? source.plannedEnd : '',
+    outageMinutes: typeof source.outageMinutes === 'number' && Number.isFinite(source.outageMinutes) ? source.outageMinutes : 0,
+    implementationPlan: typeof source.implementationPlan === 'string' ? source.implementationPlan : '',
+    testPlan: typeof source.testPlan === 'string' ? source.testPlan : '',
+    rollbackPlan: typeof source.rollbackPlan === 'string' ? source.rollbackPlan : '',
+    communicationPlan: typeof source.communicationPlan === 'string' ? source.communicationPlan : '',
+    affectedSystems: typeof source.affectedSystems === 'string' ? source.affectedSystems : '',
+    linkedTicketIds: Array.isArray(source.linkedTicketIds) ? source.linkedTicketIds : [],
+    linkedProjectId: typeof source.linkedProjectId === 'string' ? source.linkedProjectId : '',
+    linkedTaskId: typeof source.linkedTaskId === 'string' ? source.linkedTaskId : '',
+    createdAt,
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+    completedAt: typeof source.completedAt === 'string' ? source.completedAt : '',
+    validationResult: typeof source.validationResult === 'string' ? source.validationResult : '',
+    approvals,
+    history: Array.isArray(source.history) ? source.history : [],
+  }
+}
+
+
+function migrateProblemAction(action: ProblemAction): ProblemAction {
+  const source = (action ?? {}) as Partial<ProblemAction>
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
+    title: typeof source.title === 'string' ? source.title : '',
+    owner: typeof source.owner === 'string' ? source.owner : '',
+    due: typeof source.due === 'string' ? source.due : '',
+    status: typeof source.status === 'string' && source.status ? source.status : 'Návrh',
+    linkedTaskId: typeof source.linkedTaskId === 'string' ? source.linkedTaskId : '',
+  }
+}
+
+function migrateProblem(problem: ProblemRecord): ProblemRecord {
+  const source = (problem ?? {}) as Partial<ProblemRecord>
+  const createdAt = typeof source.createdAt === 'string' && source.createdAt ? source.createdAt : new Date().toISOString()
+  const whySource = Array.isArray(source.whyAnalysis) ? source.whyAnalysis.slice(0, 5) : []
+  while (whySource.length < 5) whySource.push('')
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    title: typeof source.title === 'string' ? source.title : 'Bez názvu',
+    description: typeof source.description === 'string' ? source.description : '',
+    serviceId: typeof source.serviceId === 'string' ? source.serviceId : '',
+    owner: typeof source.owner === 'string' ? source.owner : '',
+    team: typeof source.team === 'string' ? source.team : '',
+    priority: typeof source.priority === 'string' && source.priority ? source.priority : 'Stredná',
+    impact: typeof source.impact === 'string' && source.impact ? source.impact : 'Jeden útvar',
+    status: typeof source.status === 'string' && source.status ? source.status : 'Nový',
+    symptom: typeof source.symptom === 'string' ? source.symptom : '',
+    recurringPattern: typeof source.recurringPattern === 'string' ? source.recurringPattern : '',
+    rootCause: typeof source.rootCause === 'string' ? source.rootCause : '',
+    rootCauseMethod: typeof source.rootCauseMethod === 'string' && source.rootCauseMethod ? source.rootCauseMethod : '5× prečo',
+    whyAnalysis: whySource,
+    workaround: typeof source.workaround === 'string' ? source.workaround : '',
+    permanentSolution: typeof source.permanentSolution === 'string' ? source.permanentSolution : '',
+    knownError: Boolean(source.knownError) || source.status === 'Známa chyba',
+    knownErrorSummary: typeof source.knownErrorSummary === 'string' ? source.knownErrorSummary : '',
+    linkedTicketIds: Array.isArray(source.linkedTicketIds) ? source.linkedTicketIds : [],
+    linkedChangeIds: Array.isArray(source.linkedChangeIds) ? source.linkedChangeIds : [],
+    linkedProjectId: typeof source.linkedProjectId === 'string' ? source.linkedProjectId : '',
+    linkedTaskIds: Array.isArray(source.linkedTaskIds) ? source.linkedTaskIds : [],
+    actions: Array.isArray(source.actions) ? source.actions.map(migrateProblemAction) : [],
+    comments: Array.isArray(source.comments) ? source.comments : [],
+    history: Array.isArray(source.history) ? source.history : [],
+    createdAt,
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+    targetDate: typeof source.targetDate === 'string' ? source.targetDate : '',
+    resolvedAt: typeof source.resolvedAt === 'string' ? source.resolvedAt : '',
+  }
+}
+
+
+function migrateAccessApproval(approval: AccessApproval, stage: string): AccessApproval {
+  const source = (approval ?? {}) as Partial<AccessApproval>
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
+    stage: typeof source.stage === 'string' && source.stage ? source.stage : stage,
+    approver: typeof source.approver === 'string' ? source.approver : '',
+    decision: typeof source.decision === 'string' && source.decision ? source.decision : 'Čaká',
+    note: typeof source.note === 'string' ? source.note : '',
+    decidedAt: typeof source.decidedAt === 'string' ? source.decidedAt : '',
+  }
+}
+
+function migrateAccessRequest(request: AccessRequest): AccessRequest {
+  const source = (request ?? {}) as Partial<AccessRequest>
+  const createdAt = typeof source.createdAt === 'string' && source.createdAt ? source.createdAt : new Date().toISOString()
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    requestType: typeof source.requestType === 'string' && source.requestType ? source.requestType : 'Nový prístup',
+    subjectName: typeof source.subjectName === 'string' ? source.subjectName : '',
+    subjectEmail: typeof source.subjectEmail === 'string' ? source.subjectEmail : '',
+    department: typeof source.department === 'string' ? source.department : '',
+    manager: typeof source.manager === 'string' ? source.manager : '',
+    requester: typeof source.requester === 'string' ? source.requester : '',
+    serviceId: typeof source.serviceId === 'string' ? source.serviceId : '',
+    catalogItemId: typeof source.catalogItemId === 'string' ? source.catalogItemId : '',
+    requestedAccess: typeof source.requestedAccess === 'string' ? source.requestedAccess : '',
+    currentAccess: typeof source.currentAccess === 'string' ? source.currentAccess : '',
+    businessJustification: typeof source.businessJustification === 'string' ? source.businessJustification : '',
+    privileged: Boolean(source.privileged),
+    risk: typeof source.risk === 'string' && source.risk ? source.risk : 'Stredné',
+    status: typeof source.status === 'string' && source.status ? source.status : 'Návrh',
+    startDate: typeof source.startDate === 'string' ? source.startDate : '',
+    endDate: typeof source.endDate === 'string' ? source.endDate : '',
+    dueDate: typeof source.dueDate === 'string' ? source.dueDate : '',
+    assignee: typeof source.assignee === 'string' ? source.assignee : '',
+    linkedTaskId: typeof source.linkedTaskId === 'string' ? source.linkedTaskId : '',
+    approvals: Array.isArray(source.approvals) ? source.approvals.map((item, index) => migrateAccessApproval(item, ['Priamy nadriadený', 'Vlastník služby', 'Bezpečnosť / administrátor'][index] ?? 'Schvaľovateľ')) : [],
+    comments: Array.isArray(source.comments) ? source.comments : [],
+    history: Array.isArray(source.history) ? source.history : [],
+    createdAt,
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+    completedAt: typeof source.completedAt === 'string' ? source.completedAt : '',
+  }
+}
+
+function migrateAccessCatalog(item: AccessCatalogItem): AccessCatalogItem {
+  const source = (item ?? {}) as Partial<AccessCatalogItem>
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    name: typeof source.name === 'string' ? source.name : 'Bez názvu',
+    serviceId: typeof source.serviceId === 'string' ? source.serviceId : '',
+    system: typeof source.system === 'string' ? source.system : '',
+    description: typeof source.description === 'string' ? source.description : '',
+    businessOwner: typeof source.businessOwner === 'string' ? source.businessOwner : '',
+    technicalOwner: typeof source.technicalOwner === 'string' ? source.technicalOwner : '',
+    risk: typeof source.risk === 'string' && source.risk ? source.risk : 'Stredné',
+    privileged: Boolean(source.privileged),
+    defaultDurationDays: typeof source.defaultDurationDays === 'number' && Number.isFinite(source.defaultDurationDays) ? source.defaultDurationDays : 365,
+    approvalPath: Array.isArray(source.approvalPath) ? source.approvalPath : ['Priamy nadriadený', 'Vlastník služby'],
+    isActive: source.isActive !== false,
+  }
+}
+
+function migrateRecertificationItem(item: RecertificationItem): RecertificationItem {
+  const source = (item ?? {}) as Partial<RecertificationItem>
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
+    subjectName: typeof source.subjectName === 'string' ? source.subjectName : '',
+    subjectEmail: typeof source.subjectEmail === 'string' ? source.subjectEmail : '',
+    catalogItemId: typeof source.catalogItemId === 'string' ? source.catalogItemId : '',
+    accessName: typeof source.accessName === 'string' ? source.accessName : '',
+    reviewer: typeof source.reviewer === 'string' ? source.reviewer : '',
+    decision: typeof source.decision === 'string' && source.decision ? source.decision : 'Čaká',
+    decisionNote: typeof source.decisionNote === 'string' ? source.decisionNote : '',
+    dueDate: typeof source.dueDate === 'string' ? source.dueDate : '',
+    lastUsedAt: typeof source.lastUsedAt === 'string' ? source.lastUsedAt : '',
+    privileged: Boolean(source.privileged),
+  }
+}
+
+function migrateRecertificationCampaign(campaign: RecertificationCampaign): RecertificationCampaign {
+  const source = (campaign ?? {}) as Partial<RecertificationCampaign>
+  const createdAt = typeof source.createdAt === 'string' && source.createdAt ? source.createdAt : new Date().toISOString()
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    name: typeof source.name === 'string' ? source.name : 'Bez názvu',
+    description: typeof source.description === 'string' ? source.description : '',
+    owner: typeof source.owner === 'string' ? source.owner : '',
+    scope: typeof source.scope === 'string' ? source.scope : 'Aktívne prístupy',
+    status: typeof source.status === 'string' && source.status ? source.status : 'Návrh',
+    startDate: typeof source.startDate === 'string' ? source.startDate : '',
+    dueDate: typeof source.dueDate === 'string' ? source.dueDate : '',
+    items: Array.isArray(source.items) ? source.items.map(migrateRecertificationItem) : [],
+    createdAt,
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+  }
+}
+
+
+function migrateCmdbItem(item: CmdbItem): CmdbItem {
+  const source = (item ?? {}) as Partial<CmdbItem>
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    name: typeof source.name === 'string' && source.name ? source.name : 'Bez názvu',
+    type: typeof source.type === 'string' && source.type ? source.type : 'Iné',
+    category: typeof source.category === 'string' ? source.category : '',
+    status: typeof source.status === 'string' && source.status ? source.status : 'V prevádzke',
+    criticality: typeof source.criticality === 'string' && source.criticality ? source.criticality : 'Stredná',
+    serviceId: typeof source.serviceId === 'string' ? source.serviceId : '',
+    businessOwner: typeof source.businessOwner === 'string' ? source.businessOwner : '',
+    technicalOwner: typeof source.technicalOwner === 'string' ? source.technicalOwner : '',
+    custodian: typeof source.custodian === 'string' ? source.custodian : '',
+    environment: typeof source.environment === 'string' ? source.environment : '',
+    location: typeof source.location === 'string' ? source.location : '',
+    supplier: typeof source.supplier === 'string' ? source.supplier : '',
+    version: typeof source.version === 'string' ? source.version : '',
+    hostname: typeof source.hostname === 'string' ? source.hostname : '',
+    ipAddress: typeof source.ipAddress === 'string' ? source.ipAddress : '',
+    serialNumber: typeof source.serialNumber === 'string' ? source.serialNumber : '',
+    assetTag: typeof source.assetTag === 'string' ? source.assetTag : '',
+    purchaseDate: typeof source.purchaseDate === 'string' ? source.purchaseDate : '',
+    warrantyEnd: typeof source.warrantyEnd === 'string' ? source.warrantyEnd : '',
+    licenseEnd: typeof source.licenseEnd === 'string' ? source.licenseEnd : '',
+    contractEnd: typeof source.contractEnd === 'string' ? source.contractEnd : '',
+    supportEnd: typeof source.supportEnd === 'string' ? source.supportEnd : '',
+    cost: typeof source.cost === 'number' && Number.isFinite(source.cost) ? source.cost : 0,
+    dataClassification: typeof source.dataClassification === 'string' ? source.dataClassification : 'Interné',
+    monitoring: typeof source.monitoring === 'string' ? source.monitoring : '',
+    backup: typeof source.backup === 'string' ? source.backup : '',
+    documentation: typeof source.documentation === 'string' ? source.documentation : '',
+    lifecycle: typeof source.lifecycle === 'string' && source.lifecycle ? source.lifecycle : 'V prevádzke',
+    linkedTicketIds: Array.isArray(source.linkedTicketIds) ? source.linkedTicketIds : [],
+    linkedChangeIds: Array.isArray(source.linkedChangeIds) ? source.linkedChangeIds : [],
+    note: typeof source.note === 'string' ? source.note : '',
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : new Date().toISOString(),
+  }
+}
+
+function migrateCmdbRelationship(relationship: CmdbRelationship): CmdbRelationship {
+  const source = (relationship ?? {}) as Partial<CmdbRelationship>
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
+    sourceId: typeof source.sourceId === 'string' ? source.sourceId : '',
+    targetId: typeof source.targetId === 'string' ? source.targetId : '',
+    type: typeof source.type === 'string' && source.type ? source.type : 'Závisí od',
+    criticality: typeof source.criticality === 'string' && source.criticality ? source.criticality : 'Stredná',
+    note: typeof source.note === 'string' ? source.note : '',
+  }
+}
+
+export function migrateState(input: AppState): AppState {
+  const defaults = cloneSeed()
+  const source = (input && typeof input === 'object' ? input : {}) as Partial<AppState>
+  const slaPolicies = Array.isArray(source.slaPolicies) ? source.slaPolicies : defaults.slaPolicies
+  return {
+    ...defaults,
+    ...source,
+    meta: {
+      ...defaults.meta,
+      ...source.meta,
+      version: CURRENT_VERSION,
+    },
+    employees: Array.isArray(source.employees) ? source.employees : defaults.employees,
+    raci: Array.isArray(source.raci) ? source.raci : defaults.raci,
+    services: Array.isArray(source.services) ? source.services : defaults.services,
+    substitutions: Array.isArray(source.substitutions) ? source.substitutions : defaults.substitutions,
+    capacity: Array.isArray(source.capacity) ? source.capacity : defaults.capacity,
+    risks: Array.isArray(source.risks) ? source.risks : defaults.risks,
+    actions: Array.isArray(source.actions) ? source.actions : defaults.actions,
+    decisions: Array.isArray(source.decisions) ? source.decisions : defaults.decisions,
+    projects: Array.isArray(source.projects) ? source.projects.map(migrateProject) : defaults.projects,
+    tasks: Array.isArray(source.tasks) ? source.tasks.map(migrateTask) : defaults.tasks,
+    supportQueues: Array.isArray(source.supportQueues) ? source.supportQueues : defaults.supportQueues,
+    slaPolicies,
+    tickets: Array.isArray(source.tickets) ? source.tickets.map((ticket) => migrateTicket(ticket, slaPolicies)) : defaults.tickets,
+    changes: Array.isArray(source.changes) ? source.changes.map(migrateChange) : defaults.changes,
+    problems: Array.isArray(source.problems) ? source.problems.map(migrateProblem) : defaults.problems,
+    accessRequests: Array.isArray(source.accessRequests) ? source.accessRequests.map(migrateAccessRequest) : defaults.accessRequests,
+    accessCatalog: Array.isArray(source.accessCatalog) ? source.accessCatalog.map(migrateAccessCatalog) : defaults.accessCatalog,
+    recertificationCampaigns: Array.isArray(source.recertificationCampaigns) ? source.recertificationCampaigns.map(migrateRecertificationCampaign) : defaults.recertificationCampaigns,
+    cmdbItems: Array.isArray(source.cmdbItems) ? source.cmdbItems.map(migrateCmdbItem) : defaults.cmdbItems,
+    cmdbRelationships: Array.isArray(source.cmdbRelationships) ? source.cmdbRelationships.map(migrateCmdbRelationship) : defaults.cmdbRelationships,
+  }
+}
+
+export function loadState(): AppState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return migrateState(cloneSeed())
+    return migrateState(JSON.parse(raw) as AppState)
+  } catch {
+    return migrateState(cloneSeed())
+  }
+}
+
+export function saveState(state: AppState): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(migrateState(state)))
+}
+
+export function resetState(): AppState {
+  localStorage.removeItem(STORAGE_KEY)
+  return migrateState(cloneSeed())
+}
+
+export function exportState(state: AppState): void {
+  const payload = migrateState(state)
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `is-riadenie-odboru-${new Date().toISOString().slice(0, 10)}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function importState(file: File): Promise<AppState> {
+  const parsed = JSON.parse(await file.text()) as AppState
+  if (!parsed.meta || !Array.isArray(parsed.employees) || !Array.isArray(parsed.raci)) {
+    throw new Error('Súbor nemá očakávanú štruktúru aplikácie.')
+  }
+  const migrated = migrateState(parsed)
+  saveState(migrated)
+  return migrated
+}
+
+export function loadRole(): 'admin' | 'manager' | 'viewer' {
+  const value = localStorage.getItem(ROLE_KEY)
+  return value === 'manager' || value === 'viewer' ? value : 'admin'
+}
+
+export function saveRole(role: 'admin' | 'manager' | 'viewer'): void {
+  localStorage.setItem(ROLE_KEY, role)
+}

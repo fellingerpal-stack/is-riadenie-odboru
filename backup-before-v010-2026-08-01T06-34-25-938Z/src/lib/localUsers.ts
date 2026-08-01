@@ -1,0 +1,129 @@
+import type { AppRole, UserAuditEntry, UserProfile } from '../types'
+
+const USERS_KEY = 'cvti-is-riadenie-local-users-v010'
+const AUDIT_KEY = 'cvti-is-riadenie-local-user-audit-v010'
+
+const now = () => new Date().toISOString()
+
+const seedUsers: UserProfile[] = [
+  {
+    id: 'local-admin', organizationId: 'local-cvti', fullName: 'Pavol Horváth',
+    email: 'pavol.horvath@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Riaditeľ odboru',
+    phone: '', role: 'admin', isActive: true, lastLoginAt: now(), invitedAt: '', createdAt: now(), updatedAt: now(),
+  },
+  {
+    id: 'local-manager', organizationId: 'local-cvti', fullName: 'Peter Modrák',
+    email: 'peter.modrak@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Vedúci oddelenia',
+    phone: '', role: 'manager', isActive: true, lastLoginAt: '', invitedAt: now(), createdAt: now(), updatedAt: now(),
+  },
+  {
+    id: 'local-resolver', organizationId: 'local-cvti', fullName: 'Ladislav Turányi',
+    email: 'ladislav.turanyi@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Riešiteľ / projektová rola',
+    phone: '', role: 'resolver', isActive: true, lastLoginAt: '', invitedAt: now(), createdAt: now(), updatedAt: now(),
+  },
+  {
+    id: 'local-employee', organizationId: 'local-cvti', fullName: 'Michelle Kožuchová Bajema',
+    email: 'michelle.bajema@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Zamestnanec',
+    phone: '', role: 'employee', isActive: true, lastLoginAt: '', invitedAt: now(), createdAt: now(), updatedAt: now(),
+  },
+  {
+    id: 'local-viewer', organizationId: 'local-cvti', fullName: 'Audítor – čítanie',
+    email: 'auditor@cvtisr.sk', department: 'Kontrola', jobTitle: 'Čitateľ',
+    phone: '', role: 'viewer', isActive: false, lastLoginAt: '', invitedAt: now(), createdAt: now(), updatedAt: now(),
+  },
+]
+
+function safeUsers(value: unknown): UserProfile[] {
+  if (!Array.isArray(value)) return structuredClone(seedUsers)
+  return value.map((row) => ({
+    id: String(row?.id ?? crypto.randomUUID()),
+    organizationId: String(row?.organizationId ?? 'local-cvti'),
+    fullName: String(row?.fullName ?? ''),
+    email: String(row?.email ?? ''),
+    department: String(row?.department ?? ''),
+    jobTitle: String(row?.jobTitle ?? ''),
+    phone: String(row?.phone ?? ''),
+    role: normalizeRole(row?.role),
+    isActive: row?.isActive !== false,
+    lastLoginAt: String(row?.lastLoginAt ?? ''),
+    invitedAt: String(row?.invitedAt ?? ''),
+    createdAt: String(row?.createdAt ?? now()),
+    updatedAt: String(row?.updatedAt ?? now()),
+  }))
+}
+
+function normalizeRole(value: unknown): AppRole {
+  return value === 'admin' || value === 'manager' || value === 'resolver' || value === 'employee' ? value : 'viewer'
+}
+
+export function loadLocalUsers(): UserProfile[] {
+  try {
+    const raw = localStorage.getItem(USERS_KEY)
+    if (!raw) {
+      localStorage.setItem(USERS_KEY, JSON.stringify(seedUsers))
+      return structuredClone(seedUsers)
+    }
+    return safeUsers(JSON.parse(raw))
+  } catch {
+    return structuredClone(seedUsers)
+  }
+}
+
+export function saveLocalUser(profile: UserProfile, actorName = 'Pavol Horváth'): UserProfile[] {
+  const users = loadLocalUsers()
+  const updated = { ...profile, updatedAt: now() }
+  const next = users.some((item) => item.id === profile.id)
+    ? users.map((item) => item.id === profile.id ? updated : item)
+    : [...users, updated]
+  localStorage.setItem(USERS_KEY, JSON.stringify(next))
+  appendLocalAudit({ actorName, targetUserId: updated.id, targetUserName: updated.fullName || updated.email, action: 'Profil upravený', detail: `Rola: ${updated.role}; stav: ${updated.isActive ? 'aktívny' : 'deaktivovaný'}` })
+  return next
+}
+
+export function inviteLocalUser(input: { email: string; fullName: string; department: string; jobTitle: string; phone: string; role: AppRole }, actorName = 'Pavol Horváth'): UserProfile[] {
+  const users = loadLocalUsers()
+  if (users.some((item) => item.email.toLowerCase() === input.email.toLowerCase())) throw new Error('Používateľ s týmto e-mailom už existuje.')
+  const createdAt = now()
+  const profile: UserProfile = {
+    id: `local-${crypto.randomUUID()}`,
+    organizationId: 'local-cvti',
+    fullName: input.fullName.trim(),
+    email: input.email.trim().toLowerCase(),
+    department: input.department.trim(),
+    jobTitle: input.jobTitle.trim(),
+    phone: input.phone.trim(),
+    role: input.role,
+    isActive: true,
+    lastLoginAt: '',
+    invitedAt: createdAt,
+    createdAt,
+    updatedAt: createdAt,
+  }
+  const next = [...users, profile]
+  localStorage.setItem(USERS_KEY, JSON.stringify(next))
+  appendLocalAudit({ actorName, targetUserId: profile.id, targetUserName: profile.fullName, action: 'Používateľ pozvaný', detail: `${profile.email}; rola: ${profile.role}` })
+  return next
+}
+
+export function resetLocalUsers(): UserProfile[] {
+  localStorage.setItem(USERS_KEY, JSON.stringify(seedUsers))
+  localStorage.removeItem(AUDIT_KEY)
+  return structuredClone(seedUsers)
+}
+
+export function appendLocalAudit(input: Partial<UserAuditEntry> & Pick<UserAuditEntry, 'actorName' | 'targetUserId' | 'targetUserName' | 'action' | 'detail'>): void {
+  const entries = loadLocalAudit()
+  entries.unshift({
+    id: crypto.randomUUID(), actorId: 'local-admin', createdAt: now(), ...input,
+  } as UserAuditEntry)
+  localStorage.setItem(AUDIT_KEY, JSON.stringify(entries.slice(0, 100)))
+}
+
+export function loadLocalAudit(): UserAuditEntry[] {
+  try {
+    const raw = localStorage.getItem(AUDIT_KEY)
+    return raw ? JSON.parse(raw) as UserAuditEntry[] : []
+  } catch {
+    return []
+  }
+}

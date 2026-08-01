@@ -1,0 +1,453 @@
+import { useEffect, useMemo, useState } from 'react'
+import type { AppRole, AppState } from './types'
+import {
+  exportState,
+  importState,
+  loadRole,
+  loadState,
+  resetState,
+  saveRole,
+  saveState,
+} from './lib/storage'
+import { Icon, type IconName } from './components/UI'
+
+import Dashboard from './views/Dashboard'
+import People from './views/People'
+import Raci from './views/Raci'
+import Services from './views/Services'
+import Substitutions from './views/Substitutions'
+import Capacity from './views/Capacity'
+import Work from './views/Work'
+import Risks from './views/Risks'
+import Decisions from './views/Decisions'
+import Roadmap from './views/Roadmap'
+
+type ViewKey =
+  | 'dashboard'
+  | 'people'
+  | 'raci'
+  | 'services'
+  | 'substitutions'
+  | 'capacity'
+  | 'work'
+  | 'risks'
+  | 'decisions'
+  | 'roadmap'
+
+interface NavItem {
+  key: ViewKey
+  label: string
+  icon: IconName
+  badge?: (state: AppState) => number
+}
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Prehľad',
+    items: [
+      {
+        key: 'dashboard',
+        label: 'Dashboard',
+        icon: 'dashboard',
+      },
+    ],
+  },
+  {
+    label: 'Organizácia',
+    items: [
+      {
+        key: 'people',
+        label: 'Ľudia a roly',
+        icon: 'people',
+      },
+      {
+        key: 'raci',
+        label: 'RACI matica',
+        icon: 'matrix',
+      },
+      {
+        key: 'services',
+        label: 'Služby a systémy',
+        icon: 'services',
+      },
+      {
+        key: 'substitutions',
+        label: 'Zastupiteľnosť',
+        icon: 'substitute',
+      },
+    ],
+  },
+  {
+    label: 'Riadenie práce',
+    items: [
+      {
+        key: 'capacity',
+        label: 'Kapacity',
+        icon: 'capacity',
+      },
+      {
+        key: 'work',
+        label: 'Projekty a úlohy',
+        icon: 'projects',
+        badge: (state) =>
+          state.tasks.filter((task) => task.status !== 'Hotovo').length,
+      },
+      {
+        key: 'risks',
+        label: 'Riziká',
+        icon: 'risk',
+        badge: (state) =>
+          state.risks.filter((risk) => risk.status !== 'Ukončené').length,
+      },
+      {
+        key: 'decisions',
+        label: 'Rozhodnutia',
+        icon: 'decision',
+        badge: (state) =>
+          state.decisions.filter(
+            (decision) => decision.status !== 'Schválené',
+          ).length,
+      },
+    ],
+  },
+  {
+    label: 'Rozvoj',
+    items: [
+      {
+        key: 'roadmap',
+        label: 'Roadmap a nastavenia',
+        icon: 'roadmap',
+      },
+    ],
+  },
+]
+
+function initialView(): ViewKey {
+  const hashView = window.location.hash.replace('#/', '') as ViewKey
+
+  const exists = navGroups
+    .flatMap((group) => group.items)
+    .some((item) => item.key === hashView)
+
+  return exists ? hashView : 'dashboard'
+}
+
+export default function App() {
+  const [state, setState] = useState<AppState>(() => loadState())
+  const [role, setRole] = useState<AppRole>(() => loadRole())
+  const [view, setView] = useState<ViewKey>(() => initialView())
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const canEdit = role !== 'viewer'
+
+  useEffect(() => {
+    saveState(state)
+  }, [state])
+
+  useEffect(() => {
+    saveRole(role)
+  }, [role])
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setView(initialView())
+    }
+
+    window.addEventListener('hashchange', handleHashChange)
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange)
+    }
+  }, [])
+
+  const currentLabel = useMemo(() => {
+    return (
+      navGroups
+        .flatMap((group) => group.items)
+        .find((item) => item.key === view)?.label ?? 'Dashboard'
+    )
+  }, [view])
+
+  function go(nextView: string) {
+    const key = nextView as ViewKey
+
+    setView(key)
+    window.location.hash = `/${key}`
+    setSidebarOpen(false)
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
+  }
+
+  function handleReset() {
+    const confirmed = window.confirm(
+      'Obnoviť pôvodné vzorové dáta? Všetky lokálne zmeny sa vymažú.',
+    )
+
+    if (confirmed) {
+      setState(resetState())
+    }
+  }
+
+  async function handleImport(file: File) {
+    try {
+      const importedState = await importState(file)
+      setState(importedState)
+    } catch (error) {
+      console.error('Import dát zlyhal:', error)
+      window.alert('Import dát sa nepodaril. Skontrolujte formát súboru.')
+    }
+  }
+
+  return (
+    <div className="app-shell">
+      <aside
+        className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}
+      >
+        <div className="brand">
+          <div className="brand-mark">IS</div>
+
+          <div>
+            <strong>Riadenie odboru</strong>
+            <small>CVTI SR · Odbor 3.2</small>
+          </div>
+
+          <button
+            type="button"
+            className="icon-button sidebar-close"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Zavrieť menu"
+          >
+            <Icon name="close" />
+          </button>
+        </div>
+
+        <nav>
+          {navGroups.map((group) => (
+            <section className="nav-group" key={group.label}>
+              <span>{group.label}</span>
+
+              {group.items.map((item) => {
+                const badge = item.badge?.(state)
+
+                return (
+                  <button
+                    type="button"
+                    key={item.key}
+                    className={view === item.key ? 'active' : ''}
+                    onClick={() => go(item.key)}
+                  >
+                    <Icon name={item.icon} />
+
+                    <span>{item.label}</span>
+
+                    {badge !== undefined && badge > 0 ? (
+                      <b>{badge}</b>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </section>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="mode-dot" />
+
+          <div>
+            <strong>Pracovný prototyp</strong>
+            <small>Lokálne uloženie · v{state.meta.version}</small>
+          </div>
+        </div>
+      </aside>
+
+      {sidebarOpen ? (
+        <button
+          type="button"
+          className="sidebar-overlay"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Zavrieť menu"
+        />
+      ) : null}
+
+      <div className="app-main">
+        <header className="topbar">
+          <div className="topbar-left">
+            <button
+              type="button"
+              className="icon-button mobile-menu"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Otvoriť menu"
+            >
+              <Icon name="menu" />
+            </button>
+
+            <div>
+              <small>IS Riadenie odboru</small>
+              <strong>{currentLabel}</strong>
+            </div>
+          </div>
+
+          <div className="topbar-right">
+            <div className="data-mode">
+              <Icon name="database" size={16} />
+              <span>Demo dáta</span>
+            </div>
+
+            <button
+              type="button"
+              className="top-user"
+              onClick={() => go('roadmap')}
+            >
+              <div className="avatar avatar-small">PH</div>
+
+              <div>
+                <strong>Pavol Horváth</strong>
+                <small>
+                  {role === 'admin'
+                    ? 'Administrátor'
+                    : role === 'manager'
+                      ? 'Manažér'
+                      : 'Čitateľ'}
+                </small>
+              </div>
+
+              <Icon name="chevron" size={16} />
+            </button>
+          </div>
+        </header>
+
+        <main className="content">
+          {view === 'dashboard' && (
+            <Dashboard state={state} go={go} />
+          )}
+
+          {view === 'people' && (
+            <People
+              employees={state.employees}
+              canEdit={canEdit}
+              onChange={(employees) =>
+                setState({
+                  ...state,
+                  employees,
+                })
+              }
+            />
+          )}
+
+          {view === 'raci' && (
+            <Raci
+              items={state.raci}
+              canEdit={canEdit}
+              onChange={(raci) =>
+                setState({
+                  ...state,
+                  raci,
+                })
+              }
+            />
+          )}
+
+          {view === 'services' && (
+            <Services
+              services={state.services}
+              canEdit={canEdit}
+              onChange={(services) =>
+                setState({
+                  ...state,
+                  services,
+                })
+              }
+            />
+          )}
+
+          {view === 'substitutions' && (
+            <Substitutions
+              items={state.substitutions}
+              canEdit={canEdit}
+              onChange={(substitutions) =>
+                setState({
+                  ...state,
+                  substitutions,
+                })
+              }
+            />
+          )}
+
+          {view === 'capacity' && (
+            <Capacity
+              rows={state.capacity}
+              canEdit={canEdit}
+              onChange={(capacity) =>
+                setState({
+                  ...state,
+                  capacity,
+                })
+              }
+            />
+          )}
+
+          {view === 'work' && (
+            <Work
+              projects={state.projects}
+              tasks={state.tasks}
+              employees={state.employees}
+              canEdit={canEdit}
+              onProjectsChange={(projects) =>
+                setState({
+                  ...state,
+                  projects,
+                })
+              }
+              onTasksChange={(tasks) =>
+                setState({
+                  ...state,
+                  tasks,
+                })
+              }
+            />
+          )}
+
+          {view === 'risks' && (
+            <Risks
+              risks={state.risks}
+              canEdit={canEdit}
+              onChange={(risks) =>
+                setState({
+                  ...state,
+                  risks,
+                })
+              }
+            />
+          )}
+
+          {view === 'decisions' && (
+            <Decisions
+              items={state.decisions}
+              canEdit={canEdit}
+              onChange={(decisions) =>
+                setState({
+                  ...state,
+                  decisions,
+                })
+              }
+            />
+          )}
+
+          {view === 'roadmap' && (
+            <Roadmap
+              state={state}
+              role={role}
+              onRoleChange={setRole}
+              onExport={() => exportState(state)}
+              onImport={handleImport}
+              onReset={handleReset}
+            />
+          )}
+        </main>
+      </div>
+    </div>
+  )
+}
