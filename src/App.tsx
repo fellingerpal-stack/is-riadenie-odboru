@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppRole, AppState, CloudSnapshot, SyncState } from './types'
 import { exportState, importState, loadRole, loadState, migrateState, resetState, saveRole, saveState } from './lib/storage'
 import { loadCurrentSnapshot, saveCurrentSnapshot } from './lib/cloud'
+import { loadWorkData, subscribeToWorkData, syncWorkProjects, syncWorkTasks, type WorkDatabaseState } from './lib/workCloud'
 import { useAuth } from './auth/AuthContext'
 import AuthScreen from './auth/AuthScreen'
 import CloudSetupScreen from './auth/CloudSetupScreen'
@@ -69,6 +70,10 @@ function roleLabel(role:AppRole){
   return 'Čitateľ'
 }
 
+function serializeSnapshotScope(state:AppState){
+  return JSON.stringify({...state,projects:[],tasks:[]})
+}
+
 function syncLabel(sync:SyncState){
   if(sync==='saving')return 'Ukladám do DB'
   if(sync==='loading')return 'Načítavam z DB'
@@ -88,9 +93,15 @@ export default function App(){
   const [sync,setSync]=useState<SyncState>(auth.configured?'loading':'local')
   const [syncError,setSyncError]=useState('')
   const [snapshot,setSnapshot]=useState<CloudSnapshot|null>(null)
+  const [workSync,setWorkSync]=useState<WorkDatabaseState>(auth.configured?'loading':'local')
+  const [workError,setWorkError]=useState('')
   const lastCloudPayload=useRef<string>('')
   const cloudInitialized=useRef(false)
   const cloudHasSnapshot=useRef(false)
+  const stateRef=useRef(state)
+  const workWriteQueue=useRef<Promise<void>>(Promise.resolve())
+  const workPendingWrites=useRef(0)
+  const workReloadTimer=useRef<number|undefined>(undefined)
 
   const role:AppRole=auth.configured?(auth.profile?.role??'viewer'):demoRole
   const canManage=role==='admin'||role==='manager'
@@ -99,7 +110,7 @@ export default function App(){
   const displayName=auth.configured?(auth.profile?.fullName||auth.user?.email||'Používateľ'):'Pavol Horváth'
   const resetMode=auth.recoveryMode||new URLSearchParams(location.search).get('reset')==='1'||location.hash.startsWith('#/reset-password')
 
-  useEffect(()=>{saveState(state)},[state])
+  useEffect(()=>{stateRef.current=state;saveState(state)},[state])
   useEffect(()=>{if(!auth.configured)saveRole(demoRole)},[demoRole,auth.configured])
   useEffect(()=>{
     const onHash=()=>{
@@ -127,7 +138,7 @@ export default function App(){
 
   useEffect(()=>{
     if(!auth.configured||!auth.profile||!cloudInitialized.current||sync==='loading'||sync==='saving'||sync==='error')return
-    const serialized=JSON.stringify(state)
+    const serialized=serializeSnapshotScope(state)
     if(serialized===lastCloudPayload.current)setSync(cloudHasSnapshot.current?'synced':'empty')
     else setSync('dirty')
   },[state,auth.configured,auth.profile,sync])
@@ -137,6 +148,18 @@ export default function App(){
     const timer=window.setTimeout(()=>void saveCloud(),1400)
     return()=>window.clearTimeout(timer)
   },[sync,state,auth.configured,auth.profile?.id,canResolve])
+
+  useEffect(()=>{
+    if(!auth.configured||!auth.profile?.organizationId)return
+    const unsubscribe=subscribeToWorkData(auth.profile.organizationId,()=>{
+      if(workReloadTimer.current)window.clearTimeout(workReloadTimer.current)
+      workReloadTimer.current=window.setTimeout(()=>void reloadWorkData(true),350)
+    })
+    return()=>{
+      if(workReloadTimer.current)window.clearTimeout(workReloadTimer.current)
+      unsubscribe()
+    }
+  },[auth.configured,auth.profile?.organizationId])
 
   const currentLabel=useMemo(()=>navGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Dashboard',[view])
   const visibleGroups=useMemo(()=>navGroups.map(group=>({...group,items:group.items.filter(item=>item.roles?.includes(role))})).filter(group=>group.items.length),[role])
@@ -150,23 +173,82 @@ export default function App(){
   function reset(){if(confirm('Obnoviť pôvodné vzorové dáta? Všetky lokálne zmeny sa vymažú.'))setState(resetState())}
   async function importFile(file:File){setState(await importState(file))}
 
+  async function reloadWorkData(silent=false){
+    if(!auth.configured){setWorkSync('local');return}
+    setWorkSync('loading');setWorkError('')
+    try{
+      const work=await loadWorkData()
+      setState(current=>({...current,projects:work.projects,tasks:work.tasks}))
+      setWorkSync('synced')
+    }catch(e){
+      const message=e instanceof Error?e.message:'Projekty a úlohy sa nepodarilo načítať.'
+      setWorkSync('error');setWorkError(message)
+      if(!silent)alert(message)
+    }
+  }
+
+  function enqueueWorkWrite(operation:()=>Promise<void>){
+    if(!auth.configured)return
+    workPendingWrites.current+=1
+    setWorkSync('saving');setWorkError('')
+    const run=workWriteQueue.current.then(operation)
+    workWriteQueue.current=run.catch(()=>undefined)
+    void run.then(()=>{
+      workPendingWrites.current-=1
+      if(workPendingWrites.current===0)setWorkSync('synced')
+    }).catch(e=>{
+      workPendingWrites.current-=1
+      setWorkSync('error')
+      setWorkError(e instanceof Error?e.message:'Zápis Projektov a úloh zlyhal.')
+    })
+  }
+
+  function commitProjects(projects:AppState['projects']){
+    const previous=stateRef.current.projects
+    const nextState={...stateRef.current,projects}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setWorkSync('local');return}
+    enqueueWorkWrite(()=>syncWorkProjects(previous,projects))
+  }
+
+  function commitTasks(tasks:AppState['tasks']){
+    const previous=stateRef.current.tasks
+    const nextState={...stateRef.current,tasks}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setWorkSync('local');return}
+    enqueueWorkWrite(()=>syncWorkTasks(previous,tasks))
+  }
+
   async function loadCloud(silent=false){
     if(!auth.configured)return
-    setSync('loading');setSyncError('')
+    setSync('loading');setSyncError('');setWorkSync('loading');setWorkError('')
     try{
       const loaded=await loadCurrentSnapshot()
       setSnapshot(loaded)
+      let nextState=loaded?migrateState(loaded.payload):stateRef.current
+
       if(loaded){
-        const migrated=migrateState(loaded.payload)
-        setState(migrated)
-        lastCloudPayload.current=JSON.stringify(loaded.payload)
+        lastCloudPayload.current=serializeSnapshotScope(nextState)
         cloudHasSnapshot.current=true
-        setSync(JSON.stringify(loaded.payload)===JSON.stringify(migrated)?'synced':'dirty')
       }else{
-        lastCloudPayload.current=JSON.stringify(state)
+        lastCloudPayload.current=serializeSnapshotScope(nextState)
         cloudHasSnapshot.current=false
-        setSync('empty')
       }
+
+      try{
+        const work=await loadWorkData()
+        nextState={...nextState,projects:work.projects,tasks:work.tasks}
+        setWorkSync('synced')
+      }catch(workFailure){
+        setWorkSync('error')
+        setWorkError(workFailure instanceof Error?workFailure.message:'Projekty a úlohy sa nepodarilo načítať.')
+      }
+
+      stateRef.current=nextState
+      setState(nextState)
+      setSync(loaded?'synced':'empty')
     }catch(e){
       setSync('error');setSyncError(e instanceof Error?e.message:'Dáta sa nepodarilo načítať.')
       if(!silent)alert('Načítanie z databázy zlyhalo.')
@@ -177,9 +259,10 @@ export default function App(){
     if(!canResolve||!auth.configured)return
     setSync('saving');setSyncError('')
     try{
-      const saved=await saveCurrentSnapshot(state)
+      const payload=stateRef.current
+      const saved=await saveCurrentSnapshot(payload)
       setSnapshot(saved)
-      lastCloudPayload.current=JSON.stringify(state)
+      lastCloudPayload.current=serializeSnapshotScope(payload)
       cloudHasSnapshot.current=true
       setSync('synced')
     }catch(e){
@@ -209,19 +292,19 @@ export default function App(){
       <main className="content">
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span>{syncError}</span></div>}
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
-        {view==='people'&&<People employees={state.employees} canEdit={canManage} onChange={employees=>setState({...state,employees})}/>} 
-        {view==='raci'&&<Raci items={state.raci} canEdit={canManage} onChange={raci=>setState({...state,raci})}/>} 
-        {view==='services'&&<Services services={state.services} canEdit={canManage} onChange={services=>setState({...state,services})}/>} 
-        {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManage} onChange={substitutions=>setState({...state,substitutions})}/>} 
-        {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManage} onChange={capacity=>setState({...state,capacity})}/>} 
-        {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolve} onProjectsChange={projects=>setState({...state,projects})} onTasksChange={tasks=>setState({...state,tasks})}/>} 
-        {view==='helpdesk'&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} canEdit={canSubmit} currentUser={displayName} onTicketsChange={tickets=>setState({...state,tickets})} onTasksChange={tasks=>setState({...state,tasks})} onSupportQueuesChange={supportQueues=>setState({...state,supportQueues})} onSlaPoliciesChange={slaPolicies=>setState({...state,slaPolicies})}/>} 
-        {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onChangesChange={changes=>setState({...state,changes})} onTasksChange={tasks=>setState({...state,tasks})}/>} 
-        {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onProblemsChange={problems=>setState({...state,problems})} onTasksChange={tasks=>setState({...state,tasks})}/>} 
-        {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmit} currentUser={displayName} onAccessRequestsChange={accessRequests=>setState({...state,accessRequests})} onAccessCatalogChange={accessCatalog=>setState({...state,accessCatalog})} onRecertificationCampaignsChange={recertificationCampaigns=>setState({...state,recertificationCampaigns})} onTasksChange={tasks=>setState({...state,tasks})}/>} 
-        {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} canEdit={canResolve} onItemsChange={cmdbItems=>setState({...state,cmdbItems})} onRelationshipsChange={cmdbRelationships=>setState({...state,cmdbRelationships})}/>} 
-        {view==='risks'&&<Risks risks={state.risks} canEdit={canManage} onChange={risks=>setState({...state,risks})}/>} 
-        {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManage} onChange={decisions=>setState({...state,decisions})}/>} 
+        {view==='people'&&<People employees={state.employees} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
+        {view==='raci'&&<Raci items={state.raci} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
+        {view==='services'&&<Services services={state.services} canEdit={canManage} onChange={services=>setState(current=>({...current,services}))}/>} 
+        {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManage} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
+        {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManage} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
+        {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolve} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
+        {view==='helpdesk'&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} canEdit={canSubmit} currentUser={displayName} onTicketsChange={tickets=>setState(current=>({...current,tickets}))} onTasksChange={commitTasks} onSupportQueuesChange={supportQueues=>setState(current=>({...current,supportQueues}))} onSlaPoliciesChange={slaPolicies=>setState(current=>({...current,slaPolicies}))}/>} 
+        {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
+        {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
+        {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmit} currentUser={displayName} onAccessRequestsChange={accessRequests=>setState(current=>({...current,accessRequests}))} onAccessCatalogChange={accessCatalog=>setState(current=>({...current,accessCatalog}))} onRecertificationCampaignsChange={recertificationCampaigns=>setState(current=>({...current,recertificationCampaigns}))} onTasksChange={commitTasks}/>} 
+        {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} canEdit={canResolve} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
+        {view==='risks'&&<Risks risks={state.risks} canEdit={canManage} onChange={risks=>setState(current=>({...current,risks}))}/>} 
+        {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManage} onChange={decisions=>setState(current=>({...current,decisions}))}/>} 
         {view==='users'&&role==='admin'&&<Users currentUserId={auth.profile?.id??'local-admin'} currentUserName={displayName} configured={auth.configured}/>} 
         {view==='roadmap'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
       </main>
