@@ -536,7 +536,9 @@ export interface UserProfile {
   role: AppRole
   isActive: boolean
   lastLoginAt: string
+  acceptedAt: string
   invitedAt: string
+  inviteExpiresAt: string
   createdAt: string
   updatedAt: string
 }
