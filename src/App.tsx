@@ -3,6 +3,7 @@ import type { AppRole, AppState, CloudSnapshot, SyncState } from './types'
 import { exportState, importState, loadRole, loadState, migrateState, resetState, saveRole, saveState } from './lib/storage'
 import { loadCurrentSnapshot, saveCurrentSnapshot } from './lib/cloud'
 import { loadWorkData, subscribeToWorkData, syncWorkProjects, syncWorkTasks, type WorkDatabaseState } from './lib/workCloud'
+import { loadHelpdeskData, subscribeToHelpdeskData, syncServiceQueues, syncServiceSlaPolicies, syncServiceTickets, type HelpdeskDatabaseState } from './lib/helpdeskCloud'
 import { useAuth } from './auth/AuthContext'
 import AuthScreen from './auth/AuthScreen'
 import CloudSetupScreen from './auth/CloudSetupScreen'
@@ -71,7 +72,7 @@ function roleLabel(role:AppRole){
 }
 
 function serializeSnapshotScope(state:AppState){
-  return JSON.stringify({...state,projects:[],tasks:[]})
+  return JSON.stringify({...state,projects:[],tasks:[],tickets:[],supportQueues:[],slaPolicies:[]})
 }
 
 function syncLabel(sync:SyncState){
@@ -95,6 +96,8 @@ export default function App(){
   const [snapshot,setSnapshot]=useState<CloudSnapshot|null>(null)
   const [workSync,setWorkSync]=useState<WorkDatabaseState>(auth.configured?'loading':'local')
   const [workError,setWorkError]=useState('')
+  const [helpdeskSync,setHelpdeskSync]=useState<HelpdeskDatabaseState>(auth.configured?'loading':'local')
+  const [helpdeskError,setHelpdeskError]=useState('')
   const lastCloudPayload=useRef<string>('')
   const cloudInitialized=useRef(false)
   const cloudHasSnapshot=useRef(false)
@@ -102,6 +105,9 @@ export default function App(){
   const workWriteQueue=useRef<Promise<void>>(Promise.resolve())
   const workPendingWrites=useRef(0)
   const workReloadTimer=useRef<number|undefined>(undefined)
+  const helpdeskWriteQueue=useRef<Promise<void>>(Promise.resolve())
+  const helpdeskPendingWrites=useRef(0)
+  const helpdeskReloadTimer=useRef<number|undefined>(undefined)
 
   const role:AppRole=auth.configured?(auth.profile?.role??'viewer'):demoRole
   const canManage=role==='admin'||role==='manager'
@@ -157,6 +163,18 @@ export default function App(){
     })
     return()=>{
       if(workReloadTimer.current)window.clearTimeout(workReloadTimer.current)
+      unsubscribe()
+    }
+  },[auth.configured,auth.profile?.organizationId])
+
+  useEffect(()=>{
+    if(!auth.configured||!auth.profile?.organizationId)return
+    const unsubscribe=subscribeToHelpdeskData(auth.profile.organizationId,()=>{
+      if(helpdeskReloadTimer.current)window.clearTimeout(helpdeskReloadTimer.current)
+      helpdeskReloadTimer.current=window.setTimeout(()=>void reloadHelpdeskData(true),350)
+    })
+    return()=>{
+      if(helpdeskReloadTimer.current)window.clearTimeout(helpdeskReloadTimer.current)
       unsubscribe()
     }
   },[auth.configured,auth.profile?.organizationId])
@@ -221,9 +239,67 @@ export default function App(){
     enqueueWorkWrite(()=>syncWorkTasks(previous,tasks))
   }
 
+
+  async function reloadHelpdeskData(silent=false){
+    if(!auth.configured){setHelpdeskSync('local');return}
+    setHelpdeskSync('loading');setHelpdeskError('')
+    try{
+      const helpdesk=await loadHelpdeskData()
+      setState(current=>({...current,...helpdesk}))
+      setHelpdeskSync('synced')
+    }catch(e){
+      const message=e instanceof Error?e.message:'Helpdesk sa nepodarilo načítať.'
+      setHelpdeskSync('error');setHelpdeskError(message)
+      if(!silent)alert(message)
+    }
+  }
+
+  function enqueueHelpdeskWrite(operation:()=>Promise<void>){
+    if(!auth.configured)return
+    helpdeskPendingWrites.current+=1
+    setHelpdeskSync('saving');setHelpdeskError('')
+    const run=helpdeskWriteQueue.current.then(operation)
+    helpdeskWriteQueue.current=run.catch(()=>undefined)
+    void run.then(()=>{
+      helpdeskPendingWrites.current-=1
+      if(helpdeskPendingWrites.current===0)setHelpdeskSync('synced')
+    }).catch(e=>{
+      helpdeskPendingWrites.current-=1
+      setHelpdeskSync('error')
+      setHelpdeskError(e instanceof Error?e.message:'Zápis Helpdesku zlyhal.')
+    })
+  }
+
+  function commitTickets(tickets:AppState['tickets']){
+    const previous=stateRef.current.tickets
+    const nextState={...stateRef.current,tickets}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setHelpdeskSync('local');return}
+    enqueueHelpdeskWrite(()=>syncServiceTickets(previous,tickets))
+  }
+
+  function commitSupportQueues(supportQueues:AppState['supportQueues']){
+    const previous=stateRef.current.supportQueues
+    const nextState={...stateRef.current,supportQueues}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setHelpdeskSync('local');return}
+    enqueueHelpdeskWrite(()=>syncServiceQueues(previous,supportQueues))
+  }
+
+  function commitSlaPolicies(slaPolicies:AppState['slaPolicies']){
+    const previous=stateRef.current.slaPolicies
+    const nextState={...stateRef.current,slaPolicies}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setHelpdeskSync('local');return}
+    enqueueHelpdeskWrite(()=>syncServiceSlaPolicies(previous,slaPolicies))
+  }
+
   async function loadCloud(silent=false){
     if(!auth.configured)return
-    setSync('loading');setSyncError('');setWorkSync('loading');setWorkError('')
+    setSync('loading');setSyncError('');setWorkSync('loading');setWorkError('');setHelpdeskSync('loading');setHelpdeskError('')
     try{
       const loaded=await loadCurrentSnapshot()
       setSnapshot(loaded)
@@ -244,6 +320,15 @@ export default function App(){
       }catch(workFailure){
         setWorkSync('error')
         setWorkError(workFailure instanceof Error?workFailure.message:'Projekty a úlohy sa nepodarilo načítať.')
+      }
+
+      try{
+        const helpdesk=await loadHelpdeskData()
+        nextState={...nextState,...helpdesk}
+        setHelpdeskSync('synced')
+      }catch(helpdeskFailure){
+        setHelpdeskSync('error')
+        setHelpdeskError(helpdeskFailure instanceof Error?helpdeskFailure.message:'Helpdesk sa nepodarilo načítať.')
       }
 
       stateRef.current=nextState
@@ -298,7 +383,7 @@ export default function App(){
         {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManage} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
         {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManage} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
         {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolve} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
-        {view==='helpdesk'&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} canEdit={canSubmit} currentUser={displayName} onTicketsChange={tickets=>setState(current=>({...current,tickets}))} onTasksChange={commitTasks} onSupportQueuesChange={supportQueues=>setState(current=>({...current,supportQueues}))} onSlaPoliciesChange={slaPolicies=>setState(current=>({...current,slaPolicies}))}/>} 
+        {view==='helpdesk'&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} canEdit={canSubmit} canConfigure={canResolve} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies}/>} 
         {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
         {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
         {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmit} currentUser={displayName} onAccessRequestsChange={accessRequests=>setState(current=>({...current,accessRequests}))} onAccessCatalogChange={accessCatalog=>setState(current=>({...current,accessCatalog}))} onRecertificationCampaignsChange={recertificationCampaigns=>setState(current=>({...current,recertificationCampaigns}))} onTasksChange={commitTasks}/>} 
@@ -311,4 +396,3 @@ export default function App(){
     </div>
   </div>
 }
- 
