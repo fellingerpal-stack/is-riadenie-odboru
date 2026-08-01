@@ -194,7 +194,10 @@ export async function syncWorkTasks(previous: Task[], next: Task[]): Promise<voi
 export function subscribeToWorkData(organizationId: string, onChange: () => void): () => void {
   if (!supabase || !organizationId) return () => undefined
 
-  const channel = supabase
+  // Keep a non-null client reference for the cleanup callback. TypeScript does
+  // not preserve module-level null narrowing inside a function returned later.
+  const client = supabase
+  const channel = client
     .channel(`work-data-${organizationId}`)
     .on(
       'postgres_changes',
@@ -209,6 +212,6 @@ export function subscribeToWorkData(organizationId: string, onChange: () => void
     .subscribe()
 
   return () => {
-    void supabase.removeChannel(channel)
+    void client.removeChannel(channel)
   }
 }
