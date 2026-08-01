@@ -48,7 +48,9 @@ function normalizeProfile(row: Record<string, unknown>): UserProfile {
     role: row.role === 'admin' || row.role === 'manager' || row.role === 'resolver' || row.role === 'employee' ? row.role : 'viewer',
     isActive: Boolean(row.is_active),
     lastLoginAt: String(row.last_login_at ?? ''),
+    acceptedAt: String(row.accepted_at ?? ''),
     invitedAt: String(row.invited_at ?? ''),
+    inviteExpiresAt: String(row.invite_expires_at ?? ''),
     createdAt: String(row.created_at ?? ''),
     updatedAt: String(row.updated_at ?? ''),
   }
@@ -56,12 +58,21 @@ function normalizeProfile(row: Record<string, unknown>): UserProfile {
 
 export async function listProfiles(): Promise<UserProfile[]> {
   if (!supabase) return []
-  const { data, error } = await supabase
+  const detailed = await supabase
+    .from('profiles')
+    .select('id, organization_id, full_name, email, department, job_title, phone, role, is_active, last_login_at, accepted_at, invited_at, invite_expires_at, created_at, updated_at')
+    .order('full_name')
+
+  if (!detailed.error) {
+    return (detailed.data ?? []).map((row) => normalizeProfile(row as Record<string, unknown>))
+  }
+
+  const legacy = await supabase
     .from('profiles')
     .select('id, organization_id, full_name, email, department, job_title, phone, role, is_active, last_login_at, invited_at, created_at, updated_at')
     .order('full_name')
-  if (error) throw error
-  return (data ?? []).map((row) => normalizeProfile(row as Record<string, unknown>))
+  if (legacy.error) throw legacy.error
+  return (legacy.data ?? []).map((row) => normalizeProfile(row as Record<string, unknown>))
 }
 
 export async function updateProfile(profile: UserProfile): Promise<void> {
@@ -82,6 +93,50 @@ export async function updateProfile(profile: UserProfile): Promise<void> {
   await writeUserAudit('Profil upravený', profile.id, profile.fullName || profile.email, `Rola: ${profile.role}; stav: ${profile.isActive ? 'aktívny' : 'deaktivovaný'}`)
 }
 
+export function friendlyUserOperationError(error: unknown, fallback = 'Operáciu sa nepodarilo dokončiť.'): string {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  const lower = message.toLowerCase()
+
+  if (lower.includes('email rate limit exceeded') || lower.includes('rate limit')) {
+    return 'Bol prekročený limit odosielania e-mailov. Počkajte približne hodinu alebo nastavte vlastné SMTP v Supabase.'
+  }
+  if (lower.includes('failed to send a request to the edge function') || lower.includes('failed to fetch')) {
+    return 'Supabase Edge Function momentálne neodpovedá. Skontrolujte funkciu invite-user, jej CORS nastavenie a prihlásenie.'
+  }
+  if (lower.includes('already been registered') || lower.includes('already registered') || lower.includes('already exists')) {
+    return 'Používateľ s týmto e-mailom už existuje.'
+  }
+  if (lower.includes('invalid login credentials')) return 'Nesprávny e-mail alebo heslo.'
+  if (lower.includes('email not confirmed')) return 'E-mail používateľa ešte nebol potvrdený.'
+  if (lower.includes('jwt') || lower.includes('session') || lower.includes('prihlásenie vypršalo')) {
+    return 'Prihlásenie vypršalo. Odhláste sa a prihláste znova.'
+  }
+  if (lower.includes('smtp')) return 'E-mail sa nepodarilo odoslať. Skontrolujte SMTP nastavenie v Supabase.'
+  return message || fallback
+}
+
+async function readFunctionError(error: unknown): Promise<string> {
+  const candidate = error as { message?: string; context?: Response }
+  const context = candidate?.context
+
+  if (context instanceof Response) {
+    try {
+      const body = await context.clone().json() as { error?: string; message?: string }
+      const message = String(body?.error ?? body?.message ?? '').trim()
+      if (message) return message
+    } catch {
+      try {
+        const text = (await context.clone().text()).trim()
+        if (text) return text
+      } catch {
+        // Pouzijeme povodnu spravu chyby nizsie.
+      }
+    }
+  }
+
+  return String(candidate?.message ?? 'Pozvanie sa nepodarilo odoslať.')
+}
+
 export async function inviteUser(input: {
   email: string
   fullName: string
@@ -91,8 +146,20 @@ export async function inviteUser(input: {
   role: UserProfile['role']
 }): Promise<string> {
   if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
-  const { data, error } = await supabase.functions.invoke('invite-user', { body: input })
-  if (error) throw error
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) throw sessionError
+  const accessToken = sessionData.session?.access_token
+  if (!accessToken) throw new Error('Prihlásenie vypršalo. Odhláste sa a prihláste znova.')
+
+  const { data, error } = await supabase.functions.invoke('invite-user', {
+    body: { ...input, appUrl: getAppUrl() },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+
+  if (error) throw new Error(await readFunctionError(error))
   if (!data?.ok) throw new Error(data?.error ?? 'Pozvanie sa nepodarilo odoslať.')
   return String(data.message ?? 'Pozvanie bolo odoslané.')
 }
@@ -102,8 +169,49 @@ export async function sendUserPasswordReset(email: string): Promise<void> {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${getAppUrl()}/?reset=1`,
   })
-  if (error) throw error
+  if (error) throw new Error(friendlyUserOperationError(error, 'Obnovu hesla sa nepodarilo odoslať.'))
   await writeUserAudit('Odoslaná obnova hesla', '', email, `Odkaz na obnovu hesla bol odoslaný na ${email}.`)
+}
+
+export async function resendUserAccess(profile: UserProfile): Promise<void> {
+  if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+
+  const { error: resetError } = await supabase.auth.resetPasswordForEmail(profile.email, {
+    redirectTo: `${getAppUrl()}/?reset=1`,
+  })
+  if (resetError) throw new Error(friendlyUserOperationError(resetError, 'Nový prístupový odkaz sa nepodarilo odoslať.'))
+
+  const detailed = await supabase
+    .from('profiles')
+    .update({
+      is_active: true,
+      invited_at: now.toISOString(),
+      invite_expires_at: expiresAt,
+      updated_at: now.toISOString(),
+    })
+    .eq('id', profile.id)
+
+  if (detailed.error) {
+    const legacy = await supabase
+      .from('profiles')
+      .update({ is_active: true, invited_at: now.toISOString(), updated_at: now.toISOString() })
+      .eq('id', profile.id)
+    if (legacy.error) throw legacy.error
+  }
+
+  await writeUserAudit('Znovu odoslaný prístupový odkaz', profile.id, profile.fullName || profile.email, `Nový odkaz bol odoslaný na ${profile.email}.`)
+}
+
+export async function cancelUserInvitation(profile: UserProfile): Promise<void> {
+  if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
+  const { error } = await supabase
+    .from('profiles')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('id', profile.id)
+  if (error) throw error
+  await writeUserAudit('Pozvánka zrušená', profile.id, profile.fullName || profile.email, `Prístup používateľa ${profile.email} bol zablokovaný pred prvým prihlásením.`)
 }
 
 export async function touchLastLogin(): Promise<void> {

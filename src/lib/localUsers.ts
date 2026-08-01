@@ -4,32 +4,33 @@ const USERS_KEY = 'cvti-is-riadenie-local-users-v010'
 const AUDIT_KEY = 'cvti-is-riadenie-local-user-audit-v010'
 
 const now = () => new Date().toISOString()
+const inHours = (hours: number) => new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
 
 const seedUsers: UserProfile[] = [
   {
     id: 'local-admin', organizationId: 'local-cvti', fullName: 'Pavol Horváth',
     email: 'pavol.horvath@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Riaditeľ odboru',
-    phone: '', role: 'admin', isActive: true, lastLoginAt: now(), invitedAt: '', createdAt: now(), updatedAt: now(),
+    phone: '', role: 'admin', isActive: true, lastLoginAt: now(), acceptedAt: now(), invitedAt: '', inviteExpiresAt: '', createdAt: now(), updatedAt: now(),
   },
   {
     id: 'local-manager', organizationId: 'local-cvti', fullName: 'Peter Modrák',
     email: 'peter.modrak@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Vedúci oddelenia',
-    phone: '', role: 'manager', isActive: true, lastLoginAt: '', invitedAt: now(), createdAt: now(), updatedAt: now(),
+    phone: '', role: 'manager', isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
   },
   {
     id: 'local-resolver', organizationId: 'local-cvti', fullName: 'Ladislav Turányi',
     email: 'ladislav.turanyi@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Riešiteľ / projektová rola',
-    phone: '', role: 'resolver', isActive: true, lastLoginAt: '', invitedAt: now(), createdAt: now(), updatedAt: now(),
+    phone: '', role: 'resolver', isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
   },
   {
     id: 'local-employee', organizationId: 'local-cvti', fullName: 'Michelle Kožuchová Bajema',
     email: 'michelle.bajema@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Zamestnanec',
-    phone: '', role: 'employee', isActive: true, lastLoginAt: '', invitedAt: now(), createdAt: now(), updatedAt: now(),
+    phone: '', role: 'employee', isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
   },
   {
     id: 'local-viewer', organizationId: 'local-cvti', fullName: 'Audítor – čítanie',
     email: 'auditor@cvtisr.sk', department: 'Kontrola', jobTitle: 'Čitateľ',
-    phone: '', role: 'viewer', isActive: false, lastLoginAt: '', invitedAt: now(), createdAt: now(), updatedAt: now(),
+    phone: '', role: 'viewer', isActive: false, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
   },
 ]
 
@@ -46,7 +47,9 @@ function safeUsers(value: unknown): UserProfile[] {
     role: normalizeRole(row?.role),
     isActive: row?.isActive !== false,
     lastLoginAt: String(row?.lastLoginAt ?? ''),
+    acceptedAt: String(row?.acceptedAt ?? row?.lastLoginAt ?? ''),
     invitedAt: String(row?.invitedAt ?? ''),
+    inviteExpiresAt: String(row?.inviteExpiresAt ?? ''),
     createdAt: String(row?.createdAt ?? now()),
     updatedAt: String(row?.updatedAt ?? now()),
   }))
@@ -95,13 +98,41 @@ export function inviteLocalUser(input: { email: string; fullName: string; depart
     role: input.role,
     isActive: true,
     lastLoginAt: '',
+    acceptedAt: '',
     invitedAt: createdAt,
+    inviteExpiresAt: new Date(new Date(createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString(),
     createdAt,
     updatedAt: createdAt,
   }
   const next = [...users, profile]
   localStorage.setItem(USERS_KEY, JSON.stringify(next))
   appendLocalAudit({ actorName, targetUserId: profile.id, targetUserName: profile.fullName, action: 'Používateľ pozvaný', detail: `${profile.email}; rola: ${profile.role}` })
+  return next
+}
+
+
+export function resendLocalInvitation(profile: UserProfile, actorName = 'Pavol Horváth'): UserProfile[] {
+  const users = loadLocalUsers()
+  const invitedAt = now()
+  const updated: UserProfile = {
+    ...profile,
+    isActive: true,
+    invitedAt,
+    inviteExpiresAt: new Date(new Date(invitedAt).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: invitedAt,
+  }
+  const next = users.map((item) => item.id === profile.id ? updated : item)
+  localStorage.setItem(USERS_KEY, JSON.stringify(next))
+  appendLocalAudit({ actorName, targetUserId: profile.id, targetUserName: profile.fullName || profile.email, action: 'Znovu odoslaný prístupový odkaz', detail: `Lokálny demo režim – pozvánka ${profile.email} bola obnovená.` })
+  return next
+}
+
+export function cancelLocalInvitation(profile: UserProfile, actorName = 'Pavol Horváth'): UserProfile[] {
+  const users = loadLocalUsers()
+  const updated: UserProfile = { ...profile, isActive: false, updatedAt: now() }
+  const next = users.map((item) => item.id === profile.id ? updated : item)
+  localStorage.setItem(USERS_KEY, JSON.stringify(next))
+  appendLocalAudit({ actorName, targetUserId: profile.id, targetUserName: profile.fullName || profile.email, action: 'Pozvánka zrušená', detail: `Lokálny demo režim – prístup ${profile.email} bol zablokovaný.` })
   return next
 }
 
