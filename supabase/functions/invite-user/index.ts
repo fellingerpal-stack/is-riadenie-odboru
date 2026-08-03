@@ -172,7 +172,7 @@ Deno.serve(async (request) => {
     return json({ ok: true, message: `Pozvanie bolo odoslané na ${email}.`, userId: invited.user.id })
   } catch (error) {
     const detail = errorDetails(error)
-    console.error('invite-user failed', { message: detail.message, code: detail.code, status: detail.status })
+    console.error('invite-user fix.2 failed', { message: detail.message, code: detail.code, status: detail.status })
     return json({ ok: false, error: detail.message, code: detail.code }, detail.status)
   }
 })
