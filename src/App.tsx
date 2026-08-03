@@ -60,7 +60,7 @@ const navGroups:{label:string;items:NavItem[]}[]=[
   ]},
   {label:'Systém',items:[
     {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
-    {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:allRoles},
+    {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:['admin']},
   ]},
 ]
 
