@@ -151,6 +151,17 @@ export function saveLocalWebsites(items: WebsiteRecord[]) { localStorage.setItem
 export function loadLocalInformationSystems() { return parseLocal<InformationSystemRecord>(SYSTEM_LOCAL_KEY, (informationSystemSeed as InformationSystemRecord[]).map(normalizeInformationSystem)).map(normalizeInformationSystem) }
 export function saveLocalInformationSystems(items: InformationSystemRecord[]) { localStorage.setItem(SYSTEM_LOCAL_KEY, JSON.stringify(items)) }
 
+
+export function isDigitalPortfolioSchemaMissing(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  const normalized = message.toLowerCase()
+  return normalized.includes('42p01')
+    || normalized.includes('website_registry') && normalized.includes('does not exist')
+    || normalized.includes('information_system_registry') && normalized.includes('does not exist')
+    || normalized.includes('relation public.website_registry')
+    || normalized.includes('relation public.information_system_registry')
+}
+
 function cloudError(prefix: string, error: { message?: string; details?: string; hint?: string; code?: string } | null) {
   const detail = [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(' · ')
   return new Error(detail ? `${prefix}: ${detail}` : prefix)
