@@ -260,6 +260,26 @@ export async function inviteUser(input: {
   return String(data.message ?? 'Pozvanie bolo odoslané.')
 }
 
+export async function setUserPassword(userId: string, password: string): Promise<string> {
+  if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
+  if (!userId) throw new Error('Používateľský účet nemá identifikátor.')
+  if (password.length < 10) throw new Error('Nové heslo musí mať aspoň 10 znakov.')
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) throw sessionError
+  const accessToken = sessionData.session?.access_token
+  if (!accessToken) throw new Error('Prihlásenie vypršalo. Odhláste sa a prihláste znova.')
+
+  const { data, error } = await supabase.functions.invoke('invite-user', {
+    body: { action: 'set-password', userId, password },
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (error) throw new Error(await readFunctionError(error))
+  if (!data?.ok) throw new Error(data?.error ?? 'Heslo sa nepodarilo nastaviť.')
+  return String(data.message ?? 'Heslo bolo nastavené.')
+}
+
 export async function sendUserPasswordReset(email: string): Promise<void> {
   if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
