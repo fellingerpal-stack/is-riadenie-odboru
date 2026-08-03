@@ -4,10 +4,11 @@ import { exportState, importState, loadRole, loadState, migrateState, resetState
 import { loadCurrentSnapshot, saveCurrentSnapshot } from './lib/cloud'
 import { loadWorkData, subscribeToWorkData, syncWorkProjects, syncWorkTasks, type WorkDatabaseState } from './lib/workCloud'
 import { loadHelpdeskData, subscribeToHelpdeskData, syncServiceQueues, syncServiceSlaPolicies, syncServiceTickets, type HelpdeskDatabaseState } from './lib/helpdeskCloud'
+import { loadIamData, subscribeToIamData, syncIamCampaigns, syncIamCatalog, syncIamRequests, type IamDatabaseState } from './lib/iamCloud'
 import { useAuth } from './auth/AuthContext'
 import AuthScreen from './auth/AuthScreen'
 import CloudSetupScreen from './auth/CloudSetupScreen'
-import { Icon, type IconName } from './components/UI'
+import { Badge, Field, Icon, Modal, type IconName } from './components/UI'
 import Dashboard from './views/Dashboard'
 import People from './views/People'
 import Raci from './views/Raci'
@@ -71,8 +72,49 @@ function roleLabel(role:AppRole){
   return 'Čitateľ'
 }
 
+
+function AccountProfileModal({onClose}:{onClose:()=>void}){
+  const auth=useAuth()
+  const profile=auth.profile
+  const [changePassword,setChangePassword]=useState(false)
+  const [password,setPassword]=useState('')
+  const [confirmPassword,setConfirmPassword]=useState('')
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  const [error,setError]=useState('')
+
+  async function savePassword(){
+    setMessage('');setError('')
+    if(password.length<10){setError('Nové heslo musí mať aspoň 10 znakov.');return}
+    if(password!==confirmPassword){setError('Zadané heslá sa nezhodujú.');return}
+    setBusy(true)
+    try{
+      await auth.updatePassword(password)
+      setPassword('');setConfirmPassword('');setChangePassword(false)
+      setMessage('Heslo bolo úspešne zmenené. Pri ďalšom prihlásení použite nové heslo.')
+    }catch(caught){
+      setError(caught instanceof Error?caught.message:'Heslo sa nepodarilo zmeniť.')
+    }finally{setBusy(false)}
+  }
+
+  const name=profile?.fullName||auth.user?.email||'Používateľ'
+  return <Modal title="Môj profil" onClose={onClose}>
+    <div className="user-edit-header"><div className="avatar avatar-large">{initials(name)}</div><div><strong>{name}</strong><span>{profile?.email||auth.user?.email||''}</span><Badge tone="info">{roleLabel(profile?.role??'viewer')}</Badge></div></div>
+    <div className="user-detail-grid">
+      <article><span>Útvar</span><strong>{profile?.department||'Neurčený'}</strong><small>{profile?.jobTitle||'Pozícia neurčená'}</small></article>
+      <article><span>Telefón</span><strong>{profile?.phone||'Nedoplnený'}</strong><small>Kontaktný údaj</small></article>
+      <article><span>Prístup</span><strong>{profile?.isActive?'Povolený':'Zablokovaný'}</strong><small>Stav používateľského účtu</small></article>
+      <article><span>Posledné prihlásenie</span><strong>{profile?.lastLoginAt?new Date(profile.lastLoginAt).toLocaleString('sk-SK'):'—'}</strong><small>Aktivita účtu</small></article>
+    </div>
+    {!changePassword&&<div className="password-guidance"><Icon name="lock" size={20}/><div><strong>Zmena vlastného hesla</strong><span>Heslo si môže každý prihlásený používateľ zmeniť bez e-mailu a bez SMTP.</span><button className="button button-primary button-small" onClick={()=>{setChangePassword(true);setMessage('');setError('')}}><Icon name="lock" size={16}/> Zmeniť moje heslo</button></div></div>}
+    {changePassword&&<><div className="password-guidance"><Icon name="shield" size={20}/><div><strong>Nové bezpečné heslo</strong><span>Použite aspoň 10 znakov. Zmena sa zapíše priamo do Supabase Auth.</span></div></div><div className="form-grid form-grid-single"><Field label="Nové heslo"><input type="password" autoComplete="new-password" value={password} onChange={event=>setPassword(event.target.value)} placeholder="Minimálne 10 znakov"/></Field><Field label="Zopakujte nové heslo"><input type="password" autoComplete="new-password" value={confirmPassword} onChange={event=>setConfirmPassword(event.target.value)} placeholder="Zadajte heslo znova"/></Field></div></>}
+    {(message||error)&&<div className={error?'inline-alert inline-alert-error compact-alert':'inline-alert inline-alert-success compact-alert'}><Icon name={error?'warning':'check'} size={17}/><span>{error||message}</span></div>}
+    <div className="modal-actions"><button className="button button-secondary" onClick={changePassword?()=>{setChangePassword(false);setPassword('');setConfirmPassword('');setError('')}:onClose}>{changePassword?'Späť':'Zavrieť'}</button>{changePassword&&<button className="button button-primary" disabled={busy||!password||!confirmPassword} onClick={()=>void savePassword()}>{busy?'Ukladám…':'Uložiť nové heslo'}</button>}</div>
+  </Modal>
+}
+
 function serializeSnapshotScope(state:AppState){
-  return JSON.stringify({...state,projects:[],tasks:[],tickets:[],supportQueues:[],slaPolicies:[]})
+  return JSON.stringify({...state,projects:[],tasks:[],tickets:[],supportQueues:[],slaPolicies:[],accessRequests:[],accessCatalog:[],recertificationCampaigns:[]})
 }
 
 function syncLabel(sync:SyncState){
@@ -91,6 +133,7 @@ export default function App(){
   const [demoRole,setDemoRole]=useState<AppRole>(()=>loadRole())
   const [view,setView]=useState<ViewKey>(()=>initialView())
   const [sidebarOpen,setSidebarOpen]=useState(false)
+  const [profileOpen,setProfileOpen]=useState(false)
   const [sync,setSync]=useState<SyncState>(auth.configured?'loading':'local')
   const [syncError,setSyncError]=useState('')
   const [snapshot,setSnapshot]=useState<CloudSnapshot|null>(null)
@@ -98,6 +141,8 @@ export default function App(){
   const [workError,setWorkError]=useState('')
   const [helpdeskSync,setHelpdeskSync]=useState<HelpdeskDatabaseState>(auth.configured?'loading':'local')
   const [helpdeskError,setHelpdeskError]=useState('')
+  const [iamSync,setIamSync]=useState<IamDatabaseState>(auth.configured?'loading':'local')
+  const [iamError,setIamError]=useState('')
   const lastCloudPayload=useRef<string>('')
   const cloudInitialized=useRef(false)
   const cloudHasSnapshot=useRef(false)
@@ -108,6 +153,9 @@ export default function App(){
   const helpdeskWriteQueue=useRef<Promise<void>>(Promise.resolve())
   const helpdeskPendingWrites=useRef(0)
   const helpdeskReloadTimer=useRef<number|undefined>(undefined)
+  const iamWriteQueue=useRef<Promise<void>>(Promise.resolve())
+  const iamPendingWrites=useRef(0)
+  const iamReloadTimer=useRef<number|undefined>(undefined)
 
   const role:AppRole=auth.configured?(auth.profile?.role??'viewer'):demoRole
   const canManage=role==='admin'||role==='manager'
@@ -175,6 +223,18 @@ export default function App(){
     })
     return()=>{
       if(helpdeskReloadTimer.current)window.clearTimeout(helpdeskReloadTimer.current)
+      unsubscribe()
+    }
+  },[auth.configured,auth.profile?.organizationId])
+
+  useEffect(()=>{
+    if(!auth.configured||!auth.profile?.organizationId)return
+    const unsubscribe=subscribeToIamData(auth.profile.organizationId,()=>{
+      if(iamReloadTimer.current)window.clearTimeout(iamReloadTimer.current)
+      iamReloadTimer.current=window.setTimeout(()=>void reloadIamData(true),350)
+    })
+    return()=>{
+      if(iamReloadTimer.current)window.clearTimeout(iamReloadTimer.current)
       unsubscribe()
     }
   },[auth.configured,auth.profile?.organizationId])
@@ -297,9 +357,66 @@ export default function App(){
     enqueueHelpdeskWrite(()=>syncServiceSlaPolicies(previous,slaPolicies))
   }
 
+  async function reloadIamData(silent=false){
+    if(!auth.configured){setIamSync('local');return}
+    setIamSync('loading');setIamError('')
+    try{
+      const iam=await loadIamData()
+      setState(current=>({...current,...iam}))
+      setIamSync('synced')
+    }catch(e){
+      const message=e instanceof Error?e.message:'IAM sa nepodarilo načítať.'
+      setIamSync('error');setIamError(message)
+      if(!silent)alert(message)
+    }
+  }
+
+  function enqueueIamWrite(operation:()=>Promise<void>){
+    if(!auth.configured)return
+    iamPendingWrites.current+=1
+    setIamSync('saving');setIamError('')
+    const run=iamWriteQueue.current.then(operation)
+    iamWriteQueue.current=run.catch(()=>undefined)
+    void run.then(()=>{
+      iamPendingWrites.current-=1
+      if(iamPendingWrites.current===0)setIamSync('synced')
+    }).catch(e=>{
+      iamPendingWrites.current-=1
+      setIamSync('error')
+      setIamError(e instanceof Error?e.message:'Zápis IAM zlyhal.')
+    })
+  }
+
+  function commitAccessRequests(accessRequests:AppState['accessRequests']){
+    const previous=stateRef.current.accessRequests
+    const nextState={...stateRef.current,accessRequests}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setIamSync('local');return}
+    enqueueIamWrite(()=>syncIamRequests(previous,accessRequests))
+  }
+
+  function commitAccessCatalog(accessCatalog:AppState['accessCatalog']){
+    const previous=stateRef.current.accessCatalog
+    const nextState={...stateRef.current,accessCatalog}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setIamSync('local');return}
+    enqueueIamWrite(()=>syncIamCatalog(previous,accessCatalog))
+  }
+
+  function commitRecertificationCampaigns(recertificationCampaigns:AppState['recertificationCampaigns']){
+    const previous=stateRef.current.recertificationCampaigns
+    const nextState={...stateRef.current,recertificationCampaigns}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setIamSync('local');return}
+    enqueueIamWrite(()=>syncIamCampaigns(previous,recertificationCampaigns))
+  }
+
   async function loadCloud(silent=false){
     if(!auth.configured)return
-    setSync('loading');setSyncError('');setWorkSync('loading');setWorkError('');setHelpdeskSync('loading');setHelpdeskError('')
+    setSync('loading');setSyncError('');setWorkSync('loading');setWorkError('');setHelpdeskSync('loading');setHelpdeskError('');setIamSync('loading');setIamError('')
     try{
       const loaded=await loadCurrentSnapshot()
       setSnapshot(loaded)
@@ -329,6 +446,15 @@ export default function App(){
       }catch(helpdeskFailure){
         setHelpdeskSync('error')
         setHelpdeskError(helpdeskFailure instanceof Error?helpdeskFailure.message:'Helpdesk sa nepodarilo načítať.')
+      }
+
+      try{
+        const iam=await loadIamData()
+        nextState={...nextState,...iam}
+        setIamSync('synced')
+      }catch(iamFailure){
+        setIamSync('error')
+        setIamError(iamFailure instanceof Error?iamFailure.message:'IAM sa nepodarilo načítať.')
       }
 
       stateRef.current=nextState
@@ -372,7 +498,7 @@ export default function App(){
       <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setSidebarOpen(true)}><Icon name="menu"/></button><div><small>IS Riadenie odboru</small><strong>{currentLabel}</strong></div></div><div className="topbar-right">
         {auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canResolve&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
         <div className={`data-mode data-mode-${sync}`} title={syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{syncLabel(sync)}</span></div>
-        <button className="top-user" onClick={()=>go(role==='admin'?'users':'roadmap')}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{roleLabel(role)}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
+        <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{roleLabel(role)}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
       </div></header>
       <main className="content">
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span>{syncError}</span></div>}
@@ -386,7 +512,7 @@ export default function App(){
         {view==='helpdesk'&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} canEdit={canSubmit} canConfigure={canResolve} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies}/>} 
         {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
         {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
-        {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmit} currentUser={displayName} onAccessRequestsChange={accessRequests=>setState(current=>({...current,accessRequests}))} onAccessCatalogChange={accessCatalog=>setState(current=>({...current,accessCatalog}))} onRecertificationCampaignsChange={recertificationCampaigns=>setState(current=>({...current,recertificationCampaigns}))} onTasksChange={commitTasks}/>} 
+        {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmit} canConfigure={canResolve} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
         {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} canEdit={canResolve} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
         {view==='risks'&&<Risks risks={state.risks} canEdit={canManage} onChange={risks=>setState(current=>({...current,risks}))}/>} 
         {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManage} onChange={decisions=>setState(current=>({...current,decisions}))}/>} 
@@ -394,5 +520,6 @@ export default function App(){
         {view==='roadmap'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
       </main>
     </div>
+    {profileOpen&&<AccountProfileModal onClose={()=>setProfileOpen(false)}/>}
   </div>
 }
