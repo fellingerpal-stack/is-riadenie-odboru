@@ -93,48 +93,144 @@ export async function updateProfile(profile: UserProfile): Promise<void> {
   await writeUserAudit('Profil upravený', profile.id, profile.fullName || profile.email, `Rola: ${profile.role}; stav: ${profile.isActive ? 'aktívny' : 'deaktivovaný'}`)
 }
 
-export function friendlyUserOperationError(error: unknown, fallback = 'Operáciu sa nepodarilo dokončiť.'): string {
-  const message = error instanceof Error ? error.message : String(error ?? '')
-  const lower = message.toLowerCase()
+type ErrorRecord = Record<string, unknown>
 
-  if (lower.includes('email rate limit exceeded') || lower.includes('rate limit')) {
-    return 'Bol prekročený limit odosielania e-mailov. Počkajte približne hodinu alebo nastavte vlastné SMTP v Supabase.'
+function usefulText(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const text = value.trim()
+  if (!text || text === '{}' || text === '[]' || text === '[object Object]' || text === 'null' || text === 'undefined') return ''
+
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try {
+      const parsed = JSON.parse(text) as unknown
+      const nested = extractErrorDetails(parsed)
+      if (nested.message) return nested.message
+    } catch {
+      // Text nie je použiteľný JSON; vrátime pôvodnú hodnotu.
+    }
   }
-  if (lower.includes('failed to send a request to the edge function') || lower.includes('failed to fetch')) {
-    return 'Supabase Edge Function momentálne neodpovedá. Skontrolujte funkciu invite-user, jej CORS nastavenie a prihlásenie.'
-  }
-  if (lower.includes('already been registered') || lower.includes('already registered') || lower.includes('already exists')) {
-    return 'Používateľ s týmto e-mailom už existuje.'
-  }
-  if (lower.includes('invalid login credentials')) return 'Nesprávny e-mail alebo heslo.'
-  if (lower.includes('email not confirmed')) return 'E-mail používateľa ešte nebol potvrdený.'
-  if (lower.includes('jwt') || lower.includes('session') || lower.includes('prihlásenie vypršalo')) {
-    return 'Prihlásenie vypršalo. Odhláste sa a prihláste znova.'
-  }
-  if (lower.includes('smtp')) return 'E-mail sa nepodarilo odoslať. Skontrolujte SMTP nastavenie v Supabase.'
-  return message || fallback
+
+  return text
 }
 
-async function readFunctionError(error: unknown): Promise<string> {
-  const candidate = error as { message?: string; context?: Response }
-  const context = candidate?.context
+function extractErrorDetails(error: unknown, depth = 0): { message: string; code: string; status: number } {
+  if (depth > 3 || error == null) return { message: '', code: '', status: 0 }
 
-  if (context instanceof Response) {
-    try {
-      const body = await context.clone().json() as { error?: string; message?: string }
-      const message = String(body?.error ?? body?.message ?? '').trim()
-      if (message) return message
-    } catch {
-      try {
-        const text = (await context.clone().text()).trim()
-        if (text) return text
-      } catch {
-        // Pouzijeme povodnu spravu chyby nizsie.
+  if (typeof error === 'string') {
+    return { message: usefulText(error), code: '', status: 0 }
+  }
+
+  const record = typeof error === 'object' ? error as ErrorRecord : {}
+  const statusValue = Number(record.status ?? record.statusCode ?? 0)
+  const status = Number.isFinite(statusValue) ? statusValue : 0
+  const code = usefulText(record.code) || usefulText(record.error_code)
+
+  const directValues = [
+    error instanceof Error ? error.message : '',
+    record.error_description,
+    record.error,
+    record.message,
+    record.msg,
+    record.details,
+    record.hint,
+    record.reason,
+  ]
+
+  for (const value of directValues) {
+    const message = usefulText(value)
+    if (message) return { message, code, status }
+
+    if (value && typeof value === 'object') {
+      const nested = extractErrorDetails(value, depth + 1)
+      if (nested.message || nested.code || nested.status) {
+        return {
+          message: nested.message,
+          code: nested.code || code,
+          status: nested.status || status,
+        }
       }
     }
   }
 
-  return String(candidate?.message ?? 'Pozvanie sa nepodarilo odoslať.')
+  const cause = record.cause
+  if (cause) {
+    const nested = extractErrorDetails(cause, depth + 1)
+    if (nested.message || nested.code || nested.status) {
+      return {
+        message: nested.message,
+        code: nested.code || code,
+        status: nested.status || status,
+      }
+    }
+  }
+
+  return { message: '', code, status }
+}
+
+export function friendlyUserOperationError(error: unknown, fallback = 'Operáciu sa nepodarilo dokončiť.'): string {
+  const detail = extractErrorDetails(error)
+  const normalized = `${detail.message} ${detail.code}`.toLowerCase()
+
+  if (detail.status === 429 || normalized.includes('email rate limit') || normalized.includes('rate limit') || normalized.includes('over_email_send_rate_limit')) {
+    return 'Bol prekročený limit odosielania e-mailov. Počkajte približne hodinu alebo nastavte vlastné SMTP v Supabase.'
+  }
+  if (normalized.includes('failed to send a request to the edge function') || normalized.includes('failed to fetch') || normalized.includes('networkerror')) {
+    return 'Supabase Edge Function momentálne neodpovedá. Skontrolujte funkciu invite-user, jej CORS nastavenie a prihlásenie.'
+  }
+  if (normalized.includes('already been registered') || normalized.includes('already registered') || normalized.includes('already exists') || normalized.includes('user_already_exists')) {
+    return 'Používateľ s týmto e-mailom už existuje.'
+  }
+  if (normalized.includes('invalid login credentials')) return 'Nesprávny e-mail alebo heslo.'
+  if (normalized.includes('email not confirmed')) return 'E-mail používateľa ešte nebol potvrdený.'
+  if (normalized.includes('jwt') || normalized.includes('session') || normalized.includes('invalid_session') || normalized.includes('prihlásenie vypršalo')) {
+    return 'Prihlásenie vypršalo. Odhláste sa a prihláste znova.'
+  }
+  if (normalized.includes('email address not authorized') || normalized.includes('not authorized to send') || normalized.includes('email_not_authorized')) {
+    return 'Supabase odmietol odoslanie na túto adresu. Nastavte vlastné SMTP alebo použite povolenú tímovú adresu.'
+  }
+  if (normalized.includes('smtp') || normalized.includes('error sending') || normalized.includes('failed to send email') || normalized.includes('sending confirmation email') || normalized.includes('smtp_error')) {
+    return 'E-mail sa nepodarilo odoslať. Skontrolujte SMTP prihlasovacie údaje, odosielaciu adresu a overenie domény v Supabase.'
+  }
+  if (!detail.message && detail.status >= 500) {
+    return 'Supabase Auth vrátil serverovú chybu bez podrobností. Skontrolujte Authentication → Logs; najčastejšie ide o SMTP alebo limit odosielania e-mailov.'
+  }
+  if (!detail.message) {
+    return `${fallback} Supabase nevrátil podrobnosti chyby. Skontrolujte Authentication → Logs.`
+  }
+
+  return detail.message
+}
+
+async function readFunctionError(error: unknown): Promise<string> {
+  const candidate = error as { message?: string; context?: Response; status?: number; name?: string }
+  const context = candidate?.context
+
+  if (context instanceof Response) {
+    const status = context.status
+    try {
+      const text = (await context.clone().text()).trim()
+      if (text && text !== '{}' && text !== '[]') {
+        try {
+          const parsed = JSON.parse(text) as unknown
+          const parsedMessage = friendlyUserOperationError({ ...extractErrorDetails(parsed), status }, '')
+          if (parsedMessage) return parsedMessage
+        } catch {
+          const plain = usefulText(text)
+          if (plain) return plain
+        }
+      }
+    } catch {
+      // Pokračujeme mapovaním statusu a pôvodnej chyby.
+    }
+
+    if (status === 401) return 'Prihlásenie vypršalo. Odhláste sa a prihláste znova.'
+    if (status === 403) return 'Pozývať používateľov môže iba aktívny administrátor.'
+    if (status === 404) return 'Edge Function invite-user nebola nájdená alebo je nasadená pod iným názvom.'
+    if (status === 429) return 'Bol prekročený limit odosielania e-mailov. Skúste to neskôr alebo nastavte vlastné SMTP.'
+    if (status >= 500) return 'Edge Function vrátila serverovú chybu bez podrobností. Skontrolujte jej Invocations / Logs a SMTP nastavenie.'
+  }
+
+  return friendlyUserOperationError(candidate, 'Pozvanie sa nepodarilo odoslať.')
 }
 
 export async function inviteUser(input: {
