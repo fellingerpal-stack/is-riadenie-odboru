@@ -3,7 +3,7 @@ import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, Change
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.12.2-fix.4'
+const CURRENT_VERSION = '0.13.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as AppState
