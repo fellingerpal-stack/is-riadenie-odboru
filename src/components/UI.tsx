@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 export type IconName =
   | 'dashboard' | 'people' | 'matrix' | 'services' | 'substitute' | 'capacity'
-  | 'projects' | 'tasks' | 'helpdesk' | 'change' | 'problem' | 'iam' | 'cmdb' | 'risk' | 'decision' | 'roadmap' | 'menu' | 'close'
+  | 'projects' | 'tasks' | 'helpdesk' | 'change' | 'problem' | 'iam' | 'cmdb' | 'web' | 'systems' | 'risk' | 'decision' | 'roadmap' | 'menu' | 'close'
   | 'search' | 'plus' | 'download' | 'upload' | 'refresh' | 'edit' | 'check'
   | 'warning' | 'arrow' | 'lock' | 'database' | 'calendar' | 'user' | 'chevron' | 'trash' | 'eye' | 'eyeOff' | 'logout' | 'shield'
 
@@ -20,6 +20,8 @@ const paths: Record<IconName, ReactNode> = {
   problem: <><path d="M8 4h8l4 4v8l-4 4H8l-4-4V8z"/><path d="M9 9l6 6M15 9l-6 6"/></>,
   iam: <><path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="M5 21a7 7 0 0 1 14 0"/><path d="M18 8h4M20 6v4"/></>,
   cmdb: <><path d="M4 5h16v5H4zM4 14h16v5H4z"/><path d="M8 7.5h.01M8 16.5h.01M12 7.5h5M12 16.5h5"/></>,
+  web: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></>,
+  systems: <><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 8h4M7 12h8"/></>,
   risk: <><path d="M12 3l10 18H2L12 3z"/><path d="M12 9v5M12 18h.01"/></>,
   decision: <><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.3 2.37c-.9.33-.8 1.13-.8 1.63M12 17h.01"/></>,
   roadmap: <><path d="M5 20V4M5 6h10l-2 3 2 3H5M9 20h10l-2-3 2-3H9"/></>,
