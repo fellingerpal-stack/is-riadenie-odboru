@@ -8,6 +8,7 @@ import {
   listUserAudit,
   resendUserAccess,
   sendUserPasswordReset,
+  setUserPassword,
   updateProfile,
 } from '../lib/cloud'
 import {
@@ -102,6 +103,7 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
   const [editProfile, setEditProfile] = useState<UserProfile | null>(null)
   const [detailProfile, setDetailProfile] = useState<UserProfile | null>(null)
   const [passwordOpen, setPasswordOpen] = useState(false)
+  const [adminPasswordProfile, setAdminPasswordProfile] = useState<UserProfile | null>(null)
   const [invite, setInvite] = useState(blankInvite())
   const [busy, setBusy] = useState(false)
 
@@ -281,6 +283,24 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
     }
   }
 
+  async function changeUserPassword(profile: UserProfile, password: string) {
+    setBusy(true)
+    setMessage('')
+    setError('')
+    try {
+      const result = await setUserPassword(profile.id, password)
+      setAdminPasswordProfile(null)
+      setEditProfile(null)
+      setDetailProfile(null)
+      setMessage(result || `Heslo používateľa ${profile.fullName || profile.email} bolo zmenené.`)
+      await load()
+    } catch (caught) {
+      setError(friendlyUserOperationError(caught, 'Heslo používateľa sa nepodarilo nastaviť.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function resetDemoAccounts() {
     if (!confirm('Obnoviť vzorové lokálne účty a vymazať lokálny audit používateľov?')) return
     setProfiles(resetLocalUsers())
@@ -349,9 +369,10 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
       <Field label="Aplikačná rola" hint={roleInfo(invite.role).description}><select value={invite.role} onChange={(event) => setInvite({ ...invite, role: event.target.value as AppRole })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
     </div><div className="invite-note"><Icon name="calendar" size={17}/><div><strong>Prístupový odkaz je určený na prvotné nastavenie hesla.</strong><span>Ak používateľ odkaz neotvorí včas, v záložke Onboarding mu odošlete nový.</span></div></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setInviteOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={busy || !invite.email || !invite.fullName} onClick={() => void sendInvite()}>{busy ? 'Spracúvam…' : configured ? 'Odoslať pozvanie' : 'Vytvoriť demo účet'}</button></div></Modal>}
 
-    {editProfile && <UserEditModal profile={editProfile} current={editProfile.id === currentUserId} busy={busy} onClose={() => setEditProfile(null)} onSave={save}/>} 
-    {detailProfile && <UserDetailModal profile={profiles.find((item) => item.id === detailProfile.id) ?? detailProfile} audit={audit.filter((entry) => entry.targetUserId === detailProfile.id || entry.targetUserName === detailProfile.fullName)} current={detailProfile.id === currentUserId} cloud={configured} busy={busy} onClose={() => setDetailProfile(null)} onEdit={() => { setDetailProfile(null); setEditProfile(detailProfile) }} onReset={() => void resetPassword(detailProfile)} onResend={() => void resendAccess(detailProfile)} onCancel={() => void cancelInvitation(detailProfile)} onOwnPassword={() => { setDetailProfile(null); setPasswordOpen(true) }}/>} 
+    {editProfile && <UserEditModal profile={editProfile} current={editProfile.id === currentUserId} cloud={configured} busy={busy} onClose={() => setEditProfile(null)} onSave={save} onOwnPassword={() => { setEditProfile(null); setPasswordOpen(true) }} onSetPassword={() => { setEditProfile(null); setAdminPasswordProfile(editProfile) }}/>} 
+    {detailProfile && <UserDetailModal profile={profiles.find((item) => item.id === detailProfile.id) ?? detailProfile} audit={audit.filter((entry) => entry.targetUserId === detailProfile.id || entry.targetUserName === detailProfile.fullName)} current={detailProfile.id === currentUserId} cloud={configured} busy={busy} onClose={() => setDetailProfile(null)} onEdit={() => { setDetailProfile(null); setEditProfile(detailProfile) }} onReset={() => void resetPassword(detailProfile)} onResend={() => void resendAccess(detailProfile)} onCancel={() => void cancelInvitation(detailProfile)} onOwnPassword={() => { setDetailProfile(null); setPasswordOpen(true) }} onSetPassword={() => { setDetailProfile(null); setAdminPasswordProfile(detailProfile) }}/>} 
     {passwordOpen && <ChangePasswordModal busy={busy} onClose={() => setPasswordOpen(false)} onSave={changeOwnPassword}/>} 
+    {adminPasswordProfile && <AdminSetPasswordModal profile={adminPasswordProfile} busy={busy} onClose={() => setAdminPasswordProfile(null)} onSave={(password) => changeUserPassword(adminPasswordProfile, password)}/>} 
   </div>
 }
 
@@ -385,7 +406,7 @@ function OnboardingPanel({ profiles, busy, onResend, onCancel, onDetail }: { pro
   </div>
 }
 
-function UserEditModal({ profile, current, busy, onClose, onSave }: { profile: UserProfile; current: boolean; busy: boolean; onClose: () => void; onSave: (profile: UserProfile) => Promise<void> }) {
+function UserEditModal({ profile, current, cloud, busy, onClose, onSave, onOwnPassword, onSetPassword }: { profile: UserProfile; current: boolean; cloud: boolean; busy: boolean; onClose: () => void; onSave: (profile: UserProfile) => Promise<void>; onOwnPassword: () => void; onSetPassword: () => void }) {
   const [draft, setDraft] = useState(profile)
   return <Modal title="Upraviť používateľa" onClose={onClose}><div className="user-edit-header"><div className="avatar avatar-large">{initials(draft.fullName || draft.email)}</div><div><strong>{draft.fullName || draft.email}</strong><span>{draft.email}</span>{current && <Badge tone="info">Aktuálne prihlásený účet</Badge>}</div></div><div className="form-grid">
     <Field label="Meno a priezvisko"><input value={draft.fullName} onChange={(event) => setDraft({ ...draft, fullName: event.target.value })}/></Field>
@@ -395,10 +416,10 @@ function UserEditModal({ profile, current, busy, onClose, onSave }: { profile: U
     <Field label="Telefón"><input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })}/></Field>
     <Field label="Aplikačná rola" hint={roleInfo(draft.role).description}><select value={draft.role} disabled={current} onChange={(event) => setDraft({ ...draft, role: event.target.value as AppRole })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
     <Field label="Stav účtu" hint={current ? 'Vlastný účet nemožno deaktivovať.' : 'Deaktivovaný používateľ sa neprihlási.'}><label className="account-status-switch"><input type="checkbox" checked={draft.isActive} disabled={current} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })}/><span>{draft.isActive ? 'Prístup povolený' : 'Prístup zablokovaný'}</span></label></Field>
-  </div><div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !draft.fullName.trim()} onClick={() => void onSave(draft)}>{busy ? 'Ukladám…' : 'Uložiť zmeny'}</button></div></Modal>
+  </div>{cloud&&<div className="password-guidance"><Icon name="lock" size={20}/><div><strong>{current?'Zmena vlastného hesla':'Správa hesla používateľa'}</strong><span>{current?'Heslo zmeníte priamo bez e-mailu a bez SMTP.':'Administrátor môže nastaviť nové heslo priamo v Supabase Auth. Používateľovi ho odovzdajte bezpečným kanálom.'}</span><button className="button button-secondary button-small" type="button" onClick={current?onOwnPassword:onSetPassword}><Icon name="lock" size={16}/> {current?'Zmeniť moje heslo':'Nastaviť nové heslo'}</button></div></div>}<div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !draft.fullName.trim()} onClick={() => void onSave(draft)}>{busy ? 'Ukladám…' : 'Uložiť zmeny'}</button></div></Modal>
 }
 
-function UserDetailModal({ profile, audit, current, cloud, busy, onClose, onEdit, onReset, onResend, onCancel, onOwnPassword }: { profile: UserProfile; audit: UserAuditEntry[]; current: boolean; cloud: boolean; busy: boolean; onClose: () => void; onEdit: () => void; onReset: () => void; onResend: () => void; onCancel: () => void; onOwnPassword: () => void }) {
+function UserDetailModal({ profile, audit, current, cloud, busy, onClose, onEdit, onReset, onResend, onCancel, onOwnPassword, onSetPassword }: { profile: UserProfile; audit: UserAuditEntry[]; current: boolean; cloud: boolean; busy: boolean; onClose: () => void; onEdit: () => void; onReset: () => void; onResend: () => void; onCancel: () => void; onOwnPassword: () => void; onSetPassword: () => void }) {
   const state = accountState(profile)
   const info = accountStateInfo[state]
   const pending = state === 'invited' || state === 'expired' || state === 'cancelled'
@@ -406,7 +427,7 @@ function UserDetailModal({ profile, audit, current, cloud, busy, onClose, onEdit
     <div className="user-detail-grid"><article><span>Útvar</span><strong>{profile.department || 'Neurčený'}</strong><small>{profile.jobTitle || 'Pozícia neurčená'}</small></article><article><span>Telefón</span><strong>{profile.phone || 'Nedoplnený'}</strong><small>Kontaktný údaj</small></article><article><span>Pozvaný</span><strong>{formatDate(profile.invitedAt)}</strong><small>{pending ? `Platnosť do ${formatDate(inviteExpiry(profile))}` : 'Prvotné vytvorenie účtu'}</small></article><article><span>Prijatie pozvánky</span><strong>{formatDate(profile.acceptedAt)}</strong><small>{profile.acceptedAt ? 'Prvé úspešné prihlásenie' : 'Zatiaľ nezaznamenané'}</small></article><article><span>Posledné prihlásenie</span><strong>{formatDate(profile.lastLoginAt)}</strong><small>Aktivita používateľa</small></article><article><span>Posledná zmena</span><strong>{formatDate(profile.updatedAt)}</strong><small>Profil alebo oprávnenia</small></article></div>
     <section className="detail-status-explainer"><Icon name={state === 'active' ? 'check' : 'warning'} size={18}/><div><strong>{info.label}</strong><span>{info.description}</span></div></section>
     <section className="user-detail-audit"><header><div><span className="section-kicker">História účtu</span><h3>Posledné administrátorské zmeny</h3></div><Badge tone="neutral">{audit.length}</Badge></header>{audit.length ? <div>{audit.slice(0, 8).map((entry) => <article key={entry.id}><span>{formatDate(entry.createdAt)}</span><div><strong>{entry.action}</strong><small>{entry.detail}</small></div></article>)}</div> : <p className="muted-copy">Pre tento účet zatiaľ nie je evidovaná administrátorská zmena.</p>}</section>
-    <div className="modal-actions modal-actions-between"><button className="button button-secondary" onClick={onClose}>Zavrieť</button><div><button className="button button-secondary" onClick={onEdit}><Icon name="edit"/> Upraviť profil</button>{current ? cloud ? <button className="button button-primary" disabled={busy} onClick={onOwnPassword}><Icon name="lock"/> Zmeniť heslo</button> : null : pending ? <><button className="button button-primary" disabled={busy} onClick={onResend}><Icon name="refresh"/> {state === 'cancelled' ? 'Obnoviť pozvanie' : 'Odoslať nový odkaz'}</button>{state !== 'cancelled' && <button className="button button-danger" disabled={busy} onClick={onCancel}>Zrušiť pozvánku</button>}</> : <button className="button button-primary" disabled={busy || !profile.isActive} onClick={onReset}><Icon name="lock"/> Obnoviť heslo</button>}</div></div>
+    <div className="modal-actions modal-actions-between"><button className="button button-secondary" onClick={onClose}>Zavrieť</button><div><button className="button button-secondary" onClick={onEdit}><Icon name="edit"/> Upraviť profil</button>{current ? cloud ? <button className="button button-primary" disabled={busy} onClick={onOwnPassword}><Icon name="lock"/> Zmeniť moje heslo</button> : null : <><button className="button button-primary" disabled={busy} onClick={onSetPassword}><Icon name="lock"/> Nastaviť heslo</button>{pending&&<button className="button button-secondary" disabled={busy} onClick={onResend}><Icon name="refresh"/> {state === 'cancelled' ? 'Obnoviť pozvanie' : 'Odoslať nový odkaz'}</button>}{!pending&&<button className="button button-secondary" disabled={busy || !profile.isActive} onClick={onReset}>Odoslať obnovu e-mailom</button>}{pending&&state !== 'cancelled'&&<button className="button button-danger" disabled={busy} onClick={onCancel}>Zrušiť pozvánku</button>}</>}</div></div>
   </Modal>
 }
 
@@ -429,4 +450,27 @@ function ChangePasswordModal({ busy, onClose, onSave }: { busy: boolean; onClose
   }
 
   return <Modal title="Zmeniť moje heslo" onClose={onClose}><div className="password-guidance"><Icon name="shield" size={20}/><div><strong>Bezpečné heslo</strong><span>Použite aspoň 10 znakov a nekombinujte ho s heslom z iného systému.</span></div></div><div className="form-grid form-grid-single"><Field label="Nové heslo"><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimálne 10 znakov"/></Field><Field label="Zopakujte nové heslo"><input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Zadajte heslo znova"/></Field></div>{localError && <div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={17}/><span>{localError}</span></div>}<div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !password || !confirmPassword} onClick={submit}>{busy ? 'Ukladám…' : 'Zmeniť heslo'}</button></div></Modal>
+}
+
+
+function AdminSetPasswordModal({ profile, busy, onClose, onSave }: { profile: UserProfile; busy: boolean; onClose: () => void; onSave: (password: string) => Promise<void> }) {
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [localError, setLocalError] = useState('')
+
+  function submit() {
+    setLocalError('')
+    if (password.length < 10) {
+      setLocalError('Nové heslo musí mať aspoň 10 znakov.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setLocalError('Zadané heslá sa nezhodujú.')
+      return
+    }
+    void onSave(password)
+  }
+
+  return <Modal title="Nastaviť heslo používateľa" onClose={onClose}><div className="user-edit-header"><div className="avatar avatar-large">{initials(profile.fullName || profile.email)}</div><div><strong>{profile.fullName || profile.email}</strong><span>{profile.email}</span><Badge tone="warning">Administrátorská zmena</Badge></div></div><div className="password-guidance"><Icon name="shield" size={20}/><div><strong>Bez e-mailu a SMTP</strong><span>Heslo sa nastaví priamo v Supabase Auth. Používateľovi ho odovzdajte cez bezpečný kanál a požiadajte ho, aby si ho po prihlásení zmenil cez Môj profil.</span></div></div><div className="form-grid form-grid-single"><Field label="Nové heslo"><div className="auth-input"><Icon name="lock" size={18}/><input type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimálne 10 znakov"/><button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Skryť heslo' : 'Zobraziť heslo'}><Icon name={showPassword ? 'eyeOff' : 'eye'} size={17}/></button></div></Field><Field label="Zopakujte nové heslo"><input type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Zadajte heslo znova"/></Field></div>{localError && <div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={17}/><span>{localError}</span></div>}<div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !password || !confirmPassword} onClick={submit}>{busy ? 'Ukladám…' : 'Nastaviť nové heslo'}</button></div></Modal>
 }
