@@ -21,12 +21,14 @@ import ChangeManagement from './views/ChangeManagement'
 import ProblemManagement from './views/ProblemManagement'
 import IamManagement from './views/IamManagement'
 import Cmdb from './views/Cmdb'
+import WebRegistry from './views/WebRegistry'
+import InformationSystems from './views/InformationSystems'
 import Risks from './views/Risks'
 import Decisions from './views/Decisions'
 import Roadmap from './views/Roadmap'
 import Users from './views/Users'
 
-type ViewKey='dashboard'|'people'|'raci'|'services'|'substitutions'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'
+type ViewKey='dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -40,6 +42,10 @@ const navGroups:{label:string;items:NavItem[]}[]=[
     {key:'raci',label:'RACI matica',icon:'matrix',roles:['admin','manager','resolver','viewer']},
     {key:'services',label:'Služby a systémy',icon:'services',roles:['admin','manager','resolver','viewer']},
     {key:'substitutions',label:'Zastupiteľnosť',icon:'substitute',roles:['admin','manager','resolver','viewer']},
+  ]},
+  {label:'Digitálne portfólio',items:[
+    {key:'webs',label:'Weby CVTI SR',icon:'web',roles:['admin','manager','resolver','viewer']},
+    {key:'informationSystems',label:'Informačné systémy',icon:'systems',roles:['admin','manager','resolver','viewer']},
   ]},
   {label:'Riadenie práce',items:[
     {key:'capacity',label:'Kapacity',icon:'capacity',roles:['admin','manager','resolver','viewer']},
@@ -514,6 +520,8 @@ export default function App(){
         {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
         {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmit} canConfigure={canResolve} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
         {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} canEdit={canResolve} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
+        {view==='webs'&&<WebRegistry canEdit={canResolve} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
+        {view==='informationSystems'&&<InformationSystems canEdit={canResolve} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
         {view==='risks'&&<Risks risks={state.risks} canEdit={canManage} onChange={risks=>setState(current=>({...current,risks}))}/>} 
         {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManage} onChange={decisions=>setState(current=>({...current,decisions}))}/>} 
         {view==='users'&&role==='admin'&&<Users currentUserId={auth.profile?.id??'local-admin'} currentUserName={displayName} configured={auth.configured}/>} 
