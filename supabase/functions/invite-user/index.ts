@@ -57,7 +57,7 @@ function errorDetails(error: unknown): ErrorDetails {
   }
 
   return {
-    message: message || 'Pozvanie sa nepodarilo odoslať. Supabase nevrátil podrobnosti chyby.',
+    message: message || 'Operáciu používateľského účtu sa nepodarilo dokončiť. Supabase nevrátil podrobnosti chyby.',
     code: code || 'invite_failed',
     status,
   }
@@ -104,6 +104,9 @@ Deno.serve(async (request) => {
     }
 
     const input = await request.json() as {
+      action?: 'invite' | 'set-password'
+      userId?: string
+      password?: string
       email?: string
       fullName?: string
       department?: string
@@ -111,6 +114,57 @@ Deno.serve(async (request) => {
       phone?: string
       role?: AppRole
       appUrl?: string
+    }
+
+    const action = input.action === 'set-password' ? 'set-password' : 'invite'
+
+    if (action === 'set-password') {
+      const targetUserId = String(input.userId ?? '').trim()
+      const password = String(input.password ?? '')
+      if (!targetUserId) return json({ ok: false, error: 'Chýba identifikátor používateľa.', code: 'missing_user_id' }, 400)
+      if (targetUserId === callerData.user.id) return json({ ok: false, error: 'Vlastné heslo si zmeňte cez Môj profil.', code: 'use_self_password_change' }, 400)
+      if (password.length < 10) return json({ ok: false, error: 'Nové heslo musí mať aspoň 10 znakov.', code: 'weak_password' }, 400)
+
+      const { data: targetProfile, error: targetProfileError } = await adminClient
+        .from('profiles')
+        .select('id, organization_id, full_name, email')
+        .eq('id', targetUserId)
+        .maybeSingle()
+      if (targetProfileError) throw targetProfileError
+      if (!targetProfile || targetProfile.organization_id !== callerProfile.organization_id) {
+        return json({ ok: false, error: 'Používateľ nepatrí do vašej organizácie.', code: 'target_not_found' }, 404)
+      }
+
+      const { error: passwordError } = await adminClient.auth.admin.updateUserById(targetUserId, {
+        password,
+        email_confirm: true,
+      })
+      if (passwordError) {
+        const detail = errorDetails(passwordError)
+        return json({ ok: false, error: detail.message || 'Heslo sa nepodarilo nastaviť.', code: detail.code || 'password_update_failed' }, detail.status)
+      }
+
+      const changedAt = new Date().toISOString()
+      const { error: activateError } = await adminClient.from('profiles').update({
+        is_active: true,
+        invite_expires_at: null,
+        updated_at: changedAt,
+      }).eq('id', targetUserId)
+      if (activateError) console.warn('invite-user: profile activation after password change failed', activateError.message)
+
+      const targetName = String(targetProfile.full_name ?? targetProfile.email ?? targetUserId)
+      const { error: auditError } = await adminClient.from('user_admin_audit').insert({
+        organization_id: callerProfile.organization_id,
+        actor_id: callerData.user.id,
+        actor_name: callerProfile.full_name ?? '',
+        target_user_id: targetUserId,
+        target_user_name: targetName,
+        action: 'Heslo nastavené administrátorom',
+        detail: 'Heslo bolo zmenené priamo v Supabase Auth bez odoslania e-mailu.',
+      })
+      if (auditError) console.warn('invite-user: password audit failed', auditError.message)
+
+      return json({ ok: true, message: `Nové heslo používateľa ${targetName} bolo nastavené.` })
     }
 
     const email = String(input.email ?? '').trim().toLowerCase()
@@ -172,7 +226,7 @@ Deno.serve(async (request) => {
     return json({ ok: true, message: `Pozvanie bolo odoslané na ${email}.`, userId: invited.user.id })
   } catch (error) {
     const detail = errorDetails(error)
-    console.error('invite-user fix.2 failed', { message: detail.message, code: detail.code, status: detail.status })
+    console.error('invite-user fix.3 failed', { message: detail.message, code: detail.code, status: detail.status })
     return json({ ok: false, error: detail.message, code: detail.code }, detail.status)
   }
 })
