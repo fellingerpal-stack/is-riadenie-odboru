@@ -136,8 +136,27 @@ function sameRecord(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
-function friendlyIamError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error ?? '')
+function rawErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  if (typeof error === 'string' && error.trim()) return error.trim()
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    const parts = ['message', 'details', 'hint', 'code', 'error_description']
+      .map((key) => record[key])
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    if (parts.length) return parts.join(' · ')
+    try {
+      const serialized = JSON.stringify(error)
+      if (serialized && serialized !== '{}') return serialized
+    } catch {
+      // Použijeme všeobecnú hlášku nižšie.
+    }
+  }
+  return ''
+}
+
+function friendlyIamError(error: unknown, context = 'Operácia IAM'): Error {
+  const message = rawErrorMessage(error)
   const lower = message.toLowerCase()
 
   if (
@@ -146,14 +165,36 @@ function friendlyIamError(error: unknown): Error {
     lower.includes('iam_recert_campaigns') ||
     lower.includes('schema cache') ||
     lower.includes('could not find the table') ||
+    lower.includes('pgrst205') ||
+    lower.includes('42p01') ||
     (lower.includes('relation') && lower.includes('does not exist'))
   ) {
-    return new Error('Databázové tabuľky IAM ešte nie sú pripravené. Spustite Supabase migráciu pre release 0.12.2.')
+    return new Error('Databázové tabuľky IAM nie sú pripravené. V Supabase spustite SQL opravu pre release 0.13.2 a potom kliknite na Obnoviť.')
   }
-  if (lower.includes('permission') || lower.includes('row-level security') || lower.includes('oprávnen')) {
-    return new Error('Používateľ nemá oprávnenie vykonať túto operáciu v IAM.')
+  if (
+    lower.includes('upsert_iam_') ||
+    lower.includes('delete_iam_') ||
+    lower.includes('42883') ||
+    lower.includes('function') && lower.includes('does not exist')
+  ) {
+    return new Error('Databázové funkcie IAM nie sú pripravené. V Supabase spustite SQL opravu pre release 0.13.2.')
   }
-  return error instanceof Error ? error : new Error(message || 'Operácia s IAM zlyhala.')
+  if (lower.includes('column') && (lower.includes('does not exist') || lower.includes('42703'))) {
+    return new Error(`Štruktúra IAM databázy nie je aktuálna. Spustite SQL opravu 0.13.2. Technický detail: ${message}`)
+  }
+  if (
+    lower.includes('permission') ||
+    lower.includes('row-level security') ||
+    lower.includes('42501') ||
+    lower.includes('oprávnen')
+  ) {
+    return new Error('Používateľ nemá oprávnenie vykonať túto operáciu v IAM. Skontrolujte rolu používateľa a RLS pravidlá.')
+  }
+  if (lower.includes('jwt') || lower.includes('401') || lower.includes('not authenticated')) {
+    return new Error('Prihlásenie do Supabase už nie je platné. Odhláste sa a znovu sa prihláste.')
+  }
+
+  return new Error(message ? `${context} zlyhala: ${message}` : `${context} zlyhala bez technického detailu. Skontrolujte Supabase Logs.`)
 }
 
 export async function loadIamData(): Promise<{
@@ -179,9 +220,9 @@ export async function loadIamData(): Promise<{
         .order('created_at', { ascending: false }),
     ])
 
-    if (catalogResult.error) throw catalogResult.error
-    if (requestsResult.error) throw requestsResult.error
-    if (campaignsResult.error) throw campaignsResult.error
+    if (catalogResult.error) throw friendlyIamError(catalogResult.error, 'Načítanie katalógu prístupov')
+    if (requestsResult.error) throw friendlyIamError(requestsResult.error, 'Načítanie IAM žiadostí')
+    if (campaignsResult.error) throw friendlyIamError(campaignsResult.error, 'Načítanie recertifikácií')
 
     const catalogRows = (catalogResult.data ?? []) as IamCatalogRow[]
     const catalogCodes = new Map(catalogRows.map((row) => [row.id, row.code]))
@@ -192,44 +233,45 @@ export async function loadIamData(): Promise<{
       recertificationCampaigns: ((campaignsResult.data ?? []) as IamCampaignRow[]).map(campaignFromRow),
     }
   } catch (error) {
-    throw friendlyIamError(error)
+    if (error instanceof Error) throw error
+    throw friendlyIamError(error, 'Načítanie IAM')
   }
 }
 
 export async function upsertIamRequest(request: AccessRequest): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.rpc('upsert_iam_request', { p_request: request })
-  if (error) throw friendlyIamError(error)
+  if (error) throw friendlyIamError(error, 'Uloženie IAM žiadosti')
 }
 
 export async function deleteIamRequest(requestCode: string): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.rpc('delete_iam_request', { p_request_code: requestCode })
-  if (error) throw friendlyIamError(error)
+  if (error) throw friendlyIamError(error, 'Odstránenie IAM žiadosti')
 }
 
 export async function upsertIamCatalogItem(item: AccessCatalogItem): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.rpc('upsert_iam_catalog_item', { p_item: item })
-  if (error) throw friendlyIamError(error)
+  if (error) throw friendlyIamError(error, 'Uloženie katalógovej položky IAM')
 }
 
 export async function deleteIamCatalogItem(itemCode: string): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.rpc('delete_iam_catalog_item', { p_item_code: itemCode })
-  if (error) throw friendlyIamError(error)
+  if (error) throw friendlyIamError(error, 'Odstránenie katalógovej položky IAM')
 }
 
 export async function upsertIamRecertCampaign(campaign: RecertificationCampaign): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.rpc('upsert_iam_recert_campaign', { p_campaign: campaign })
-  if (error) throw friendlyIamError(error)
+  if (error) throw friendlyIamError(error, 'Uloženie recertifikačnej kampane')
 }
 
 export async function deleteIamRecertCampaign(campaignCode: string): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.rpc('delete_iam_recert_campaign', { p_campaign_code: campaignCode })
-  if (error) throw friendlyIamError(error)
+  if (error) throw friendlyIamError(error, 'Odstránenie recertifikačnej kampane')
 }
 
 async function syncCollection<T extends { id: string }>(
