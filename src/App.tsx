@@ -133,6 +133,24 @@ function syncLabel(sync:SyncState){
   return 'Lokálne dáta'
 }
 
+
+function errorMessage(error:unknown,fallback:string){
+  if(error instanceof Error&&error.message.trim())return error.message.trim()
+  if(typeof error==='string'&&error.trim())return error.trim()
+  if(error&&typeof error==='object'){
+    const record=error as Record<string,unknown>
+    const values=['message','details','hint','code','error_description']
+      .map(key=>record[key])
+      .filter((value):value is string=>typeof value==='string'&&value.trim().length>0)
+    if(values.length)return values.join(' · ')
+    try{
+      const serialized=JSON.stringify(error)
+      if(serialized&&serialized!=='{}')return serialized
+    }catch{/* nepodarilo sa serializovať */}
+  }
+  return fallback
+}
+
 export default function App(){
   const auth=useAuth()
   const [state,setState]=useState<AppState>(()=>loadState())
@@ -371,7 +389,7 @@ export default function App(){
       setState(current=>({...current,...iam}))
       setIamSync('synced')
     }catch(e){
-      const message=e instanceof Error?e.message:'IAM sa nepodarilo načítať.'
+      const message=errorMessage(e,'IAM sa nepodarilo načítať.')
       setIamSync('error');setIamError(message)
       if(!silent)alert(message)
     }
@@ -389,7 +407,7 @@ export default function App(){
     }).catch(e=>{
       iamPendingWrites.current-=1
       setIamSync('error')
-      setIamError(e instanceof Error?e.message:'Zápis IAM zlyhal.')
+      setIamError(errorMessage(e,'Zápis IAM zlyhal.'))
     })
   }
 
@@ -460,7 +478,7 @@ export default function App(){
         setIamSync('synced')
       }catch(iamFailure){
         setIamSync('error')
-        setIamError(iamFailure instanceof Error?iamFailure.message:'IAM sa nepodarilo načítať.')
+        setIamError(errorMessage(iamFailure,'IAM sa nepodarilo načítať.'))
       }
 
       stateRef.current=nextState
@@ -525,7 +543,7 @@ export default function App(){
         {view==='risks'&&<Risks risks={state.risks} canEdit={canManage} onChange={risks=>setState(current=>({...current,risks}))}/>} 
         {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManage} onChange={decisions=>setState(current=>({...current,decisions}))}/>} 
         {view==='users'&&role==='admin'&&<Users currentUserId={auth.profile?.id??'local-admin'} currentUserName={displayName} configured={auth.configured}/>} 
-        {view==='roadmap'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
+        {view==='roadmap'&&role==='admin'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
       </main>
     </div>
     {profileOpen&&<AccountProfileModal onClose={()=>setProfileOpen(false)}/>}
