@@ -501,6 +501,34 @@ export interface CmdbRelationship {
   note: string
 }
 
+
+export type ServiceArchitectureConfidence = 'Potvrdené zo zdrojov' | 'Čiastočne potvrdené' | 'Na potvrdenie'
+
+export interface ServiceArchitectureRecord {
+  id: string
+  title: string
+  serviceIds: string[]
+  projectIds: string[]
+  aliases: string[]
+  businessLayer: string
+  oitProjects: string[]
+  runtimeLocation: string
+  environment: string
+  platform: string
+  serverHints: string[]
+  networkDependencies: string[]
+  monitoring: string
+  backup: string
+  continuity: string
+  oitDomains: string[]
+  oitOwnerIds: string[]
+  confidence: ServiceArchitectureConfidence
+  evidence: string
+  note: string
+  updatedAt?: string
+  updatedBy?: string
+}
+
 export interface AppState {
   meta: Meta
   employees: Employee[]
@@ -523,6 +551,7 @@ export interface AppState {
   recertificationCampaigns: RecertificationCampaign[]
   cmdbItems: CmdbItem[]
   cmdbRelationships: CmdbRelationship[]
+  architectureOverrides: ServiceArchitectureRecord[]
 }
 
 export interface UserProfile {
