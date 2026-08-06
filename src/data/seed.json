@@ -4537,5 +4537,6 @@
       "criticality": "Stredná",
       "note": "Portál je súčasťou webového ekosystému."
     }
-  ]
+  ],
+  "architectureOverrides": []
 }

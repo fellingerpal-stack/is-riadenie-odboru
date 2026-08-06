@@ -1,29 +1,7 @@
-import type { AppState, ChangeRequest, CmdbItem, ProblemRecord, Project, Service, Ticket } from '../types'
+import type { AppState, ChangeRequest, CmdbItem, ProblemRecord, Project, Service, ServiceArchitectureConfidence, ServiceArchitectureRecord, Ticket } from '../types'
 
-export type ArchitectureConfidence = 'Potvrdené zo zdrojov' | 'Čiastočne potvrdené' | 'Na potvrdenie'
-
-export interface ArchitectureCatalogRecord {
-  id: string
-  title: string
-  serviceIds: string[]
-  projectIds: string[]
-  aliases: string[]
-  businessLayer: string
-  oitProjects: string[]
-  runtimeLocation: string
-  environment: string
-  platform: string
-  serverHints: string[]
-  networkDependencies: string[]
-  monitoring: string
-  backup: string
-  continuity: string
-  oitDomains: string[]
-  oitOwnerIds: string[]
-  confidence: ArchitectureConfidence
-  evidence: string
-  note: string
-}
+export type ArchitectureConfidence = ServiceArchitectureConfidence
+export type ArchitectureCatalogRecord = ServiceArchitectureRecord
 
 export interface ArchitectureItem {
   key: string
@@ -177,6 +155,17 @@ export const architectureCatalog: ArchitectureCatalogRecord[] = [
   }
 ]
 
+export function getArchitectureCatalog(state: AppState): ArchitectureCatalogRecord[] {
+  const overrides = new Map((state.architectureOverrides || []).map(record => [record.id, record]))
+  const merged = architectureCatalog.map(record => {
+    const override = overrides.get(record.id)
+    return override ? { ...record, ...override } : record
+  })
+  const baseIds = new Set(architectureCatalog.map(record => record.id))
+  const custom = (state.architectureOverrides || []).filter(record => !baseIds.has(record.id))
+  return [...merged, ...custom]
+}
+
 export const oitPeopleById: Record<string,string> = {
   MK:'Michal Kučera', 'ĽH':'Ľubomír Hozlár', SK:'Samuel Kováč', 'VŠ':'Vladimír Šulko', JS:'Ján Strešňák',
   RB:'Roman Bátora', MD:'Mário Dubec', AP:'Alojz Pavlovič', PM:'Pavol Marcina', 'ŠK':'Štefan Knap', JL:'Jaroslav Lečko', 'MŽ':'Matej Žáry', RJ:'Richard Jurík'
@@ -216,16 +205,17 @@ function evaluate(record: ArchitectureCatalogRecord | undefined, service?: Servi
 }
 
 export function buildArchitectureItems(state: AppState): ArchitectureItem[] {
+  const catalog = getArchitectureCatalog(state)
   const result: ArchitectureItem[]=[]
   const used=new Set<string>()
   state.services.forEach(service=>{
-    const record=architectureCatalog.find(candidate=>candidate.serviceIds.includes(service.id) || textMatches(candidate,[service.name,service.category,service.note]))
+    const record=catalog.find(candidate=>candidate.serviceIds.includes(service.id) || textMatches(candidate,[service.name,service.category,service.note]))
     const evalResult=evaluate(record,service)
     result.push({key:`service-${service.id}`,kind:'Služba',name:service.name,service,record,cmdb:linkedCmdb(state,service,record),tickets:linkedTickets(state,service,record),problems:linkedProblems(state,service,record),changes:linkedChanges(state,service,record),...evalResult})
     if(record)used.add(record.id)
   })
   state.projects.forEach(project=>{
-    const record=architectureCatalog.find(candidate=>candidate.projectIds.includes(project.id) || textMatches(candidate,[project.name,project.description,project.note]))
+    const record=catalog.find(candidate=>candidate.projectIds.includes(project.id) || textMatches(candidate,[project.name,project.description,project.note]))
     if(!record || used.has(record.id))return
     const evalResult=evaluate(record)
     result.push({key:`project-${project.id}`,kind:'Projekt',name:project.name,project,record,cmdb:linkedCmdb(state,undefined,record),tickets:linkedTickets(state,undefined,record),problems:linkedProblems(state,undefined,record),changes:linkedChanges(state,undefined,record),...evalResult})

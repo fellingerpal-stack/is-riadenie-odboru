@@ -1,4 +1,4 @@
-import { architectureCatalog, type ArchitectureCatalogRecord } from './serviceArchitecture'
+import { getArchitectureCatalog, type ArchitectureCatalogRecord } from './serviceArchitecture'
 import { oitData } from './oitData'
 import type { AppState, CmdbItem } from '../types'
 
@@ -197,13 +197,13 @@ function modelForCmdb(item: CmdbItem): TechnologyModel {
   return 'IaaS'
 }
 
-function architectureForService(serviceId: string) {
-  return architectureCatalog.find(record => record.serviceIds.includes(serviceId))
+function architectureForService(records: ArchitectureCatalogRecord[], serviceId: string) {
+  return records.find(record => record.serviceIds.includes(serviceId))
 }
 
-function matchingArchitecture(terms: string[]) {
+function matchingArchitecture(records: ArchitectureCatalogRecord[], terms: string[]) {
   const normalizedTerms = terms.map(normalize)
-  return architectureCatalog.filter(record => {
+  return records.filter(record => {
     const haystack = normalize([
       record.title,
       record.businessLayer,
@@ -218,10 +218,10 @@ function matchingArchitecture(terms: string[]) {
   })
 }
 
-function fromCmdb(state: AppState): TechnologyItem[] {
+function fromCmdb(state: AppState, records: ArchitectureCatalogRecord[]): TechnologyItem[] {
   return state.cmdbItems.map<TechnologyItem>(item => {
     const service = state.services.find(candidate => candidate.id === item.serviceId)
-    const record = architectureForService(item.serviceId)
+    const record = architectureForService(records, item.serviceId)
     return {
       id: `cmdb-${item.id}`,
       name: item.name,
@@ -247,11 +247,11 @@ function fromCmdb(state: AppState): TechnologyItem[] {
   })
 }
 
-function fromServices(state: AppState, cmdbServiceIds: Set<string>): TechnologyItem[] {
+function fromServices(state: AppState, cmdbServiceIds: Set<string>, records: ArchitectureCatalogRecord[]): TechnologyItem[] {
   return state.services
     .filter(service => !cmdbServiceIds.has(service.id))
     .map<TechnologyItem>(service => {
-      const record = architectureForService(service.id)
+      const record = architectureForService(records, service.id)
       return {
         id: `service-${service.id}`,
         name: service.name,
@@ -277,9 +277,9 @@ function fromServices(state: AppState, cmdbServiceIds: Set<string>): TechnologyI
     })
 }
 
-function fromPlatforms(): TechnologyItem[] {
+function fromPlatforms(records: ArchitectureCatalogRecord[]): TechnologyItem[] {
   return platformBlueprints.map<TechnologyItem>(blueprint => {
-    const records = matchingArchitecture(blueprint.platformTerms)
+    const matchingRecords = matchingArchitecture(records, blueprint.platformTerms)
     return {
       id: blueprint.id,
       name: blueprint.name,
@@ -289,9 +289,9 @@ function fromPlatforms(): TechnologyItem[] {
       location: blueprint.location,
       environment: 'Spoločná prevádzková platforma',
       platform: blueprint.name,
-      serviceIds: uniq(records.flatMap(record => record.serviceIds)),
+      serviceIds: uniq(matchingRecords.flatMap(record => record.serviceIds)),
       cmdbIds: [],
-      serverHints: uniq(records.flatMap(record => record.serverHints)),
+      serverHints: uniq(matchingRecords.flatMap(record => record.serverHints)),
       monitoring: blueprint.monitoring,
       backup: blueprint.backup,
       owner: blueprint.owner,
@@ -305,9 +305,9 @@ function fromPlatforms(): TechnologyItem[] {
   })
 }
 
-function fromServerHints(): TechnologyItem[] {
+function fromServerHints(records: ArchitectureCatalogRecord[]): TechnologyItem[] {
   const items: TechnologyItem[] = []
-  architectureCatalog.forEach(record => {
+  records.forEach(record => {
     record.serverHints.forEach((hint, index) => {
       items.push({
         id: `server-${record.id}-${index}`,
@@ -337,9 +337,10 @@ function fromServerHints(): TechnologyItem[] {
 }
 
 export function buildTechnologyItems(state: AppState): TechnologyItem[] {
-  const cmdb = fromCmdb(state)
+  const records = getArchitectureCatalog(state)
+  const cmdb = fromCmdb(state, records)
   const cmdbServiceIds = new Set(cmdb.flatMap(item => item.serviceIds))
-  return [...fromPlatforms(), ...fromServerHints(), ...cmdb, ...fromServices(state, cmdbServiceIds)]
+  return [...fromPlatforms(records), ...fromServerHints(records), ...cmdb, ...fromServices(state, cmdbServiceIds, records)]
     .sort((a, b) => a.model.localeCompare(b.model) || a.name.localeCompare(b.name, 'sk'))
 }
 
@@ -359,8 +360,8 @@ export function technologySourcesSummary() {
   }
 }
 
-export function recordsForItem(item: TechnologyItem): ArchitectureCatalogRecord[] {
-  return architectureCatalog.filter(record =>
+export function recordsForItem(state: AppState, item: TechnologyItem): ArchitectureCatalogRecord[] {
+  return getArchitectureCatalog(state).filter(record =>
     record.serviceIds.some(id => item.serviceIds.includes(id)) ||
     record.serverHints.some(hint => item.serverHints.includes(hint)),
   )
