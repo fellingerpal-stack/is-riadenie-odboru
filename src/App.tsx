@@ -29,8 +29,9 @@ import Roadmap from './views/Roadmap'
 import Users from './views/Users'
 import DepartmentPortal from './views/DepartmentPortal'
 import { OitDashboard, OitDataCenter, OitNetwork, OitOperations, OitRaci, OitSystems } from './views/OitPortal'
+import OitRelations from './views/OitRelations'
 
-type ViewKey='portals'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'
+type ViewKey='portals'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -75,6 +76,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'oitNetwork',label:'Sieťová architektúra',icon:'web',roles:['admin','manager','resolver','viewer']},
     {key:'oitSystems',label:'Systémy a projekty',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'oitOperations',label:'Prevádzka a riziká',icon:'risk',roles:['admin','manager','resolver','viewer']},
+    {key:'oitRelations',label:'Prevádzkové väzby',icon:'substitute',roles:['admin','manager','resolver','viewer']},
   ]},
   {label:'Systém',items:[
     {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
@@ -563,6 +565,7 @@ export default function App(){
         {view==='oitNetwork'&&<OitNetwork/>}
         {view==='oitSystems'&&<OitSystems/>}
         {view==='oitOperations'&&<OitOperations/>}
+        {view==='oitRelations'&&<OitRelations state={state} go={go}/>}
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
         {view==='people'&&<People employees={state.employees} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
         {view==='raci'&&<Raci items={state.raci} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
