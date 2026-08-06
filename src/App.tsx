@@ -567,7 +567,7 @@ export default function App(){
         {view==='portals'&&<DepartmentPortal go={go}/>}
         {view==='technology'&&<TechnologyCatalog state={state} go={go}/>}
         {view==='oit'&&<OitDashboard go={go}/>}
-        {view==='oitRaci'&&<OitRaci/>}
+        {view==='oitRaci'&&<OitRaci orisItems={state.raci} orisEmployees={state.employees}/>}
         {view==='oitDc'&&<OitDataCenter/>}
         {view==='oitNetwork'&&<OitNetwork/>}
         {view==='oitSystems'&&<OitSystems/>}
@@ -577,7 +577,7 @@ export default function App(){
         {view==='architecture'&&<ServiceArchitecture state={state} go={go} perspective="oris" canEdit={canResolve} currentUser={displayName} onArchitectureChange={architectureOverrides=>setState(current=>({...current,architectureOverrides}))}/>}
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
         {view==='people'&&<People employees={state.employees} raci={state.raci} capacity={state.capacity} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
-        {view==='raci'&&<Raci items={state.raci} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
+        {view==='raci'&&<Raci items={state.raci} employees={state.employees} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
         {view==='services'&&<Services services={state.services} canEdit={canManage} onChange={services=>setState(current=>({...current,services}))}/>} 
         {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManage} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
         {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManage} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
