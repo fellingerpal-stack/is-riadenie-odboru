@@ -161,7 +161,7 @@ export default function OitRelations({ state, go }: { state: AppState; go: Go })
       eyebrow="OIT · spoločný prevádzkový model"
       title="Prevádzkové väzby OIT"
       description="Automatický manažérsky pohľad prepája zdrojovú RACI, obe serverové lokality a portfólio OIT so službami, CMDB, ServiceDeskom, problémami, zmenami, projektmi a rizikami v spoločnej aplikácii."
-      actions={<button className="button button-secondary" onClick={exportGapRegister}><Icon name="download" size={17}/> Export medzier CSV</button>}
+      actions={<><button className="button button-secondary" onClick={()=>go('oitArchitecture')}><Icon name="services" size={17}/> Architektúra služieb</button><button className="button button-secondary" onClick={exportGapRegister}><Icon name="download" size={17}/> Export medzier CSV</button></>}
     />
 
     <section className="oit-link-kpis">

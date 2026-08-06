@@ -63,7 +63,7 @@ export default function Dashboard({ state, go }: { state: AppState; go: (view: s
   ]
 
   return <>
-    <PageHeader eyebrow="Manažérsky cockpit" title="Riadenie odboru v jednom obraze" description="RACI, vlastníctvo služieb, zastupiteľnosť, kapacity, riziká a realizácia opatrení." actions={<button className="button button-primary" onClick={() => go('work')}><Icon name="plus"/> Nová úloha</button>} />
+    <PageHeader eyebrow="Manažérsky cockpit" title="Odbor 3.2 v jednom obraze" description="Prevádzka a rozvoj informačných systémov, projektové riadenie, RACI, vlastníctvo služieb, kapacity, riziká a realizácia opatrení." actions={<button className="button button-primary" onClick={() => go('work')}><Icon name="plus"/> Nová úloha</button>} />
 
     <section className="hero-panel">
       <div>

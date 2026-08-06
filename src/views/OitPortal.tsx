@@ -43,9 +43,10 @@ export function OitDashboard({go}:{go:Go}){
     {view:'oitSystems',number:'04',title:'Systémy a projekty',description:'Zdrojový register projektov a systémov prevádzkovaných v dátovom centre.',tags:[`${oitData.projects.length} položiek`,'Vyhľadávanie','Prevádzkový stav'],icon:'systems' as const,tone:'gold'},
     {view:'oitOperations',number:'05',title:'Prevádzka a riziká',description:'Non-IT technológie, servisný režim a zariadenia určené na obnovu alebo vyradenie.',tags:['UPS a napájanie','Chladenie','Životný cyklus'],icon:'risk' as const,tone:'red'},
     {view:'oitRelations',number:'06',title:'Prevádzkové väzby',description:'Spoločný pohľad OIT na služby, CMDB, ServiceDesk, problémy, zmeny, projekty, riziká a RACI.',tags:['CMDB a služby','ITSM workflow','Krytie a medzery'],icon:'substitute' as const,tone:'purple'},
+    {view:'oitArchitecture',number:'07',title:'Architektúra služieb',description:'Prepojenie služieb a projektov odboru 3.2 s lokalitami, platformami, monitoringom a zálohami odboru 3.1.',tags:['ORIS ↔ OIT','Lokality a platformy','Závislosti'],icon:'services' as const,tone:'blue'},
   ]
   return <>
-    <PageHeader eyebrow="OIT · manažérsky rozcestník" title="Riadenie odboru informačných technológií" description="Šesť samostatných pohľadov vytvorených zo zdrojovej RACI matice, inventárov oboch serverových lokalít, prevádzkového reportu, sieťových topológií a spoločných ITSM registrov."/>
+    <PageHeader eyebrow="OIT · manažérsky rozcestník" title="3.1 Odbor správy a prevádzky IT infraštruktúry" description="Sedem samostatných pohľadov vytvorených zo zdrojovej RACI matice, inventárov oboch serverových lokalít, prevádzkového reportu, sieťových topológií a spoločných ITSM registrov."/>
     <section className="oit-overview-grid">
       <article className="panel oit-process-distribution">
         <div className="panel-heading"><div><span className="eyebrow">Rozloženie procesov OIT</span><h3>Odborné oblasti podľa zdrojovej matice</h3></div><Badge tone="info">{processes} procesov</Badge></div>
@@ -75,29 +76,54 @@ export function OitRaci(){
   const [query,setQuery]=useState('')
   const [issue,setIssue]=useState('all')
   const [tab,setTab]=useState<'matrix'|'risks'|'people'>('matrix')
+  const [peopleSort,setPeopleSort]=useState<'R'|'A'|'spof'|'participation'>('R')
   const rows=useMemo(()=>oitData.raciAreas.flatMap(a=>a.rows.map(row=>({...row,areaId:a.id,areaTitle:a.title}))),[])
   const filtered=rows.filter(row=>(area==='all'||row.areaId===area)&&(issue==='all'||(issue==='ok'?!raciIssue(row):raciIssue(row)===issue))&&`${row.process} ${row.note} ${row.areaTitle}`.toLowerCase().includes(query.toLowerCase()))
-  const issues=rows.filter(r=>raciIssue(r))
+  const structuralIssues=rows.filter(row=>['Chýba A','Viac A','Chýba R'].includes(raciIssue(row)))
+  const continuityIssues=rows.filter(row=>raciIssue(row)==='Jediný R')
   const missingA=rows.filter(r=>roleCount(r,'A')===0).length
   const noR=rows.filter(r=>roleCount(r,'R')===0).length
-  const singleR=rows.filter(r=>roleCount(r,'R')===1).length
-  const accountable=oitData.people.map(p=>({person:p,count:rows.filter(r=>Object.entries(r.assignments).some(([id,v])=>id===p.id&&splitRoles(v).includes('A'))).length})).sort((a,b)=>b.count-a.count)
+  const singleR=continuityIssues.length
+  const peopleStats=oitData.people.map(person=>{
+    const values=rows.map(row=>row.assignments[person.id]||'')
+    const has=(role:string,value:string)=>splitRoles(value).includes(role)
+    return {person,
+      A:values.filter(value=>has('A',value)).length,
+      R:values.filter(value=>has('R',value)).length,
+      C:values.filter(value=>has('C',value)).length,
+      I:values.filter(value=>has('I',value)).length,
+      combinedAR:values.filter(value=>has('A',value)&&has('R',value)).length,
+      pureR:values.filter(value=>value==='R').length,
+      participation:values.filter(Boolean).length,
+      uniqueR:rows.filter(row=>has('R',row.assignments[person.id]||'')&&roleCount(row,'R')===1).length,
+    }
+  })
+  const sortedPeople=[...peopleStats].sort((a,b)=>peopleSort==='spof'?b.uniqueR-a.uniqueR:peopleSort==='participation'?b.participation-a.participation:b[peopleSort]-a[peopleSort])
+  const topExecutor=[...peopleStats].sort((a,b)=>b.R-a.R)[0]
+  const accountable=[...peopleStats].sort((a,b)=>b.A-a.A)
   return <>
-    <PageHeader eyebrow="OIT · zodpovednosti" title="RACI OIT" description="Matica 79 procesov v ôsmich odborných oblastiach podľa konkrétnych pracovníkov."/>
+    <PageHeader eyebrow="Odbor 3.1 · zodpovednosti" title="RACI odboru správy a prevádzky IT infraštruktúry" description="Matica oddeľuje formálnu konečnú zodpovednosť A od praktického vykonávania R. Počet rolí A nie je ukazovateľ pracovného zaťaženia."/>
+    <div className="raci-reading-note"><Icon name="warning" size={19}/><div><strong>Prečo má riaditeľ 79 rolí A?</strong><span>V zdrojovej matici je riaditeľ formálne Accountable za všetkých 79 procesov. Praktickú prácu však vyjadruje rola R: tú majú podľa oblasti viacerí odborní pracovníci. Nový pohľad preto predvolene porovnáva vykonávanie R a osobitne zobrazuje formálne A.</span></div></div>
     <section className="kpi-grid oit-kpi-grid">
       <article className="kpi-card"><span>PROCESY</span><strong>{rows.length}</strong><small>{oitData.raciAreas.length} odborných oblastí</small></article>
-      <article className="kpi-card"><span>PRACOVNÍCI</span><strong>{oitData.people.length}</strong><small>konkrétne RACI roly</small></article>
-      <article className="kpi-card"><span>RACI MEDZERY</span><strong>{issues.length}</strong><small>vrátane jediného R</small></article>
-      <article className="kpi-card"><span>BEZ VYKONÁVATEĽA</span><strong>{noR}</strong><small>procesy bez roly R</small></article>
+      <article className="kpi-card"><span>ŠTRUKTURÁLNE MEDZERY</span><strong>{structuralIssues.length}</strong><small>chýba A/R alebo je viac A</small></article>
+      <article className="kpi-card"><span>JEDINÝ VYKONÁVATEĽ</span><strong>{singleR}</strong><small>kontinuitné riziko, nie chyba RACI</small></article>
+      <article className="kpi-card"><span>NAJVIAC R</span><strong>{topExecutor?.R||0}</strong><small>{topExecutor?.person.name||'—'} · praktické vykonávanie</small></article>
     </section>
-    <div className="view-tabs oit-tabs"><button className={tab==='matrix'?'active':''} onClick={()=>setTab('matrix')}><Icon name="matrix"/> Matica</button><button className={tab==='risks'?'active':''} onClick={()=>setTab('risks')}><Icon name="risk"/> Riziká a medzery <b>{issues.length}</b></button><button className={tab==='people'?'active':''} onClick={()=>setTab('people')}><Icon name="people"/> Ľudia</button></div>
+    <div className="view-tabs oit-tabs"><button className={tab==='matrix'?'active':''} onClick={()=>setTab('matrix')}><Icon name="matrix"/> Matica</button><button className={tab==='risks'?'active':''} onClick={()=>setTab('risks')}><Icon name="risk"/> Riadenie a kontinuita <b>{singleR}</b></button><button className={tab==='people'?'active':''} onClick={()=>setTab('people')}><Icon name="people"/> Ľudia a výkon rolí</button></div>
     {tab==='matrix'&&<>
       <div className="filter-panel oit-filter"><label><span>Vyhľadávanie</span><div className="search-input"><Icon name="search" size={17}/><input value={query} onChange={(e:ChangeEvent<HTMLInputElement>)=>setQuery(e.target.value)} placeholder="Proces, poznámka alebo oblasť..."/></div></label><label><span>Oblasť</span><select value={area} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setArea(e.target.value)}><option value="all">Všetky oblasti</option>{oitData.raciAreas.map(a=><option key={a.id} value={a.id}>{a.title}</option>)}</select></label><label><span>Kontrola</span><select value={issue} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setIssue(e.target.value)}><option value="all">Všetky riadky</option><option value="ok">Bez medzery</option><option>Chýba A</option><option>Viac A</option><option>Chýba R</option><option>Jediný R</option></select></label><span className="result-pill">{filtered.length} procesov</span></div>
-      <div className="oit-raci-legend"><span><b className="raci-r">R</b> Vykonávateľ</span><span><b className="raci-a">A</b> Vlastník</span><span><b className="raci-c">C</b> Konzultovaný</span><span><b className="raci-i">I</b> Informovaný</span></div>
+      <div className="oit-raci-legend"><span><b className="raci-r">R</b> Prakticky vykonáva</span><span><b className="raci-a">A</b> Konečne zodpovedá / schvaľuje</span><span><b className="raci-c">C</b> Povinne konzultovaný</span><span><b className="raci-i">I</b> Informovaný</span></div>
       <div className="oit-table-shell"><table className="oit-raci-table"><thead><tr><th>Proces / oblasť</th><th>Kontrola</th>{oitData.people.map(p=><th key={p.id}><span>{p.id}</span><small>{p.name.split(' ').slice(-1)}</small></th>)}</tr></thead><tbody>{filtered.map(row=>{const gap=raciIssue(row);return <tr key={row.id}><td><small>{row.areaTitle}</small><strong>{row.process}</strong><p>{row.note}</p></td><td>{gap?<Badge tone={gap==='Jediný R'?'warning':'danger'}>{gap}</Badge>:<Badge tone="success">OK</Badge>}</td>{oitData.people.map(p=>{const val=row.assignments[p.id]||'·';return <td key={p.id}><span className={`raci-cell ${toneForRaci(val)}`}>{val}</span></td>})}</tr>})}</tbody></table>{!filtered.length&&<Empty title="Bez výsledkov" text="Zmeňte vyhľadávanie alebo filtre."/>}</div>
     </>}
-    {tab==='risks'&&<section className="oit-risk-layout"><div className="oit-risk-cards"><article><span>Chýba vlastník A</span><strong>{missingA}</strong><small>procesov bez konečnej zodpovednosti</small></article><article><span>Chýba vykonávateľ R</span><strong>{noR}</strong><small>procesov bez praktického riešiteľa</small></article><article><span>Jediný vykonávateľ</span><strong>{singleR}</strong><small>potenciálny single point of failure</small></article></div><article className="panel"><div className="panel-heading"><div><span className="eyebrow">Koncentrácia zodpovednosti</span><h3>Najviac rolí A</h3></div></div><div className="oit-ranking">{accountable.slice(0,6).map((x,i)=><div key={x.person.id}><span>{i+1}</span><div><strong>{x.person.name}</strong><small>{x.person.area}</small></div><b>{x.count}</b></div>)}</div></article><article className="panel"><div className="panel-heading"><div><span className="eyebrow">Otvorené medzery</span><h3>Procesy na kontrolu</h3></div></div><div className="oit-gap-list">{issues.slice(0,18).map(row=><div key={row.id}><Badge tone={raciIssue(row)==='Jediný R'?'warning':'danger'}>{raciIssue(row)}</Badge><span><strong>{row.process}</strong><small>{row.areaTitle}</small></span></div>)}</div></article></section>}
-    {tab==='people'&&<section className="oit-people-grid">{oitData.people.map(p=><article key={p.id}><div className="avatar">{p.id}</div><div><strong>{p.name}</strong><span>{p.area}</span><small>A: {accountable.find(x=>x.person.id===p.id)?.count||0} · R: {rows.filter(r=>Object.entries(r.assignments).some(([id,v])=>id===p.id&&splitRoles(v).includes('R'))).length}</small></div></article>)}</section>}
+    {tab==='risks'&&<section className="oit-raci-management">
+      <div className="oit-risk-cards"><article><span>Chýba vlastník A</span><strong>{missingA}</strong><small>formálne riadenie</small></article><article><span>Chýba vykonávateľ R</span><strong>{noR}</strong><small>praktické vykonanie</small></article><article><span>Jediný vykonávateľ R</span><strong>{singleR}</strong><small>riziko zastupiteľnosti</small></article></div>
+      <div className="oit-raci-management-grid"><article className="panel"><div className="panel-heading"><div><span className="eyebrow">Praktické vykonávanie</span><h3>Najviac procesov s rolou R</h3></div><Badge tone="info">pracovné zapojenie</Badge></div><div className="oit-ranking">{[...peopleStats].sort((a,b)=>b.R-a.R).slice(0,7).map((x,i)=><div key={x.person.id}><span>{i+1}</span><div><strong>{x.person.name}</strong><small>{x.person.area}</small></div><b>{x.R}</b></div>)}</div></article>
+      <article className="panel"><div className="panel-heading"><div><span className="eyebrow">Formálne vlastníctvo</span><h3>Konečná zodpovednosť A</h3></div><Badge tone="purple">governance</Badge></div><div className="oit-accountability-explainer"><div className="avatar avatar-large">MK</div><div><strong>{accountable[0]?.person.name}</strong><span>{accountable[0]?.A} z {rows.length} procesov má formálne A</span><p>Ide o riaditeľskú konečnú zodpovednosť a schválenie, nie o tvrdenie, že riaditeľ všetky procesy vykonáva. Vykonávanie sa hodnotí cez R.</p><small>Z toho {accountable[0]?.combinedAR} procesov obsahuje kombinovanú rolu A/R.</small></div></div></article>
+      <article className="panel"><div className="panel-heading"><div><span className="eyebrow">Single point of failure</span><h3>Procesy, kde je osoba jediným R</h3></div></div><div className="oit-ranking">{[...peopleStats].sort((a,b)=>b.uniqueR-a.uniqueR).filter(x=>x.uniqueR>0).map((x,i)=><div key={x.person.id}><span>{i+1}</span><div><strong>{x.person.name}</strong><small>{x.person.area}</small></div><b>{x.uniqueR}</b></div>)}</div></article>
+      <article className="panel"><div className="panel-heading"><div><span className="eyebrow">Kontinuitné riziká</span><h3>Procesy s jediným vykonávateľom</h3></div></div><div className="oit-gap-list">{continuityIssues.map(row=><div key={row.id}><Badge tone="warning">Jediný R</Badge><span><strong>{row.process}</strong><small>{row.areaTitle} · {Object.entries(row.assignments).find(([,value])=>splitRoles(value).includes('R'))?.[0]}</small></span></div>)}</div></article></div>
+    </section>}
+    {tab==='people'&&<><div className="filter-panel oit-people-sort"><label><span>Zoradiť podľa</span><select value={peopleSort} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setPeopleSort(e.target.value as typeof peopleSort)}><option value="R">Praktické vykonávanie R</option><option value="A">Formálne vlastníctvo A</option><option value="spof">Jediný vykonávateľ</option><option value="participation">Celkové zapojenie</option></select></label><span className="result-pill">{sortedPeople.length} pracovníkov</span></div><section className="oit-people-metrics">{sortedPeople.map(stat=><article className="panel" key={stat.person.id}><div className="oit-person-title"><div className="avatar">{stat.person.id}</div><div><strong>{stat.person.name}</strong><span>{stat.person.area}</span></div></div><div className="oit-role-metric-grid"><span><small>R · vykonáva</small><b>{stat.R}</b></span><span><small>A · zodpovedá</small><b>{stat.A}</b></span><span><small>C · konzultuje</small><b>{stat.C}</b></span><span><small>I · informovaný</small><b>{stat.I}</b></span><span><small>A/R kombinácia</small><b>{stat.combinedAR}</b></span><span><small>Jediný R</small><b>{stat.uniqueR}</b></span></div><Progress value={Math.round(stat.participation/rows.length*100)} label="Zapojenie do procesov"/></article>)}</section></>}
   </>
 }
 
