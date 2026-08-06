@@ -71,7 +71,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'OIT',items:[
     {key:'oit',label:'Prehľad OIT',icon:'dashboard',roles:['admin','manager','resolver','viewer']},
     {key:'oitRaci',label:'RACI OIT',icon:'matrix',roles:['admin','manager','resolver','viewer']},
-    {key:'oitDc',label:'Dátové centrum',icon:'database',roles:['admin','manager','resolver','viewer']},
+    {key:'oitDc',label:'Dátové centrá',icon:'database',roles:['admin','manager','resolver','viewer']},
     {key:'oitNetwork',label:'Sieťová architektúra',icon:'web',roles:['admin','manager','resolver','viewer']},
     {key:'oitSystems',label:'Systémy a projekty',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'oitOperations',label:'Prevádzka a riziká',icon:'risk',roles:['admin','manager','resolver','viewer']},
