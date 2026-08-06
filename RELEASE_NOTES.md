@@ -1,16 +1,16 @@
-# Release notes
+# Aktuálny release
 
-Aktuálna verzia: **0.5.0**
+## Verzia 0.19.0 – spoločný pohľad a porovnanie RACI odborov
+
+Pozri `RELEASE_NOTES_0.19.md`.
 
 Hlavné zmeny:
 
-- rozšírený Helpdesk na ServiceDesk,
-- SLA prvej reakcie a vyriešenia,
-- fronty riešiteľov,
-- kategórie a podkategórie,
-- upozornenia, prílohy a osobný pohľad,
-- reporty a export pre Excel,
-- pripravený samostatný Supabase dátový model,
-- čitateľnejší RACI vysvetľovací panel.
+- Rovnaký osobný pohľad **Ľudia a výkon rolí** priamo v RACI odboru 3.2.
+- Nová karta **Porovnanie 3.1 / 3.2** v oboch RACI moduloch.
+- Spoločná analytika procesov, oblastí, rolí R/A/C/I, formálnych medzier a kontinuitných rizík.
+- Prepínateľné karty pracovníkov oboch odborov v jednom pohľade.
 
-Podrobnosti sú v `RELEASE_NOTES_0.5.md`.
+# História
+
+Predchádzajúce release notes sú uložené v samostatných súboroch `RELEASE_NOTES_0.xx.md`.

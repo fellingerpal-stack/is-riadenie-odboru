@@ -1,22 +1,23 @@
 # IS Riadenie odboru CVTI SR
 
-React + TypeScript + Vite aplikácia pre riadenie odboru, RACI, služby, zastupiteľnosť, kapacity, projekty, úlohy, ServiceDesk, Change management, Problem management, IAM a CMDB.
+React + TypeScript + Vite aplikácia pre spoločné riadenie:
 
-## Verzia 0.10.0
+- **3.1 Odbor správy a prevádzky IT infraštruktúry**,
+- **3.2 Odbor prevádzky, rozvoja informačných systémov a projektové riadenie**.
 
-Release 0.10 dopĺňa produkčný základ pre používateľské účty:
+Aplikácia prepája RACI, ľudí a výkon rolí, služby, projekty, úlohy, ServiceDesk, Change, Problem, IAM, CMDB, riziká, digitálne portfólio, dátové centrá, technologický katalóg a architektúru služieb.
 
-- prihlasovanie cez Supabase Auth,
-- obnovu a zmenu hesla,
-- správu používateľov a organizačných údajov,
-- roly Administrátor, Riaditeľ / manažér, Riešiteľ, Zamestnanec a Čitateľ,
-- aktiváciu a deaktiváciu účtov,
-- pozývanie používateľov cez Edge Function,
-- audit administrátorských zmien,
-- posledné prihlásenie,
-- automatické cloudové ukladanie s manuálnou zálohou.
+## Verzia 0.19.0
 
-Bez `.env` aplikácia funguje v lokálnom demo režime a obrazovka Používatelia používa vzorové účty uložené v prehliadači.
+Release dopĺňa:
+
+- spoločné porovnanie RACI odborov **3.1 a 3.2**,
+- porovnanie procesov, oblastí, formálnej úplnosti, jediných R a spojených A/R,
+- rovnaký osobný pohľad **Ľudia a výkon rolí** priamo v RACI odboru 3.2,
+- distribúciu rolí R/A/C/I a rebríčky najvýraznejších rolí,
+- prepínateľné karty pracovníkov oboch odborov v jednom manažérskom pohľade.
+
+Podrobnosti sú v `RELEASE_NOTES_0.19.md`.
 
 ## Spustenie
 
@@ -25,4 +26,17 @@ npm install
 npm run dev
 ```
 
-Pre reálne účty a prihlásenie postupujte podľa `SUPABASE_SETUP_0.10.md`.
+Produkčný build:
+
+```bash
+npm run build
+```
+
+## Nasadenie aktualizácie
+
+```bash
+node install-v0190-raci-comparison.mjs
+npm run build
+```
+
+Pre release 0.19.0 sa nespúšťa nový Supabase SQL skript.
