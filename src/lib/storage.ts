@@ -1,9 +1,9 @@
 import seed from '../data/seed.json'
-import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, SlaPolicy, Task, Ticket } from '../types'
+import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, SlaPolicy, Task, Ticket } from '../types'
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.17.0'
+const CURRENT_VERSION = '0.18.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as AppState
@@ -336,6 +336,37 @@ function migrateCmdbItem(item: CmdbItem): CmdbItem {
   }
 }
 
+function migrateArchitectureRecord(record: ServiceArchitectureRecord): ServiceArchitectureRecord {
+  const source = (record ?? {}) as Partial<ServiceArchitectureRecord>
+  const confidence = source.confidence === 'Potvrdené zo zdrojov' || source.confidence === 'Čiastočne potvrdené'
+    ? source.confidence
+    : 'Na potvrdenie'
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
+    title: typeof source.title === 'string' && source.title ? source.title : 'Bez názvu',
+    serviceIds: Array.isArray(source.serviceIds) ? source.serviceIds.filter((value): value is string => typeof value === 'string') : [],
+    projectIds: Array.isArray(source.projectIds) ? source.projectIds.filter((value): value is string => typeof value === 'string') : [],
+    aliases: Array.isArray(source.aliases) ? source.aliases.filter((value): value is string => typeof value === 'string') : [],
+    businessLayer: typeof source.businessLayer === 'string' ? source.businessLayer : '',
+    oitProjects: Array.isArray(source.oitProjects) ? source.oitProjects.filter((value): value is string => typeof value === 'string') : [],
+    runtimeLocation: typeof source.runtimeLocation === 'string' ? source.runtimeLocation : 'Na potvrdenie',
+    environment: typeof source.environment === 'string' ? source.environment : 'Neurčené',
+    platform: typeof source.platform === 'string' ? source.platform : 'Na potvrdenie',
+    serverHints: Array.isArray(source.serverHints) ? source.serverHints.filter((value): value is string => typeof value === 'string') : [],
+    networkDependencies: Array.isArray(source.networkDependencies) ? source.networkDependencies.filter((value): value is string => typeof value === 'string') : [],
+    monitoring: typeof source.monitoring === 'string' ? source.monitoring : '',
+    backup: typeof source.backup === 'string' ? source.backup : '',
+    continuity: typeof source.continuity === 'string' ? source.continuity : '',
+    oitDomains: Array.isArray(source.oitDomains) ? source.oitDomains.filter((value): value is string => typeof value === 'string') : [],
+    oitOwnerIds: Array.isArray(source.oitOwnerIds) ? source.oitOwnerIds.filter((value): value is string => typeof value === 'string') : [],
+    confidence,
+    evidence: typeof source.evidence === 'string' ? source.evidence : 'Manuálne doplnené v aplikácii',
+    note: typeof source.note === 'string' ? source.note : '',
+    updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : '',
+    updatedBy: typeof source.updatedBy === 'string' ? source.updatedBy : '',
+  }
+}
+
 function migrateCmdbRelationship(relationship: CmdbRelationship): CmdbRelationship {
   const source = (relationship ?? {}) as Partial<CmdbRelationship>
   return {
@@ -380,6 +411,7 @@ export function migrateState(input: AppState): AppState {
     recertificationCampaigns: Array.isArray(source.recertificationCampaigns) ? source.recertificationCampaigns.map(migrateRecertificationCampaign) : defaults.recertificationCampaigns,
     cmdbItems: Array.isArray(source.cmdbItems) ? source.cmdbItems.map(migrateCmdbItem) : defaults.cmdbItems,
     cmdbRelationships: Array.isArray(source.cmdbRelationships) ? source.cmdbRelationships.map(migrateCmdbRelationship) : defaults.cmdbRelationships,
+    architectureOverrides: Array.isArray(source.architectureOverrides) ? source.architectureOverrides.map(migrateArchitectureRecord) : [],
   }
 }
 
