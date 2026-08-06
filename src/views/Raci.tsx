@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import type { RaciCode, RaciItem } from '../types'
+import type { Employee, RaciCode, RaciItem } from '../types'
 import { Badge, Empty, Icon, Modal, PageHeader } from '../components/UI'
+import { buildOrisRaciAnalytics } from '../lib/raciAnalytics'
+import RaciDepartmentComparison, { RaciPeopleCards } from './RaciComparison'
 import './Raci.css'
 
 const codes: RaciCode[] = ['', 'R', 'A', 'C', 'I', 'R/A']
@@ -16,7 +18,7 @@ const externalParticipants = new Set([
   'Dodávateľ / partner',
 ])
 
-type ViewMode = 'overview' | 'matrix' | 'rules'
+type ViewMode = 'overview' | 'people' | 'compare' | 'matrix' | 'rules'
 type InsightTone = 'danger' | 'warning' | 'info'
 
 interface InsightSettings {
@@ -243,10 +245,12 @@ function insightTone(score: number): InsightTone {
 
 export default function Raci({
   items,
+  employees = [],
   canEdit,
   onChange,
 }: {
   items: RaciItem[]
+  employees?: Employee[]
   canEdit: boolean
   onChange: (items: RaciItem[]) => void
 }) {
@@ -257,6 +261,7 @@ export default function Raci({
   const [criticality, setCriticality] = useState('Všetky')
   const [selected, setSelected] = useState<RaciItem | null>(null)
   const [insightSettings, setInsightSettings] = useState<InsightSettings>(loadInsightSettings)
+  const orisAnalytics = useMemo(() => buildOrisRaciAnalytics(items, employees), [items, employees])
   const tableWidth =
     PROCESS_COLUMN_WIDTH +
     CONTROL_COLUMN_WIDTH +
@@ -477,6 +482,27 @@ export default function Raci({
         <button
           type="button"
           role="tab"
+          aria-selected={view === 'people'}
+          className={view === 'people' ? 'active' : ''}
+          onClick={() => setView('people')}
+        >
+          <Icon name="people" size={18} />
+          Ľudia a výkon rolí
+          <span>{orisAnalytics.activePeople}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'compare'}
+          className={view === 'compare' ? 'active' : ''}
+          onClick={() => setView('compare')}
+        >
+          <Icon name="substitute" size={18} />
+          Porovnanie 3.1 / 3.2
+        </button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={view === 'rules'}
           className={view === 'rules' ? 'active' : ''}
           onClick={() => setView('rules')}
@@ -628,6 +654,18 @@ export default function Raci({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {view === 'people' ? (
+        <RaciPeopleCards
+          analytics={orisAnalytics}
+          title="Ľudia a výkon rolí odboru 3.2"
+          description="Rovnaký osobný pohľad ako v RACI OIT: praktické vykonávanie R, formálne vlastníctvo A, konzultovanie C, informovanie I, spojené A/R a procesy s jediným vykonávateľom."
+        />
+      ) : null}
+
+      {view === 'compare' ? (
+        <RaciDepartmentComparison orisItems={items} orisEmployees={employees} />
       ) : null}
 
       {view === 'rules' ? (
