@@ -31,8 +31,9 @@ import DepartmentPortal from './views/DepartmentPortal'
 import { OitDashboard, OitDataCenter, OitNetwork, OitOperations, OitRaci, OitSystems } from './views/OitPortal'
 import OitRelations from './views/OitRelations'
 import ServiceArchitecture from './views/ServiceArchitecture'
+import TechnologyCatalog from './views/TechnologyCatalog'
 
-type ViewKey='portals'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'technology'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -41,6 +42,7 @@ const resolverRoles:AppRole[]=['admin','manager','resolver']
 const employeeRoles:AppRole[]=['admin','manager','resolver','employee']
 const orisNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
+  {label:'Spoločné',items:[{key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']}]},
   {label:'Prehľad ORIS',items:[{key:'dashboard',label:'Dashboard ORIS',icon:'dashboard',roles:allRoles}]},
   {label:'Organizácia',items:[
     {key:'people',label:'Ľudia a roly',icon:'people',roles:['admin','manager','resolver','viewer']},
@@ -71,6 +73,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
 ]
 const oitNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
+  {label:'Spoločné',items:[{key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']}]},
   {label:'OIT',items:[
     {key:'oit',label:'Prehľad OIT',icon:'dashboard',roles:['admin','manager','resolver','viewer']},
     {key:'oitRaci',label:'RACI OIT',icon:'matrix',roles:['admin','manager','resolver','viewer']},
@@ -87,7 +90,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
   ]},
 ]
 const portalNavGroups:{label:string;items:NavItem[]}[]=[
-  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
+  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},{key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']}]},
   {label:'Systém',items:[
     {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
     {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:['admin']},
@@ -294,7 +297,7 @@ export default function App(){
     }
   },[auth.configured,auth.profile?.organizationId])
 
-  const workspace=view==='portals'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='technology'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>item.roles?.includes(role))})).filter(group=>group.items.length),[role,workspace])
@@ -562,6 +565,7 @@ export default function App(){
       <main className="content">
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span>{syncError}</span></div>}
         {view==='portals'&&<DepartmentPortal go={go}/>}
+        {view==='technology'&&<TechnologyCatalog state={state} go={go}/>}
         {view==='oit'&&<OitDashboard go={go}/>}
         {view==='oitRaci'&&<OitRaci/>}
         {view==='oitDc'&&<OitDataCenter/>}
@@ -572,7 +576,7 @@ export default function App(){
         {view==='oitArchitecture'&&<ServiceArchitecture state={state} go={go} perspective="oit"/>}
         {view==='architecture'&&<ServiceArchitecture state={state} go={go} perspective="oris"/>}
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
-        {view==='people'&&<People employees={state.employees} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
+        {view==='people'&&<People employees={state.employees} raci={state.raci} capacity={state.capacity} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
         {view==='raci'&&<Raci items={state.raci} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
         {view==='services'&&<Services services={state.services} canEdit={canManage} onChange={services=>setState(current=>({...current,services}))}/>} 
         {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManage} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
