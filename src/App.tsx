@@ -30,8 +30,9 @@ import Users from './views/Users'
 import DepartmentPortal from './views/DepartmentPortal'
 import { OitDashboard, OitDataCenter, OitNetwork, OitOperations, OitRaci, OitSystems } from './views/OitPortal'
 import OitRelations from './views/OitRelations'
+import ServiceArchitecture from './views/ServiceArchitecture'
 
-type ViewKey='portals'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'
+type ViewKey='portals'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -45,6 +46,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'people',label:'Ľudia a roly',icon:'people',roles:['admin','manager','resolver','viewer']},
     {key:'raci',label:'RACI matica',icon:'matrix',roles:['admin','manager','resolver','viewer']},
     {key:'services',label:'Služby a systémy',icon:'services',roles:['admin','manager','resolver','viewer']},
+    {key:'architecture',label:'Architektúra a závislosti',icon:'substitute',roles:['admin','manager','resolver','viewer']},
     {key:'substitutions',label:'Zastupiteľnosť',icon:'substitute',roles:['admin','manager','resolver','viewer']},
   ]},
   {label:'Digitálne portfólio',items:[
@@ -77,6 +79,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'oitSystems',label:'Systémy a projekty',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'oitOperations',label:'Prevádzka a riziká',icon:'risk',roles:['admin','manager','resolver','viewer']},
     {key:'oitRelations',label:'Prevádzkové väzby',icon:'substitute',roles:['admin','manager','resolver','viewer']},
+    {key:'oitArchitecture',label:'Architektúra služieb',icon:'services',roles:['admin','manager','resolver','viewer']},
   ]},
   {label:'Systém',items:[
     {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
@@ -295,8 +298,8 @@ export default function App(){
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>item.roles?.includes(role))})).filter(group=>group.items.length),[role,workspace])
-  const workspaceName=workspace==='oit'?'Riadenie OIT':workspace==='oris'?'Riadenie ORIS':'Portál odborov'
-  const workspaceDetail=workspace==='oit'?'CVTI SR · Odbor IT':workspace==='oris'?'CVTI SR · Odbor 3.2':'CVTI SR · ORIS a OIT'
+  const workspaceName=workspace==='oit'?'Odbor 3.1':workspace==='oris'?'Odbor 3.2':'Portál odborov'
+  const workspaceDetail=workspace==='oit'?'Správa a prevádzka IT infraštruktúry':workspace==='oris'?'Prevádzka a rozvoj IS · projektové riadenie':'CVTI SR · odbory 3.1 a 3.2'
 
   function go(next:string){
     const key=next as ViewKey
@@ -566,6 +569,8 @@ export default function App(){
         {view==='oitSystems'&&<OitSystems/>}
         {view==='oitOperations'&&<OitOperations/>}
         {view==='oitRelations'&&<OitRelations state={state} go={go}/>}
+        {view==='oitArchitecture'&&<ServiceArchitecture state={state} go={go} perspective="oit"/>}
+        {view==='architecture'&&<ServiceArchitecture state={state} go={go} perspective="oris"/>}
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
         {view==='people'&&<People employees={state.employees} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
         {view==='raci'&&<Raci items={state.raci} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
