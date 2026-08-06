@@ -27,16 +27,19 @@ import Risks from './views/Risks'
 import Decisions from './views/Decisions'
 import Roadmap from './views/Roadmap'
 import Users from './views/Users'
+import DepartmentPortal from './views/DepartmentPortal'
+import { OitDashboard, OitDataCenter, OitNetwork, OitOperations, OitRaci, OitSystems } from './views/OitPortal'
 
-type ViewKey='dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'
+type ViewKey='portals'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
 const managementRoles:AppRole[]=['admin','manager']
 const resolverRoles:AppRole[]=['admin','manager','resolver']
 const employeeRoles:AppRole[]=['admin','manager','resolver','employee']
-const navGroups:{label:string;items:NavItem[]}[]=[
-  {label:'Prehľad',items:[{key:'dashboard',label:'Dashboard',icon:'dashboard',roles:allRoles}]},
+const orisNavGroups:{label:string;items:NavItem[]}[]=[
+  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
+  {label:'Prehľad ORIS',items:[{key:'dashboard',label:'Dashboard ORIS',icon:'dashboard',roles:allRoles}]},
   {label:'Organizácia',items:[
     {key:'people',label:'Ľudia a roly',icon:'people',roles:['admin','manager','resolver','viewer']},
     {key:'raci',label:'RACI matica',icon:'matrix',roles:['admin','manager','resolver','viewer']},
@@ -63,11 +66,34 @@ const navGroups:{label:string;items:NavItem[]}[]=[
     {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:['admin']},
   ]},
 ]
+const oitNavGroups:{label:string;items:NavItem[]}[]=[
+  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
+  {label:'OIT',items:[
+    {key:'oit',label:'Prehľad OIT',icon:'dashboard',roles:['admin','manager','resolver','viewer']},
+    {key:'oitRaci',label:'RACI OIT',icon:'matrix',roles:['admin','manager','resolver','viewer']},
+    {key:'oitDc',label:'Dátové centrum',icon:'database',roles:['admin','manager','resolver','viewer']},
+    {key:'oitNetwork',label:'Sieťová architektúra',icon:'web',roles:['admin','manager','resolver','viewer']},
+    {key:'oitSystems',label:'Systémy a projekty',icon:'systems',roles:['admin','manager','resolver','viewer']},
+    {key:'oitOperations',label:'Prevádzka a riziká',icon:'risk',roles:['admin','manager','resolver','viewer']},
+  ]},
+  {label:'Systém',items:[
+    {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
+    {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:['admin']},
+  ]},
+]
+const portalNavGroups:{label:string;items:NavItem[]}[]=[
+  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
+  {label:'Systém',items:[
+    {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
+    {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:['admin']},
+  ]},
+]
+const allNavGroups=[...orisNavGroups,...oitNavGroups,...portalNavGroups]
 
-function isViewKey(value:string):value is ViewKey{return navGroups.flatMap(g=>g.items).some(i=>i.key===value)}
+function isViewKey(value:string):value is ViewKey{return allNavGroups.flatMap(g=>g.items).some(i=>i.key===value)}
 function initialView():ViewKey{
   const h=location.hash.replace('#/','').split('?')[0]
-  return isViewKey(h)?h:'dashboard'
+  return isViewKey(h)?h:'portals'
 }
 function initials(name:string){return name.split(/\s|@/).filter(Boolean).slice(0,2).map(part=>part[0]?.toUpperCase()).join('')||'IS'}
 function roleLabel(role:AppRole){
@@ -193,8 +219,8 @@ export default function App(){
   useEffect(()=>{
     const onHash=()=>{
       const next=initialView()
-      const allowed=navGroups.flatMap(group=>group.items).find(item=>item.key===next)?.roles?.includes(role)??false
-      if(!allowed){setView('dashboard');location.hash='/dashboard'}
+      const allowed=allNavGroups.flatMap(group=>group.items).find(item=>item.key===next)?.roles?.includes(role)??false
+      if(!allowed){setView('portals');location.hash='/portals'}
       else setView(next)
     }
     addEventListener('hashchange',onHash)
@@ -202,8 +228,8 @@ export default function App(){
   },[role])
 
   useEffect(()=>{
-    const allowed=navGroups.flatMap(group=>group.items).find(item=>item.key===view)?.roles?.includes(role)??false
-    if(!allowed){setView('dashboard');location.hash='/dashboard'}
+    const allowed=allNavGroups.flatMap(group=>group.items).find(item=>item.key===view)?.roles?.includes(role)??false
+    if(!allowed){setView('portals');location.hash='/portals'}
   },[role,view])
 
   useEffect(()=>{
@@ -263,12 +289,16 @@ export default function App(){
     }
   },[auth.configured,auth.profile?.organizationId])
 
-  const currentLabel=useMemo(()=>navGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Dashboard',[view])
-  const visibleGroups=useMemo(()=>navGroups.map(group=>({...group,items:group.items.filter(item=>item.roles?.includes(role))})).filter(group=>group.items.length),[role])
+  const workspace=view==='portals'?'portal':view.startsWith('oit')?'oit':'oris'
+  const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
+  const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
+  const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>item.roles?.includes(role))})).filter(group=>group.items.length),[role,workspace])
+  const workspaceName=workspace==='oit'?'Riadenie OIT':workspace==='oris'?'Riadenie ORIS':'Portál odborov'
+  const workspaceDetail=workspace==='oit'?'CVTI SR · Odbor IT':workspace==='oris'?'CVTI SR · Odbor 3.2':'CVTI SR · ORIS a OIT'
 
   function go(next:string){
     const key=next as ViewKey
-    const allowed=navGroups.flatMap(group=>group.items).find(item=>item.key===key)?.roles?.includes(role)??false
+    const allowed=allNavGroups.flatMap(group=>group.items).find(item=>item.key===key)?.roles?.includes(role)??false
     if(!allowed)return
     setView(key);location.hash=`/${key}`;setSidebarOpen(false);window.scrollTo({top:0,behavior:'smooth'})
   }
@@ -513,19 +543,26 @@ export default function App(){
 
   return <div className="app-shell">
     <aside className={`sidebar ${sidebarOpen?'sidebar-open':''}`}>
-      <div className="brand"><div className="brand-mark">IS</div><div><strong>Riadenie odboru</strong><small>CVTI SR · Odbor 3.2</small></div><button className="icon-button sidebar-close" onClick={()=>setSidebarOpen(false)}><Icon name="close"/></button></div>
+      <div className="brand"><div className="brand-mark">IS</div><div><strong>{workspaceName}</strong><small>{workspaceDetail}</small></div><button className="icon-button sidebar-close" onClick={()=>setSidebarOpen(false)}><Icon name="close"/></button></div>
       <nav>{visibleGroups.map(group=><section className="nav-group" key={group.label}><span>{group.label}</span>{group.items.map(item=>{const badge=item.badge?.(state);return <button key={item.key} className={view===item.key?'active':''} onClick={()=>go(item.key)}><Icon name={item.icon}/><span>{item.label}</span>{badge!==undefined&&badge>0?<b>{badge}</b>:null}</button>})}</section>)}</nav>
       <div className="sidebar-footer"><div className={`mode-dot mode-${sync}`}/><div><strong>{auth.configured?'Supabase režim':'Pracovný prototyp'}</strong><small>{syncLabel(sync)} · v{state.meta.version}</small></div></div>
     </aside>
     {sidebarOpen&&<button className="sidebar-overlay" onClick={()=>setSidebarOpen(false)} aria-label="Zavrieť menu"/>}
     <div className="app-main">
-      <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setSidebarOpen(true)}><Icon name="menu"/></button><div><small>IS Riadenie odboru</small><strong>{currentLabel}</strong></div></div><div className="topbar-right">
+      <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setSidebarOpen(true)}><Icon name="menu"/></button><div><small>{workspaceName}</small><strong>{currentLabel}</strong></div></div><div className="topbar-right">
         {auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canResolve&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
         <div className={`data-mode data-mode-${sync}`} title={syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{syncLabel(sync)}</span></div>
         <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{roleLabel(role)}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
       </div></header>
       <main className="content">
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span>{syncError}</span></div>}
+        {view==='portals'&&<DepartmentPortal go={go}/>}
+        {view==='oit'&&<OitDashboard go={go}/>}
+        {view==='oitRaci'&&<OitRaci/>}
+        {view==='oitDc'&&<OitDataCenter/>}
+        {view==='oitNetwork'&&<OitNetwork/>}
+        {view==='oitSystems'&&<OitSystems/>}
+        {view==='oitOperations'&&<OitOperations/>}
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
         {view==='people'&&<People employees={state.employees} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
         {view==='raci'&&<Raci items={state.raci} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
