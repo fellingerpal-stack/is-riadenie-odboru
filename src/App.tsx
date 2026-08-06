@@ -45,7 +45,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Spoločné',items:[{key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']}]},
   {label:'Prehľad ORIS',items:[{key:'dashboard',label:'Dashboard ORIS',icon:'dashboard',roles:allRoles}]},
   {label:'Organizácia',items:[
-    {key:'people',label:'Ľudia a roly',icon:'people',roles:['admin','manager','resolver','viewer']},
+    {key:'people',label:'Ľudia a výkon rolí',icon:'people',roles:['admin','manager','resolver','viewer']},
     {key:'raci',label:'RACI matica',icon:'matrix',roles:['admin','manager','resolver','viewer']},
     {key:'services',label:'Služby a systémy',icon:'services',roles:['admin','manager','resolver','viewer']},
     {key:'architecture',label:'Architektúra a závislosti',icon:'substitute',roles:['admin','manager','resolver','viewer']},
@@ -573,8 +573,8 @@ export default function App(){
         {view==='oitSystems'&&<OitSystems/>}
         {view==='oitOperations'&&<OitOperations/>}
         {view==='oitRelations'&&<OitRelations state={state} go={go}/>}
-        {view==='oitArchitecture'&&<ServiceArchitecture state={state} go={go} perspective="oit"/>}
-        {view==='architecture'&&<ServiceArchitecture state={state} go={go} perspective="oris"/>}
+        {view==='oitArchitecture'&&<ServiceArchitecture state={state} go={go} perspective="oit" canEdit={canResolve} currentUser={displayName} onArchitectureChange={architectureOverrides=>setState(current=>({...current,architectureOverrides}))}/>}
+        {view==='architecture'&&<ServiceArchitecture state={state} go={go} perspective="oris" canEdit={canResolve} currentUser={displayName} onArchitectureChange={architectureOverrides=>setState(current=>({...current,architectureOverrides}))}/>}
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
         {view==='people'&&<People employees={state.employees} raci={state.raci} capacity={state.capacity} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
         {view==='raci'&&<Raci items={state.raci} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
