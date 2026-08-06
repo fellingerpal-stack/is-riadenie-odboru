@@ -1,0 +1,16 @@
+package.json
+src/App.tsx
+src/types.ts
+src/lib/storage.ts
+src/data/seed.json
+src/data/serviceArchitecture.ts
+src/data/technologyCatalog.ts
+src/views/TechnologyCatalog.tsx
+src/views/ServiceArchitecture.tsx
+src/views/OitPortal.tsx
+src/views/People.tsx
+src/styles.css
+README.md
+RELEASE_NOTES.md
+RELEASE_NOTES_0.18.md
+README_NASADENIE_0.18.txt
