@@ -42,9 +42,10 @@ export function OitDashboard({go}:{go:Go}){
     {view:'oitNetwork',number:'03',title:'Sieťová architektúra',description:'Topológie DC VaV, OOB siete a serverovne Lamačská spolu s katalógom serverového softvéru.',tags:['4 chránené dokumenty','OOB','Lamačská'],icon:'web' as const,tone:'purple'},
     {view:'oitSystems',number:'04',title:'Systémy a projekty',description:'Zdrojový register projektov a systémov prevádzkovaných v dátovom centre.',tags:[`${oitData.projects.length} položiek`,'Vyhľadávanie','Prevádzkový stav'],icon:'systems' as const,tone:'gold'},
     {view:'oitOperations',number:'05',title:'Prevádzka a riziká',description:'Non-IT technológie, servisný režim a zariadenia určené na obnovu alebo vyradenie.',tags:['UPS a napájanie','Chladenie','Životný cyklus'],icon:'risk' as const,tone:'red'},
+    {view:'oitRelations',number:'06',title:'Prevádzkové väzby',description:'Spoločný pohľad OIT na služby, CMDB, ServiceDesk, problémy, zmeny, projekty, riziká a RACI.',tags:['CMDB a služby','ITSM workflow','Krytie a medzery'],icon:'substitute' as const,tone:'purple'},
   ]
   return <>
-    <PageHeader eyebrow="OIT · manažérsky rozcestník" title="Riadenie odboru informačných technológií" description="Päť samostatných pohľadov vytvorených zo zdrojovej RACI matice, inventárov oboch serverových lokalít, prevádzkového reportu a sieťových topológií."/>
+    <PageHeader eyebrow="OIT · manažérsky rozcestník" title="Riadenie odboru informačných technológií" description="Šesť samostatných pohľadov vytvorených zo zdrojovej RACI matice, inventárov oboch serverových lokalít, prevádzkového reportu, sieťových topológií a spoločných ITSM registrov."/>
     <section className="oit-overview-grid">
       <article className="panel oit-process-distribution">
         <div className="panel-heading"><div><span className="eyebrow">Rozloženie procesov OIT</span><h3>Odborné oblasti podľa zdrojovej matice</h3></div><Badge tone="info">{processes} procesov</Badge></div>
