@@ -10,3 +10,5 @@
 .iam-db-status span,.iam-db-status strong,.iam-db-status small{display:block}.iam-db-status span{font-size:7px;letter-spacing:.08em;text-transform:uppercase;color:#81929e}.iam-db-status strong{margin-top:3px;color:#294b61;font-size:10px}.iam-db-status small{margin-top:4px;color:#708390;font-size:8px;line-height:1.4}
 .iam-db-error{border-color:#efc7cb;background:#fff8f8}.iam-db-error .iam-db-icon{background:#fdebed;color:#af3642}.iam-db-saving .iam-db-icon,.iam-db-loading .iam-db-icon{background:#fff4dc;color:#a96d09}
 @media(max-width:760px){.iam-db-status{grid-template-columns:auto 1fr}.iam-db-status>.badge,.iam-db-status>.button{grid-column:1/-1;width:100%;justify-content:center}}
+
+.iam-db-setup{border-color:#edcf8d;background:#fffbef}.iam-db-setup .iam-db-icon{background:#fff1cf;color:#9b6510}.iam-db-setup small{color:#785d25}

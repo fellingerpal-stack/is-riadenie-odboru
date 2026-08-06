@@ -20,7 +20,8 @@ const risks = ['Nízke', 'Stredné', 'Vysoké', 'Kritické']
 const closedStatuses = ['Dokončená', 'Zamietnutá', 'Zrušená']
 type IamView = 'overview' | 'requests' | 'catalog' | 'recertification'
 
-function databaseStateLabel(state: IamDatabaseState) {
+function databaseStateLabel(state: IamDatabaseState, setupRequired = false) {
+  if (setupRequired) return 'Vyžaduje SQL inicializáciu'
   if (state === 'loading') return 'Načítavam z databázy'
   if (state === 'saving') return 'Ukladám zmeny'
   if (state === 'synced') return 'Synchronizované'
@@ -137,6 +138,7 @@ export default function IamManagement({ accessRequests, accessCatalog, recertifi
   const [commentText, setCommentText] = useState('')
   const [commentInternal, setCommentInternal] = useState(true)
 
+  const setupRequired = databaseState === 'error' && databaseError.includes('IS_Riadenie_odboru_v0.16.1_IAM_DATABASE_FIX.sql')
   const openRequests = accessRequests.filter((item) => !isClosed(item.status))
   const pendingApprovals = openRequests.filter((item) => item.status.includes('schválenie') || item.status === 'Na schválenie').length
   const privilegedOpen = openRequests.filter((item) => item.privileged).length
@@ -277,10 +279,10 @@ export default function IamManagement({ accessRequests, accessCatalog, recertifi
   return <div className="iam-page">
     <PageHeader eyebrow="Identity & Access Management" title="IAM a riadenie prístupov" description="Žiadosti o prístup, schvaľovanie, onboarding, offboarding, privilegované oprávnenia a pravidelná recertifikácia." actions={<div className="iam-page-actions"><button className="button button-secondary" onClick={openNewCampaign} disabled={!canConfigure}><Icon name="refresh"/> Nová recertifikácia</button><button className="button button-primary" onClick={openNewRequest} disabled={!canEdit}><Icon name="plus"/> Nová žiadosť</button></div>} />
 
-    <section className={`iam-db-status iam-db-${databaseState}`}>
+    <section className={`iam-db-status iam-db-${setupRequired ? 'setup' : databaseState}`}>
       <div className="iam-db-icon"><Icon name="database"/></div>
-      <div><span>Uloženie IAM</span><strong>{databaseMode === 'cloud' ? 'Samostatné Supabase tabuľky' : 'Lokálny pracovný režim'}</strong><small>{databaseError || 'Žiadosti, katalóg a recertifikácie sa ukladajú samostatne a synchronizujú v reálnom čase.'}</small></div>
-      <Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : databaseState === 'local' ? 'neutral' : 'warning'}>{databaseStateLabel(databaseState)}</Badge>
+      <div><span>Uloženie IAM</span><strong>{databaseMode === 'cloud' ? setupRequired ? 'IAM databáza čaká na inicializáciu' : 'Samostatné Supabase tabuľky' : 'Lokálny pracovný režim'}</strong><small>{databaseError || 'Žiadosti, katalóg a recertifikácie sa ukladajú samostatne a synchronizujú v reálnom čase.'}</small></div>
+      <Badge tone={databaseState === 'synced' ? 'success' : setupRequired ? 'warning' : databaseState === 'error' ? 'danger' : databaseState === 'local' ? 'neutral' : 'warning'}>{databaseStateLabel(databaseState, setupRequired)}</Badge>
       {databaseMode === 'cloud' && <button className="button button-secondary" onClick={onReload} disabled={databaseState === 'loading' || databaseState === 'saving'}><Icon name="refresh"/> Obnoviť</button>}
     </section>
 
