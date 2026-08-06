@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { Badge, Empty, Icon, Modal, PageHeader, Progress } from '../components/UI'
 import { oitData, type OitRaciRow, type OitRackItem } from '../data/oitData'
-import { loadOitTopologyDocuments } from '../lib/oitDocuments'
+import { loadOitTopologyDocuments, type OitTopologyDocuments } from '../lib/oitDocuments'
 
 type Go=(view:string)=>void
 
@@ -34,15 +34,32 @@ function statusTone(status:string){
 export function OitDashboard({go}:{go:Go}){
   const processes=oitData.raciAreas.reduce((sum,a)=>sum+a.rows.length,0)
   const activeDevices=oitData.rackInventory.filter(i=>i.device&&!i.device.toLowerCase().includes('voln')&&i.status.toLowerCase().includes('zive')).length
+  const areaSummary=oitData.raciAreas.map(area=>({id:area.id,title:area.title,count:area.rows.length}))
+  const maxAreaCount=Math.max(...areaSummary.map(area=>area.count),1)
   const modules=[
     {view:'oitRaci',number:'01',title:'RACI a kompetencie',description:'Komplexná RACI matica OIT podľa konkrétnych pracovníkov, oblastí a procesov.',tags:[`${processes} procesov`,`${oitData.people.length} pracovníkov`,'Rizikové medzery'],icon:'matrix' as const,tone:'blue'},
-    {view:'oitDc',number:'02',title:'Dátové centrum',description:'Kapacity DC VaV, rack inventár, zariadenia a podporné technológie.',tags:[`${new Set(oitData.rackInventory.map(i=>i.rack).filter(Boolean)).size} rackov`,`${activeDevices} živých zariadení`,'Kapacity'],icon:'database' as const,tone:'green'},
-    {view:'oitNetwork',number:'03',title:'Sieťová architektúra',description:'Hlavná sieťová topológia a oddelený OOB pohľad pre prevádzku a diagnostiku.',tags:['Hlavná topológia','OOB','Bezpečnostná vrstva'],icon:'web' as const,tone:'purple'},
+    {view:'oitDc',number:'02',title:'Dátové centrá a serverovne',description:'Oddelený pohľad na DC VaV Žilina a serverovňu Lamačská cesta vrátane rackov a kapacít.',tags:['2 lokality',`${new Set(oitData.rackInventory.map(i=>i.rack).filter(Boolean)).size} rackov DC VaV`,`${new Set(oitData.lamacskaRackInventory.map(i=>i.rack).filter(Boolean)).size} rackov Lamačská`],icon:'database' as const,tone:'green'},
+    {view:'oitNetwork',number:'03',title:'Sieťová architektúra',description:'Topológie DC VaV, OOB siete a serverovne Lamačská spolu s katalógom serverového softvéru.',tags:['4 chránené dokumenty','OOB','Lamačská'],icon:'web' as const,tone:'purple'},
     {view:'oitSystems',number:'04',title:'Systémy a projekty',description:'Zdrojový register projektov a systémov prevádzkovaných v dátovom centre.',tags:[`${oitData.projects.length} položiek`,'Vyhľadávanie','Prevádzkový stav'],icon:'systems' as const,tone:'gold'},
     {view:'oitOperations',number:'05',title:'Prevádzka a riziká',description:'Non-IT technológie, servisný režim a zariadenia určené na obnovu alebo vyradenie.',tags:['UPS a napájanie','Chladenie','Životný cyklus'],icon:'risk' as const,tone:'red'},
   ]
   return <>
-    <PageHeader eyebrow="OIT · manažérsky rozcestník" title="Riadenie odboru informačných technológií" description="Päť samostatných pohľadov vytvorených zo zdrojovej RACI matice, inventára dátového centra, prevádzkového reportu a sieťových topológií."/>
+    <PageHeader eyebrow="OIT · manažérsky rozcestník" title="Riadenie odboru informačných technológií" description="Päť samostatných pohľadov vytvorených zo zdrojovej RACI matice, inventárov oboch serverových lokalít, prevádzkového reportu a sieťových topológií."/>
+    <section className="oit-overview-grid">
+      <article className="panel oit-process-distribution">
+        <div className="panel-heading"><div><span className="eyebrow">Rozloženie procesov OIT</span><h3>Odborné oblasti podľa zdrojovej matice</h3></div><Badge tone="info">{processes} procesov</Badge></div>
+        <div className="oit-horizontal-chart">{areaSummary.map(area=><button key={area.id} onClick={()=>go('oitRaci')} title={`${area.title}: ${area.count} procesov`}>
+          <span className="oit-chart-label">{area.title}</span>
+          <span className="oit-chart-track"><i style={{width:`${Math.max(10,(area.count/maxAreaCount)*100)}%`}}/></span>
+          <strong>{area.count}</strong>
+        </button>)}</div>
+        <div className="oit-chart-axis"><span>0</span><span>Počet procesov</span><span>{maxAreaCount}</span></div>
+      </article>
+      <article className="panel oit-module-summary">
+        <div className="panel-heading"><div><span className="eyebrow">Moduly OIT</span><h3>Rýchly vstup</h3></div></div>
+        <div>{modules.map(module=><button key={module.view} onClick={()=>go(module.view)}><span className={`oit-module-icon oit-tone-${module.tone}`}><Icon name={module.icon} size={19}/></span><span><strong>{module.title}</strong><small>{module.description}</small></span><Icon name="chevron" size={17}/></button>)}</div>
+      </article>
+    </section>
     <section className="oit-app-grid">{modules.map(m=><article className={`oit-app-card oit-tone-${m.tone}`} key={m.view}>
       <div className="oit-app-head"><div className="oit-app-icon"><Icon name={m.icon} size={24}/></div><span>APLIKÁCIA {m.number}</span></div>
       <h2>{m.title}</h2><p>{m.description}</p>
@@ -84,26 +101,50 @@ export function OitRaci(){
 }
 
 export function OitDataCenter(){
-  const [tab,setTab]=useState<'capacity'|'racks'|'support'>('capacity')
-  const [row,setRow]=useState('all'),[query,setQuery]=useState('')
-  const devices=oitData.rackInventory.filter(i=>i.device&&!i.device.toLowerCase().includes('voln'))
-  const racks=new Set(oitData.rackInventory.map(i=>i.rack).filter(Boolean))
-  const oldLive=devices.filter(i=>i.generation.toLowerCase().includes('stare')&&i.status.toLowerCase().includes('zive')).length
-  const retirement=devices.filter(i=>/vypinat|vypnúť|moze sa vypnut|môže sa vypnúť/i.test(i.status)).length
-  const filtered=oitData.rackInventory.filter(i=>(row==='all'||i.row===row)&&`${i.rack} ${i.device} ${i.code} ${i.status} ${i.note}`.toLowerCase().includes(query.toLowerCase()))
+  const [site,setSite]=useState<'zilina'|'lamacska'>('zilina')
+  const [tab,setTab]=useState<'overview'|'racks'|'support'>('overview')
+  const [rack,setRack]=useState('all')
+  const [query,setQuery]=useState('')
+
+  useEffect(()=>{setTab('overview');setRack('all');setQuery('')},[site])
+
+  const inventory:OitRackItem[]=site==='zilina'?oitData.rackInventory:oitData.lamacskaRackInventory
+  const devices=inventory.filter(item=>item.device&&!/voln|voľn/i.test(item.device))
+  const racks=Array.from(new Set(inventory.map(item=>item.rack).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'sk',{numeric:true}))
+  const oldLive=devices.filter(item=>item.generation.toLowerCase().includes('stare')&&item.status.toLowerCase().includes('zive')).length
+  const retirement=devices.filter(item=>/vypinat|vypnúť|moze sa vypnut|môže sa vypnúť|do skladu|preverit|preveriť/i.test(`${item.status} ${item.note}`)).length
+  const identified=devices.filter(item=>item.code&&item.code!=='?').length
+  const filtered=inventory.filter(item=>(rack==='all'||item.rack===rack)&&`${item.rack} ${item.device} ${item.code} ${item.position} ${item.status} ${item.note}`.toLowerCase().includes(query.toLowerCase()))
+
   return <>
-    <PageHeader eyebrow="OIT · infraštruktúra" title="Dátové centrum pre vedu a výskum" description="Kapacitný prehľad z reportu za rok 2023, rack inventár a podporné non-IT technológie."/>
-    <section className="kpi-grid oit-kpi-grid"><article className="kpi-card"><span>RACKY</span><strong>{racks.size}</strong><small>evidované pozície R1–R5</small></article><article className="kpi-card"><span>ZARIADENIA</span><strong>{devices.length}</strong><small>bez voľných pozícií</small></article><article className="kpi-card"><span>STARÉ A ŽIVÉ</span><strong>{oldLive}</strong><small>priorita životného cyklu</small></article><article className="kpi-card"><span>NA VYRADENIE</span><strong>{retirement}</strong><small>textovo označené v zdroji</small></article></section>
-    <div className="view-tabs oit-tabs"><button className={tab==='capacity'?'active':''} onClick={()=>setTab('capacity')}><Icon name="capacity"/> Kapacity</button><button className={tab==='racks'?'active':''} onClick={()=>setTab('racks')}><Icon name="cmdb"/> Rack inventár</button><button className={tab==='support'?'active':''} onClick={()=>setTab('support')}><Icon name="shield"/> Podporné technológie</button></div>
-    {tab==='capacity'&&<><section className="oit-capacity-grid">{oitData.capacity.map(c=><article className="panel" key={c.name}><span className="eyebrow">Kapacita {c.name}</span><h3>{c.used} využité</h3><Progress value={c.percent} label={`${c.percent}% z ${c.total}`}/><div><span>Voľné</span><strong>{c.free}</strong></div></article>)}</section><section className="panel oit-hpc"><div className="panel-heading"><div><span className="eyebrow">Výpočtová infraštruktúra</span><h3>HPC Cluster</h3></div><Badge tone="info">Zdroj 2023</Badge></div><div>{oitData.hpc.map(x=><span key={x}><Icon name="systems" size={17}/>{x}</span>)}</div></section></>}
-    {tab==='racks'&&<><div className="filter-panel oit-filter"><label><span>Vyhľadávanie</span><div className="search-input"><Icon name="search" size={17}/><input value={query} onChange={(e:ChangeEvent<HTMLInputElement>)=>setQuery(e.target.value)} placeholder="Rack, zariadenie, označenie alebo stav..."/></div></label><label><span>Rad</span><select value={row} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setRow(e.target.value)}><option value="all">Všetky rady</option>{['R1','R2','R3','R4','R5'].map(x=><option key={x}>{x}</option>)}</select></label><span className="result-pill">{filtered.length} položiek</span></div><div className="oit-table-shell"><table className="oit-registry-table"><thead><tr><th>Rack</th><th>Zariadenie</th><th>Označenie</th><th>Pozícia</th><th>Generácia</th><th>Stav / poznámka</th></tr></thead><tbody>{filtered.map((i,idx)=><tr key={`${i.row}-${i.rack}-${i.position}-${idx}`}><td><strong>{i.rack||i.row}</strong><small>{i.size}</small></td><td>{i.device||'—'}</td><td>{i.code||'—'}</td><td>{i.position||'—'} <small>{i.units}</small></td><td>{i.generation?<Badge tone={i.generation.toLowerCase().includes('stare')?'warning':'success'}>{i.generation}</Badge>:'—'}</td><td><Badge tone={statusTone(i.status)}>{i.status||'Neurčený'}</Badge>{i.note&&<small>{i.note}</small>}</td></tr>)}</tbody></table></div></>}
-    {tab==='support'&&<><section className="oit-support-grid">{oitData.nonIt.map(group=><article className="panel" key={group.category}><div className="panel-heading"><div><span className="eyebrow">Non-IT infraštruktúra</span><h3>{group.category}</h3></div><Badge tone="info">{group.items.length}</Badge></div><p>{group.summary}</p><div>{group.items.map(item=><span key={item}><Icon name="check" size={16}/>{item}</span>)}</div></article>)}</section><article className="panel oit-workflow"><div className="panel-heading"><div><span className="eyebrow">Prevádzkový postup</span><h3>Režim servisných zásahov</h3></div></div><p>{oitData.serviceWorkflow}</p></article></>}
+    <PageHeader eyebrow="OIT · infraštruktúra" title="Dátové centrá a serverovne" description="Oddelený prevádzkový pohľad na Dátové centrum VaV Žilina a serverovňu na Lamačskej ceste."/>
+    <section className="oit-location-switch">
+      <button className={site==='zilina'?'active':''} onClick={()=>setSite('zilina')}><span><Icon name="database" size={23}/></span><div><strong>DC VaV Žilina</strong><small>Kapacity, HPC, racky R1–R5 a podporné technológie</small></div><Badge tone={site==='zilina'?'success':'neutral'}>{new Set(oitData.rackInventory.map(i=>i.rack).filter(Boolean)).size} rackov</Badge></button>
+      <button className={site==='lamacska'?'active':''} onClick={()=>setSite('lamacska')}><span><Icon name="systems" size={23}/></span><div><strong>Serverovňa Lamačská cesta</strong><small>Rackové osadenie, sieť, virtualizácia a serverový softvér</small></div><Badge tone={site==='lamacska'?'success':'neutral'}>{new Set(oitData.lamacskaRackInventory.map(i=>i.rack).filter(Boolean)).size} rackov</Badge></button>
+    </section>
+    <section className="kpi-grid oit-kpi-grid">
+      <article className="kpi-card"><span>RACKY</span><strong>{racks.length}</strong><small>{site==='zilina'?'evidované pozície R1–R5':'evidované racky Lamačská'}</small></article>
+      <article className="kpi-card"><span>ZARIADENIA / POLOŽKY</span><strong>{devices.length}</strong><small>bez voľných pozícií</small></article>
+      <article className="kpi-card"><span>{site==='zilina'?'STARÉ A ŽIVÉ':'S IDENTIFIKÁTOROM'}</span><strong>{site==='zilina'?oldLive:identified}</strong><small>{site==='zilina'?'priorita životného cyklu':'položky s označením zariadenia'}</small></article>
+      <article className="kpi-card"><span>NA PREVERENIE</span><strong>{retirement}</strong><small>vyradenie, sklad alebo kontrola</small></article>
+    </section>
+    <div className="view-tabs oit-tabs"><button className={tab==='overview'?'active':''} onClick={()=>setTab('overview')}><Icon name="dashboard"/> Prehľad</button><button className={tab==='racks'?'active':''} onClick={()=>setTab('racks')}><Icon name="cmdb"/> Rack inventár</button><button className={tab==='support'?'active':''} onClick={()=>setTab('support')}><Icon name="shield"/> {site==='zilina'?'Podporné technológie':'Serverový softvér'}</button></div>
+
+    {tab==='overview'&&site==='zilina'&&<><section className="oit-capacity-grid">{oitData.capacity.map(c=><article className="panel" key={c.name}><span className="eyebrow">Kapacita {c.name}</span><h3>{c.used} využité</h3><Progress value={c.percent} label={`${c.percent}% z ${c.total}`}/><div><span>Voľné</span><strong>{c.free}</strong></div></article>)}</section><section className="panel oit-hpc"><div className="panel-heading"><div><span className="eyebrow">Výpočtová infraštruktúra</span><h3>HPC Cluster</h3></div><Badge tone="info">Zdroj 2023</Badge></div><div>{oitData.hpc.map(x=><span key={x}><Icon name="systems" size={17}/>{x}</span>)}</div></section></>}
+
+    {tab==='overview'&&site==='lamacska'&&<><section className="oit-lamacska-overview"><article className="panel"><div className="panel-heading"><div><span className="eyebrow">Lokalita</span><h3>Serverovňa Lamačská cesta</h3></div><Badge tone="success">OIT</Badge></div><p>Samostatná serverová lokalita pre Active Directory, SQL Server, DNS, RADIUS, SMTP, bezpečnostné nástroje, monitoring a VMware infraštruktúru. Lokalita je sieťovo prepojená s DC VaV Žilina.</p><div className="oit-site-facts"><span><Icon name="shield"/>FortiManager a FortiAnalyzer</span><span><Icon name="database"/>Microsoft SQL Server</span><span><Icon name="systems"/>VMware vSphere a vCenter</span><span><Icon name="risk"/>Zabbix a SCOM</span></div></article><article className="panel"><div className="panel-heading"><div><span className="eyebrow">Kvalita inventára</span><h3>Stav rackových údajov</h3></div></div><div className="oit-inventory-quality"><div><span>Identifikované zariadenia</span><strong>{identified}</strong></div><div><span>Bez označenia</span><strong>{Math.max(devices.length-identified,0)}</strong></div><div><span>Na preverenie / sklad</span><strong>{retirement}</strong></div><div><span>Zdrojové racky</span><strong>{racks.length}</strong></div></div></article></section><section className="panel oit-software-preview"><div className="panel-heading"><div><span className="eyebrow">Katalóg serverového softvéru</span><h3>Technologické oblasti oboch lokalít</h3></div><Badge tone="info">{oitData.serverSoftwareCatalog.length} kategórií</Badge></div><div>{oitData.serverSoftwareCatalog.slice(0,5).map(group=><span key={group.category}><strong>{group.category}</strong><small>{group.items.slice(0,2).join(' · ')}</small></span>)}</div></section></>}
+
+    {tab==='racks'&&<><div className="filter-panel oit-filter"><label><span>Vyhľadávanie</span><div className="search-input"><Icon name="search" size={17}/><input value={query} onChange={(e:ChangeEvent<HTMLInputElement>)=>setQuery(e.target.value)} placeholder="Rack, zariadenie, označenie, pozícia alebo stav..."/></div></label><label><span>Rack</span><select value={rack} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setRack(e.target.value)}><option value="all">Všetky racky</option>{racks.map(value=><option key={value}>{value}</option>)}</select></label><span className="result-pill">{filtered.length} položiek</span></div><div className="oit-table-shell"><table className="oit-registry-table"><thead><tr><th>Rack</th><th>Zariadenie</th><th>Označenie</th><th>Pozícia</th><th>Generácia</th><th>Stav / poznámka</th></tr></thead><tbody>{filtered.map((item,index)=><tr key={`${item.rack}-${item.code}-${item.position}-${index}`}><td><strong>{item.rack||item.row}</strong><small>{item.size}</small></td><td>{item.device||'—'}</td><td>{item.code||'—'}</td><td>{item.position||'—'} <small>{item.units}</small></td><td>{item.generation?<Badge tone={item.generation.toLowerCase().includes('stare')?'warning':'success'}>{item.generation}</Badge>:'—'}</td><td><Badge tone={statusTone(item.status)}>{item.status||'Neurčený'}</Badge>{item.note&&<small>{item.note}</small>}</td></tr>)}</tbody></table>{!filtered.length&&<Empty title="Bez výsledkov" text="Zmeňte vyhľadávanie alebo filter racku."/>}</div></>}
+
+    {tab==='support'&&site==='zilina'&&<><section className="oit-support-grid">{oitData.nonIt.map(group=><article className="panel" key={group.category}><div className="panel-heading"><div><span className="eyebrow">Non-IT infraštruktúra</span><h3>{group.category}</h3></div><Badge tone="info">{group.items.length}</Badge></div><p>{group.summary}</p><div>{group.items.map(item=><span key={item}><Icon name="check" size={16}/>{item}</span>)}</div></article>)}</section><article className="panel oit-workflow"><div className="panel-heading"><div><span className="eyebrow">Prevádzkový postup</span><h3>Režim servisných zásahov</h3></div></div><p>{oitData.serviceWorkflow}</p></article></>}
+
+    {tab==='support'&&site==='lamacska'&&<section className="oit-software-grid">{oitData.serverSoftwareCatalog.map((group,index)=><article className="panel" key={group.category}><div className="oit-software-title"><span>{String(index+1).padStart(2,'0')}</span><h3>{group.category}</h3></div><div>{group.items.map(item=><span key={item}><Icon name="check" size={15}/>{item}</span>)}</div></article>)}</section>}
   </>
 }
 
 export function OitNetwork(){
   const [image,setImage]=useState<{src:string;title:string}|null>(null)
-  const [urls,setUrls]=useState({topologyUrl:'',oobUrl:''})
+  const [urls,setUrls]=useState<OitTopologyDocuments>({topologyUrl:'',oobUrl:'',lamacskaTopologyUrl:'',softwareCatalogUrl:'',missing:[]})
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
 
@@ -117,14 +158,17 @@ export function OitNetwork(){
   useEffect(()=>{void loadDocuments()},[])
 
   const cards=[
-    {src:urls.topologyUrl,title:'Hlavná sieťová topológia',description:'Komplexný pohľad na prepínače, firewally, load balancery, servery a prepojenia.'},
-    {src:urls.oobUrl,title:'OOB topológia',description:'Samostatný pohľad na internetové pripojenie, HA firewally, routre, ACS a OOB prepínače.'},
+    {src:urls.topologyUrl,title:'DC VaV Žilina – hlavná topológia',description:'Komplexný pohľad na prepínače, firewally, load balancery, servery a prepojenia.',file:'topologia.png'},
+    {src:urls.oobUrl,title:'DC VaV Žilina – OOB topológia',description:'Samostatný pohľad na internetové pripojenie, HA firewally, routre, ACS a OOB prepínače.',file:'oob.png'},
+    {src:urls.lamacskaTopologyUrl,title:'Lamačská cesta – sieťová topológia',description:'Topológia serverovne Lamačská: core prvky, firewally, load balancery, Wi-Fi a pripojenia.',file:'topologia-la.png'},
+    {src:urls.softwareCatalogUrl,title:'Katalóg serverového softvéru',description:'Architektúra prostredia a prehľad serverových softvérových kategórií pre obe lokality.',file:'sw-serverovna.png'},
   ]
   return <>
-    <PageHeader eyebrow="OIT · sieť a bezpečnosť" title="Sieťová architektúra" description="Oddelený hlavný a Out-of-Band pohľad uložený v privátnom Supabase Storage."/>
+    <PageHeader eyebrow="OIT · sieť a bezpečnosť" title="Sieťová architektúra a dokumentácia lokalít" description="Štyri oddelené dokumenty pre DC VaV Žilina a serverovňu Lamačská uložené v privátnom Supabase Storage."/>
     {error&&<div className="inline-alert inline-alert-error"><Icon name="warning" size={18}/><span>{error}</span><button className="button button-secondary button-small" onClick={()=>void loadDocuments()}>Obnoviť</button></div>}
-    <section className="oit-topology-grid">{cards.map(card=><article className="panel" key={card.title}><div className="panel-heading"><div><span className="eyebrow">Privátny topologický dokument</span><h3>{card.title}</h3></div><Badge tone={card.src?'success':loading?'warning':'danger'}>{card.src?'Načítaný':loading?'Načítavam':'Nedostupný'}</Badge></div><p>{card.description}</p>{card.src?<button className="topology-preview" onClick={()=>setImage({src:card.src,title:card.title})}><img src={card.src} alt={card.title}/></button>:<div className="topology-placeholder"><Icon name="lock" size={32}/><strong>Chránený dokument</strong><span>Nahrajte súbor do privátneho bucketu oit-documents.</span></div>}</article>)}</section>
-    <section className="panel oit-network-notes"><div className="panel-heading"><div><span className="eyebrow">Manažérsky pohľad</span><h3>Čo evidovať pri ďalšom kroku</h3></div></div><div><span><Icon name="cmdb"/>väzby zariadení na CMDB položky</span><span><Icon name="user"/>technický vlastník každého prvku</span><span><Icon name="calendar"/>termín obnovy a servisnej podpory</span><span><Icon name="risk"/>kritické prepojenia bez alternatívnej trasy</span></div></section>
+    {!error&&urls.missing.length>0&&<div className="inline-alert oit-document-warning"><Icon name="warning" size={18}/><span>V privátnom buckete chýbajú: {urls.missing.join(', ')}. Ostatné dostupné dokumenty sa zobrazili.</span><button className="button button-secondary button-small" onClick={()=>void loadDocuments()}>Obnoviť</button></div>}
+    <section className="oit-topology-grid">{cards.map(card=><article className="panel" key={card.title}><div className="panel-heading"><div><span className="eyebrow">Privátny dokument · {card.file}</span><h3>{card.title}</h3></div><Badge tone={card.src?'success':loading?'warning':'danger'}>{card.src?'Načítaný':loading?'Načítavam':'Nedostupný'}</Badge></div><p>{card.description}</p>{card.src?<button className="topology-preview" onClick={()=>setImage({src:card.src,title:card.title})}><img src={card.src} alt={card.title}/></button>:<div className="topology-placeholder"><Icon name="lock" size={32}/><strong>Chránený dokument</strong><span>Nahrajte súbor {card.file} do privátneho bucketu oit-documents.</span></div>}</article>)}</section>
+    <section className="panel oit-network-notes"><div className="panel-heading"><div><span className="eyebrow">Manažérsky pohľad</span><h3>Spoločná evidencia oboch lokalít</h3></div></div><div><span><Icon name="cmdb"/>väzby zariadení na CMDB položky</span><span><Icon name="user"/>technický vlastník každého prvku</span><span><Icon name="calendar"/>termín obnovy a servisnej podpory</span><span><Icon name="risk"/>kritické prepojenia bez alternatívnej trasy</span></div></section>
     {image&&<Modal wide title={image.title} onClose={()=>setImage(null)}><div className="topology-modal"><img src={image.src} alt={image.title}/></div></Modal>}
   </>
 }

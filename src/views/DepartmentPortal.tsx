@@ -16,8 +16,8 @@ export default function DepartmentPortal({go}:{go:Go}){
       <article className="department-card department-card-oit">
         <div className="department-card-top"><div className="department-icon"><Icon name="systems" size={27}/></div><span>ODBORNÝ BLOK 02</span></div>
         <h2>OIT · Informačné technológie</h2>
-        <p>Samostatný priestor pre RACI OIT, dátové centrum, sieťovú architektúru, prevádzkované systémy a prevádzkové riziká.</p>
-        <div className="department-tags"><span>79 RACI procesov</span><span>Dátové centrum</span><span>Topológie</span><span>53 projektov</span></div>
+        <p>Samostatný priestor pre RACI OIT, dve serverové lokality, sieťovú architektúru, prevádzkované systémy a prevádzkové riziká.</p>
+        <div className="department-tags"><span>79 RACI procesov</span><span>2 serverové lokality</span><span>4 topológie a dokumenty</span><span>53 projektov</span></div>
         <button className="department-enter" onClick={()=>go('oit')}>Vstúpiť do OIT <Icon name="arrow" size={18}/></button>
       </article>
     </section>
