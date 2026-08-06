@@ -169,7 +169,7 @@ function friendlyIamError(error: unknown, context = 'Operácia IAM'): Error {
     lower.includes('42p01') ||
     (lower.includes('relation') && lower.includes('does not exist'))
   ) {
-    return new Error('Databázové tabuľky IAM nie sú pripravené. V Supabase spustite SQL opravu pre release 0.13.2 a potom kliknite na Obnoviť.')
+    return new Error('Databázové tabuľky IAM nie sú pripravené v tomto Supabase projekte. Spustite súbor IS_Riadenie_odboru_v0.16.1_IAM_DATABASE_FIX.sql a potom kliknite na Obnoviť. Dáta zo spoločného snapshotu zostali zobrazené.')
   }
   if (
     lower.includes('upsert_iam_') ||
@@ -177,10 +177,10 @@ function friendlyIamError(error: unknown, context = 'Operácia IAM'): Error {
     lower.includes('42883') ||
     lower.includes('function') && lower.includes('does not exist')
   ) {
-    return new Error('Databázové funkcie IAM nie sú pripravené. V Supabase spustite SQL opravu pre release 0.13.2.')
+    return new Error('Databázové funkcie IAM nie sú pripravené. Spustite súbor IS_Riadenie_odboru_v0.16.1_IAM_DATABASE_FIX.sql.')
   }
   if (lower.includes('column') && (lower.includes('does not exist') || lower.includes('42703'))) {
-    return new Error(`Štruktúra IAM databázy nie je aktuálna. Spustite SQL opravu 0.13.2. Technický detail: ${message}`)
+    return new Error(`Štruktúra IAM databázy nie je aktuálna. Spustite SQL opravu 0.16.1. Technický detail: ${message}`)
   }
   if (
     lower.includes('permission') ||
