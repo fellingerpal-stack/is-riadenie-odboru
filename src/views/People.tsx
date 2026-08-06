@@ -34,7 +34,7 @@ export default function People({
   canEdit: boolean
   onChange: (employees: Employee[]) => void
 }) {
-  const [view, setView] = useState<View>('profiles')
+  const [view, setView] = useState<View>('performance')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('R')
   const [selected, setSelected] = useState<Employee | null>(null)
@@ -74,10 +74,10 @@ export default function People({
   }
 
   return <>
-    <PageHeader eyebrow="Odbor 3.2 · organizácia" title="Ľudia, roly a výkon zodpovedností" description="Profily pracovníkov sú prepojené s RACI maticou. Pohľad oddeľuje formálnu zodpovednosť A od praktického vykonávania R, konzultovania C a informovania I." />
+    <PageHeader eyebrow="Odbor 3.2 · organizácia" title="Ľudia a výkon rolí ORIS" description="Profily pracovníkov sú prepojené s RACI maticou. Pohľad oddeľuje formálnu zodpovednosť A od praktického vykonávania R, konzultovania C a informovania I." />
     <div className="view-tabs people-view-tabs">
-      <button className={view === 'profiles' ? 'active' : ''} onClick={() => setView('profiles')}><Icon name="people"/>Profily pracovníkov <b>{employees.length}</b></button>
       <button className={view === 'performance' ? 'active' : ''} onClick={() => setView('performance')}><Icon name="matrix"/>Ľudia a výkon rolí <b>{activeParticipants}</b></button>
+      <button className={view === 'profiles' ? 'active' : ''} onClick={() => setView('profiles')}><Icon name="people"/>Profily pracovníkov <b>{employees.length}</b></button>
     </div>
 
     {view === 'profiles' && <>

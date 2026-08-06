@@ -94,7 +94,7 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
   const gaps = items.filter(item => itemCompleteness(item) < 80)
   const averageCompleteness = items.length ? Math.round(items.reduce((sum, item) => sum + itemCompleteness(item), 0) / items.length) : 0
   const impact = selected ? blastRadius(state, selected) : null
-  const records = selected ? recordsForItem(selected) : []
+  const records = selected ? recordsForItem(state, selected) : []
 
   function exportCsv() {
     const rows = [

@@ -31,6 +31,34 @@ function statusTone(status:string){
   return 'neutral' as const
 }
 
+interface OitRaciInsightSettings {
+  responsibleLimitPercent: number
+  includeSingleResponsible: boolean
+  flagCombinedAR: boolean
+}
+
+const OIT_RACI_SETTINGS_KEY = 'cvti-oit-raci-insight-settings-v1'
+const defaultOitRaciSettings: OitRaciInsightSettings = {
+  responsibleLimitPercent: 35,
+  includeSingleResponsible: true,
+  flagCombinedAR: true,
+}
+
+function loadOitRaciSettings(): OitRaciInsightSettings {
+  try {
+    const raw = localStorage.getItem(OIT_RACI_SETTINGS_KEY)
+    if (!raw) return defaultOitRaciSettings
+    const parsed = JSON.parse(raw) as Partial<OitRaciInsightSettings>
+    return {
+      responsibleLimitPercent: typeof parsed.responsibleLimitPercent === 'number' ? Math.min(60, Math.max(20, parsed.responsibleLimitPercent)) : defaultOitRaciSettings.responsibleLimitPercent,
+      includeSingleResponsible: typeof parsed.includeSingleResponsible === 'boolean' ? parsed.includeSingleResponsible : defaultOitRaciSettings.includeSingleResponsible,
+      flagCombinedAR: typeof parsed.flagCombinedAR === 'boolean' ? parsed.flagCombinedAR : defaultOitRaciSettings.flagCombinedAR,
+    }
+  } catch {
+    return defaultOitRaciSettings
+  }
+}
+
 export function OitDashboard({go}:{go:Go}){
   const processes=oitData.raciAreas.reduce((sum,a)=>sum+a.rows.length,0)
   const activeDevices=oitData.rackInventory.filter(i=>i.device&&!i.device.toLowerCase().includes('voln')&&i.status.toLowerCase().includes('zive')).length
@@ -75,12 +103,14 @@ export function OitRaci(){
   const [area,setArea]=useState('all')
   const [query,setQuery]=useState('')
   const [issue,setIssue]=useState('all')
-  const [tab,setTab]=useState<'matrix'|'risks'|'people'>('matrix')
+  const [tab,setTab]=useState<'overview'|'matrix'|'risks'|'people'|'rules'>('overview')
   const [peopleSort,setPeopleSort]=useState<'R'|'A'|'spof'|'participation'>('R')
+  const [settings,setSettings]=useState<OitRaciInsightSettings>(loadOitRaciSettings)
   const rows=useMemo(()=>oitData.raciAreas.flatMap(a=>a.rows.map(row=>({...row,areaId:a.id,areaTitle:a.title}))),[])
   const filtered=rows.filter(row=>(area==='all'||row.areaId===area)&&(issue==='all'||(issue==='ok'?!raciIssue(row):raciIssue(row)===issue))&&`${row.process} ${row.note} ${row.areaTitle}`.toLowerCase().includes(query.toLowerCase()))
   const structuralIssues=rows.filter(row=>['Chýba A','Viac A','Chýba R'].includes(raciIssue(row)))
-  const continuityIssues=rows.filter(row=>raciIssue(row)==='Jediný R')
+  const continuityIssues=rows.filter(row=>roleCount(row,'R')===1)
+  const combinedRows=rows.filter(row=>Object.values(row.assignments).some(value=>splitRoles(value).includes('A')&&splitRoles(value).includes('R')))
   const missingA=rows.filter(r=>roleCount(r,'A')===0).length
   const noR=rows.filter(r=>roleCount(r,'R')===0).length
   const singleR=continuityIssues.length
@@ -98,19 +128,54 @@ export function OitRaci(){
       uniqueR:rows.filter(row=>has('R',row.assignments[person.id]||'')&&roleCount(row,'R')===1).length,
     }
   })
-  const sortedPeople=[...peopleStats].sort((a,b)=>peopleSort==='spof'?b.uniqueR-a.uniqueR:peopleSort==='participation'?b.participation-a.participation:b[peopleSort]-a[peopleSort])
+  const sortedPeople=[...peopleStats].sort((a,b)=>peopleSort==='spof'?b.uniqueR-a.uniqueR:peopleSort==='participation'?b.participation-a.participation:b[peopleSort]-a[peopleSort]||a.person.name.localeCompare(b.person.name,'sk'))
   const topExecutor=[...peopleStats].sort((a,b)=>b.R-a.R)[0]
   const accountable=[...peopleStats].sort((a,b)=>b.A-a.A)
+  const concentratedExecutors=peopleStats.filter(stat=>rows.length&&Math.round(stat.R/rows.length*100)>=settings.responsibleLimitPercent).sort((a,b)=>b.R-a.R)
+  const signals=rows.map(row=>{
+    const issues:string[]=[]
+    const formal=raciIssue(row)
+    if(['Chýba A','Viac A','Chýba R'].includes(formal))issues.push(formal)
+    if(settings.includeSingleResponsible&&roleCount(row,'R')===1)issues.push('Jediný R')
+    if(settings.flagCombinedAR&&Object.values(row.assignments).some(value=>splitRoles(value).includes('A')&&splitRoles(value).includes('R')))issues.push('Spojené A/R')
+    const score=issues.reduce((sum,value)=>sum+(value==='Chýba A'||value==='Viac A'||value==='Chýba R'?8:value==='Jediný R'?4:2),0)
+    return {...row,issues,score}
+  }).filter(row=>row.issues.length).sort((a,b)=>b.score-a.score||a.process.localeCompare(b.process,'sk'))
+  const penalty=structuralIssues.length*12+(settings.includeSingleResponsible?singleR:0)+(settings.flagCombinedAR?combinedRows.length:0)+concentratedExecutors.length*3
+  const readiness=Math.max(0,Math.min(100,100-penalty))
+
+  function updateSettings(patch:Partial<OitRaciInsightSettings>){
+    const next={...settings,...patch}
+    setSettings(next)
+    localStorage.setItem(OIT_RACI_SETTINGS_KEY,JSON.stringify(next))
+  }
+  function resetSettings(){setSettings(defaultOitRaciSettings);localStorage.setItem(OIT_RACI_SETTINGS_KEY,JSON.stringify(defaultOitRaciSettings))}
+
   return <>
-    <PageHeader eyebrow="Odbor 3.1 · zodpovednosti" title="RACI odboru správy a prevádzky IT infraštruktúry" description="Matica oddeľuje formálnu konečnú zodpovednosť A od praktického vykonávania R. Počet rolí A nie je ukazovateľ pracovného zaťaženia."/>
-    <div className="raci-reading-note"><Icon name="warning" size={19}/><div><strong>Prečo má riaditeľ 79 rolí A?</strong><span>V zdrojovej matici je riaditeľ formálne Accountable za všetkých 79 procesov. Praktickú prácu však vyjadruje rola R: tú majú podľa oblasti viacerí odborní pracovníci. Nový pohľad preto predvolene porovnáva vykonávanie R a osobitne zobrazuje formálne A.</span></div></div>
+    <PageHeader eyebrow="Odbor 3.1 · zodpovednosti" title="RACI odboru správy a prevádzky IT infraštruktúry" description="Matica oddeľuje formálnu konečnú zodpovednosť A od praktického vykonávania R. Manažérsky pohľad vyhodnocuje formálne medzery, zastupiteľnosť a koncentráciu technického výkonu."/>
+    <div className="raci-reading-note"><Icon name="warning" size={19}/><div><strong>Prečo má riaditeľ 79 rolí A?</strong><span>V zdrojovej matici je riaditeľ formálne Accountable za všetkých 79 procesov. Praktickú prácu však vyjadruje rola R: tú majú podľa oblasti viacerí odborní pracovníci. Manažérsky pohľad preto samostatne hodnotí výkon R, formálne A a kontinuitné riziká.</span></div></div>
     <section className="kpi-grid oit-kpi-grid">
       <article className="kpi-card"><span>PROCESY</span><strong>{rows.length}</strong><small>{oitData.raciAreas.length} odborných oblastí</small></article>
       <article className="kpi-card"><span>ŠTRUKTURÁLNE MEDZERY</span><strong>{structuralIssues.length}</strong><small>chýba A/R alebo je viac A</small></article>
       <article className="kpi-card"><span>JEDINÝ VYKONÁVATEĽ</span><strong>{singleR}</strong><small>kontinuitné riziko, nie chyba RACI</small></article>
       <article className="kpi-card"><span>NAJVIAC R</span><strong>{topExecutor?.R||0}</strong><small>{topExecutor?.person.name||'—'} · praktické vykonávanie</small></article>
     </section>
-    <div className="view-tabs oit-tabs"><button className={tab==='matrix'?'active':''} onClick={()=>setTab('matrix')}><Icon name="matrix"/> Matica</button><button className={tab==='risks'?'active':''} onClick={()=>setTab('risks')}><Icon name="risk"/> Riadenie a kontinuita <b>{singleR}</b></button><button className={tab==='people'?'active':''} onClick={()=>setTab('people')}><Icon name="people"/> Ľudia a výkon rolí</button></div>
+    <div className="raci-view-tabs oit-raci-view-tabs" role="tablist" aria-label="Pohľady RACI OIT">
+      <button className={tab==='overview'?'active':''} onClick={()=>setTab('overview')}><Icon name="dashboard" size={18}/>Manažérsky pohľad <span>{signals.length}</span></button>
+      <button className={tab==='matrix'?'active':''} onClick={()=>setTab('matrix')}><Icon name="matrix" size={18}/>RACI matica <span>{rows.length}</span></button>
+      <button className={tab==='risks'?'active':''} onClick={()=>setTab('risks')}><Icon name="risk" size={18}/>Riadenie a kontinuita <span>{singleR}</span></button>
+      <button className={tab==='people'?'active':''} onClick={()=>setTab('people')}><Icon name="people" size={18}/>Ľudia a výkon rolí</button>
+      <button className={tab==='rules'?'active':''} onClick={()=>setTab('rules')}><Icon name="shield" size={18}/>Pravidlá</button>
+    </div>
+
+    {tab==='overview'&&<div className="raci-insight-view oit-raci-insight-view">
+      <section className="raci-insight-hero"><div><div className="raci-insight-eyebrow">Riadiaci signál OIT</div><h2>{structuralIssues.length?`${structuralIssues.length} procesov má formálnu medzeru v R alebo A.`:'Matica je formálne úplná; hlavnou témou je zastupiteľnosť a koncentrácia know-how.'}</h2><p>Výsledok nehodnotí odpracované hodiny. Zobrazuje, kde chýba vlastník alebo vykonávateľ, kde je iba jeden R a kde sa veľká časť praktického výkonu koncentruje na jedného pracovníka.</p></div><div className={`raci-readiness readiness-${readiness>=75?'good':readiness>=55?'watch':'risk'}`}><span>Orientačná pripravenosť</span><strong>{readiness}%</strong><small>podľa aktívnych pravidiel</small></div></section>
+      <div className="raci-insight-kpis"><article><span className="raci-kpi-icon tone-success"><Icon name="check" size={20}/></span><div><small>Formálne úplné</small><strong>{rows.length-structuralIssues.length}/{rows.length}</strong><p>presne jeden A a minimálne jeden R</p></div></article><article><span className="raci-kpi-icon tone-warning"><Icon name="people" size={20}/></span><div><small>Jediný vykonávateľ</small><strong>{singleR}</strong><p>procesy bez druhej výkonovej roly</p></div></article><article><span className="raci-kpi-icon tone-info"><Icon name="substitute" size={20}/></span><div><small>Spojené A/R</small><strong>{combinedRows.length}</strong><p>výkon a schválenie na jednej osobe</p></div></article><article><span className="raci-kpi-icon tone-purple"><Icon name="capacity" size={20}/></span><div><small>Koncentrácia R</small><strong>{concentratedExecutors.length}</strong><p>nad nastaveným limitom {settings.responsibleLimitPercent}%</p></div></article></div>
+      <div className="raci-insight-layout"><section className="raci-insight-panel raci-risk-panel"><div className="raci-panel-heading"><div><span>Priorita preverenia</span><h3>Procesy s najsilnejším prevádzkovým signálom</h3></div><Badge tone={signals.length?'warning':'success'}>{signals.length} procesov</Badge></div>{signals.length?<div className="raci-risk-list">{signals.slice(0,12).map(signal=><button type="button" key={signal.id} className={`raci-risk-item risk-${signal.score>=8?'danger':signal.score>=4?'warning':'info'}`} onClick={()=>{setArea(signal.areaId);setQuery(signal.process);setTab('matrix')}}><span className="raci-risk-rank">{signal.score}</span><span className="raci-risk-main"><span className="raci-risk-meta">{signal.areaTitle}</span><strong>{signal.process}</strong><span className="raci-risk-tags">{signal.issues.map(value=><em key={value} className={value.includes('Chýba')||value.includes('Viac')?'issue-danger':value==='Jediný R'?'issue-warning':'issue-info'}>{value}</em>)}</span><small>{signal.note||'Bez doplňujúcej poznámky.'}</small></span><Icon name="chevron" size={18}/></button>)}</div>:<div className="raci-all-good"><Icon name="check" size={28}/><strong>Bez identifikovaných medzier</strong><p>Aktívne pravidlá nenašli proces vyžadujúci preverenie.</p></div>}</section>
+      <div className="raci-insight-side"><section className="raci-insight-panel"><div className="raci-panel-heading compact"><div><span>Koncentrácia výkonu</span><h3>Najviac rolí R</h3></div><Badge tone={concentratedExecutors.length?'warning':'success'}>limit {settings.responsibleLimitPercent}%</Badge></div><div className="raci-owner-load">{[...peopleStats].sort((a,b)=>b.R-a.R).slice(0,7).map(stat=>{const percent=rows.length?Math.round(stat.R/rows.length*100):0;return <div key={stat.person.id} className={percent>=settings.responsibleLimitPercent?'over-limit':''}><span className="raci-owner-avatar">{stat.person.id}</span><span className="raci-owner-data"><span><strong>{stat.person.name}</strong><em>{percent}%</em></span><span className="raci-owner-bar"><i style={{width:`${Math.min(100,percent)}%`}}/></span><small>{stat.R}× R · {stat.uniqueR}× jediný R</small></span></div>})}</div></section>
+      <section className="raci-insight-panel"><div className="raci-panel-heading compact"><div><span>Odporúčané kroky</span><h3>Čo riešiť ako prvé</h3></div></div><div className="raci-action-list">{structuralIssues.length>0&&<article className="action-danger"><strong>{structuralIssues.length}</strong><div><h4>Uzavrieť formálne medzery</h4><p>Každý proces musí mať presne jedného A a aspoň jedného R.</p></div></article>}{singleR>0&&<article className="action-warning"><strong>{singleR}</strong><div><h4>Doplniť zastupiteľnosť</h4><p>Procesy s jediným R potrebujú sekundárneho vykonávateľa alebo potvrdený runbook.</p></div></article>}{concentratedExecutors.length>0&&<article className="action-info"><strong>{concentratedExecutors.length}</strong><div><h4>Preveriť koncentráciu know-how</h4><p>Pracovníci nad limitom R potrebujú kapacitnú kontrolu a prenos znalostí.</p></div></article>}{!structuralIssues.length&&!singleR&&!concentratedExecutors.length&&<div className="raci-all-good small"><Icon name="check" size={22}/><strong>Bez otvorených krokov</strong></div>}</div></section></div></div>
+    </div>}
+
     {tab==='matrix'&&<>
       <div className="filter-panel oit-filter"><label><span>Vyhľadávanie</span><div className="search-input"><Icon name="search" size={17}/><input value={query} onChange={(e:ChangeEvent<HTMLInputElement>)=>setQuery(e.target.value)} placeholder="Proces, poznámka alebo oblasť..."/></div></label><label><span>Oblasť</span><select value={area} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setArea(e.target.value)}><option value="all">Všetky oblasti</option>{oitData.raciAreas.map(a=><option key={a.id} value={a.id}>{a.title}</option>)}</select></label><label><span>Kontrola</span><select value={issue} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setIssue(e.target.value)}><option value="all">Všetky riadky</option><option value="ok">Bez medzery</option><option>Chýba A</option><option>Viac A</option><option>Chýba R</option><option>Jediný R</option></select></label><span className="result-pill">{filtered.length} procesov</span></div>
       <div className="oit-raci-legend"><span><b className="raci-r">R</b> Prakticky vykonáva</span><span><b className="raci-a">A</b> Konečne zodpovedá / schvaľuje</span><span><b className="raci-c">C</b> Povinne konzultovaný</span><span><b className="raci-i">I</b> Informovaný</span></div>
@@ -124,6 +189,8 @@ export function OitRaci(){
       <article className="panel"><div className="panel-heading"><div><span className="eyebrow">Kontinuitné riziká</span><h3>Procesy s jediným vykonávateľom</h3></div></div><div className="oit-gap-list">{continuityIssues.map(row=><div key={row.id}><Badge tone="warning">Jediný R</Badge><span><strong>{row.process}</strong><small>{row.areaTitle} · {Object.entries(row.assignments).find(([,value])=>splitRoles(value).includes('R'))?.[0]}</small></span></div>)}</div></article></div>
     </section>}
     {tab==='people'&&<><div className="filter-panel oit-people-sort"><label><span>Zoradiť podľa</span><select value={peopleSort} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setPeopleSort(e.target.value as typeof peopleSort)}><option value="R">Praktické vykonávanie R</option><option value="A">Formálne vlastníctvo A</option><option value="spof">Jediný vykonávateľ</option><option value="participation">Celkové zapojenie</option></select></label><span className="result-pill">{sortedPeople.length} pracovníkov</span></div><section className="oit-people-metrics">{sortedPeople.map(stat=><article className="panel" key={stat.person.id}><div className="oit-person-title"><div className="avatar">{stat.person.id}</div><div><strong>{stat.person.name}</strong><span>{stat.person.area}</span></div></div><div className="oit-role-metric-grid"><span><small>R · vykonáva</small><b>{stat.R}</b></span><span><small>A · zodpovedá</small><b>{stat.A}</b></span><span><small>C · konzultuje</small><b>{stat.C}</b></span><span><small>I · informovaný</small><b>{stat.I}</b></span><span><small>A/R kombinácia</small><b>{stat.combinedAR}</b></span><span><small>Jediný R</small><b>{stat.uniqueR}</b></span></div><Progress value={Math.round(stat.participation/rows.length*100)} label="Zapojenie do procesov"/></article>)}</section></>}
+
+    {tab==='rules'&&<div className="raci-rules-view"><section className="raci-rules-settings"><div className="raci-panel-heading"><div><span>Nastavenie pohľadu</span><h3>Pravidlá manažérskeho hodnotenia OIT</h3><p>Zmeny sa ukladajú iba pre tento prehliadač a nemenia zdrojovú RACI maticu.</p></div><button type="button" className="button button-secondary" onClick={resetSettings}><Icon name="refresh" size={16}/> Obnoviť predvolené</button></div><div className="raci-settings-grid"><label className="raci-range-setting"><span><strong>Limit koncentrácie výkonu R</strong><em>{settings.responsibleLimitPercent}%</em></span><input type="range" min="20" max="60" step="5" value={settings.responsibleLimitPercent} onChange={(event:ChangeEvent<HTMLInputElement>)=>updateSettings({responsibleLimitPercent:Number(event.target.value)})}/><small>Pracovník s podielom R nad limitom sa zobrazí ako kapacitná alebo znalostná závislosť.</small></label><label className="raci-switch-setting"><input type="checkbox" checked={settings.includeSingleResponsible} onChange={(event:ChangeEvent<HTMLInputElement>)=>updateSettings({includeSingleResponsible:event.target.checked})}/><span><strong>Hodnotiť jediného vykonávateľa</strong><small>Proces s jedným R sa považuje za kontinuitné riziko.</small></span></label><label className="raci-switch-setting"><input type="checkbox" checked={settings.flagCombinedAR} onChange={(event:ChangeEvent<HTMLInputElement>)=>updateSettings({flagCombinedAR:event.target.checked})}/><span><strong>Upozorniť na spojené A/R</strong><small>Zvýrazní procesy, kde výkon aj konečné schválenie zostávajú na jednej osobe.</small></span></label></div></section><div className="raci-rule-cards"><article className="rule-danger"><span>01</span><div><h3>Formálna integrita</h3><p>Každý proces musí mať presne jedného A a minimálne jedného R.</p></div></article><article className="rule-warning"><span>02</span><div><h3>Zastupiteľnosť</h3><p>Jediný R nie je chyba zápisu, ale vyžaduje sekundárnu rolu, runbook alebo potvrdený záskok.</p></div></article><article className="rule-info"><span>03</span><div><h3>Koncentrácia výkonu</h3><p>Vysoký podiel R na jednej osobe signalizuje kapacitné riziko a koncentráciu technického know-how.</p></div></article><article className="rule-purple"><span>04</span><div><h3>Riaditeľské A</h3><p>Formálne A riaditeľa je governance zodpovednosť; pracovné zaťaženie sa vyhodnocuje cez R a celkové zapojenie.</p></div></article></div></div>}
   </>
 }
 
