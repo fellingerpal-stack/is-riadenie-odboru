@@ -8,6 +8,8 @@ const corsHeaders = {
 }
 
 type AppRole = 'admin' | 'manager' | 'resolver' | 'employee' | 'viewer'
+type AccessLevel = 'none' | 'read' | 'write'
+type AccessScopes = { oit: AccessLevel; oris: AccessLevel; shared: AccessLevel }
 
 type ErrorDetails = {
   message: string
@@ -29,6 +31,24 @@ function normalizeRole(value: unknown): AppRole {
   return value === 'admin' || value === 'manager' || value === 'resolver' || value === 'employee'
     ? value
     : 'viewer'
+}
+
+function defaultAccessScopes(role: AppRole, department: string): AccessScopes {
+  if (role === 'admin') return { oit: 'write', oris: 'write', shared: 'write' }
+  const dept = department.toLowerCase()
+  const homeWrite = role !== 'viewer'
+  if (dept.includes('3.1') || dept.includes('oit')) return { oit: homeWrite ? 'write' : 'read', oris: 'read', shared: homeWrite ? 'write' : 'read' }
+  if (dept.includes('3.2') || dept.includes('oris')) return { oit: 'read', oris: homeWrite ? 'write' : 'read', shared: homeWrite ? 'write' : 'read' }
+  return { oit: 'read', oris: 'read', shared: 'read' }
+}
+
+function normalizeAccessScopes(value: unknown, role: AppRole, department: string): AccessScopes {
+  if (role === 'admin') return { oit: 'write', oris: 'write', shared: 'write' }
+  const fallback = defaultAccessScopes(role, department)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback
+  const row = value as Record<string, unknown>
+  const level = (candidate: unknown, fallbackLevel: AccessLevel): AccessLevel => candidate === 'none' || candidate === 'read' || candidate === 'write' ? candidate : fallbackLevel
+  return { oit: level(row.oit, fallback.oit), oris: level(row.oris, fallback.oris), shared: level(row.shared, fallback.shared) }
 }
 
 function errorDetails(error: unknown): ErrorDetails {
@@ -113,6 +133,7 @@ Deno.serve(async (request) => {
       jobTitle?: string
       phone?: string
       role?: AppRole
+      accessScopes?: AccessScopes
       appUrl?: string
     }
 
@@ -173,6 +194,7 @@ Deno.serve(async (request) => {
     const jobTitle = String(input.jobTitle ?? '').trim()
     const phone = String(input.phone ?? '').trim()
     const role = normalizeRole(input.role)
+    const accessScopes = normalizeAccessScopes(input.accessScopes, role, department)
     const requestAppUrl = String(input.appUrl ?? '').trim().replace(/\/$/, '')
     const appUrl = configuredAppUrl || requestAppUrl
 
@@ -181,7 +203,7 @@ Deno.serve(async (request) => {
 
     const redirectTo = appUrl ? `${appUrl}/?reset=1` : undefined
     const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: fullName, department, job_title: jobTitle, phone, requested_role: role },
+      data: { full_name: fullName, department, job_title: jobTitle, phone, requested_role: role, access_scopes: accessScopes },
       redirectTo,
     })
 
@@ -206,6 +228,7 @@ Deno.serve(async (request) => {
       job_title: jobTitle,
       phone,
       role,
+      access_scopes: accessScopes,
       is_active: true,
       invited_at: invitedAt,
       updated_at: invitedAt,
@@ -219,14 +242,14 @@ Deno.serve(async (request) => {
       target_user_id: invited.user.id,
       target_user_name: fullName,
       action: 'Používateľ pozvaný',
-      detail: `${email}; rola: ${role}`,
+      detail: `${email}; rola: ${role}; 3.1 ${accessScopes.oit}; 3.2 ${accessScopes.oris}; spoločné ${accessScopes.shared}`,
     })
     if (auditError) console.warn('invite-user: audit failed', auditError.message)
 
     return json({ ok: true, message: `Pozvanie bolo odoslané na ${email}.`, userId: invited.user.id })
   } catch (error) {
     const detail = errorDetails(error)
-    console.error('invite-user fix.3 failed', { message: detail.message, code: detail.code, status: detail.status })
+    console.error('invite-user fix.4 failed', { message: detail.message, code: detail.code, status: detail.status })
     return json({ ok: false, error: detail.message, code: detail.code }, detail.status)
   }
 })
