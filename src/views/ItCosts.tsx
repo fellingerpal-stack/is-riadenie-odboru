@@ -5,6 +5,7 @@ import { Badge, Icon, PageHeader } from '../components/UI'
 import { oitData } from '../data/oitData'
 import { splitRaciRoles } from '../lib/raciAnalytics'
 import data from '../data/itCosts.json'
+import ContractSpending from './ContractSpending'
 import './ItCosts.css'
 
 type Go = (view:string)=>void
@@ -113,6 +114,12 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
   const [category,setCategory]=useState('Všetko')
   const [confidence,setConfidence]=useState('Všetko')
   const [search,setSearch]=useState('')
+  const [financeView,setFinanceView]=useState<'costs'|'contracts'>('costs')
+  const [evidenceSearch,setEvidenceSearch]=useState('')
+  const [evidenceEntity,setEvidenceEntity]=useState('Všetko')
+  const [evidenceSort,setEvidenceSort]=useState<'amount'|'name'|'code'>('amount')
+  const [evidenceLimit,setEvidenceLimit]=useState(100)
+  const [evidenceDense,setEvidenceDense]=useState(true)
   const categories=useMemo(()=>Array.from(new Set(dataset.items.map(item=>item.category))).sort((a,b)=>a.localeCompare(b,'sk')),[ ])
 
   const baseFiltered=useMemo(()=>dataset.items.filter(item=>{
@@ -160,6 +167,19 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
   const raciMappedShare=percent(raciMappedAmount,selectedTotal)
   const singleRExposure=entityTotals.reduce((sum,item)=>sum+((entityContexts.get(item.name)?.singleR??0)>0?item.amount:0),0)
   const singleRExposureShare=percent(singleRExposure,selectedTotal)
+  const evidenceEntities=useMemo(()=>Array.from(new Set(rows.map(item=>item.entity))).sort((a,b)=>a.localeCompare(b,'sk')),[rows])
+  const evidenceRows=useMemo(()=>{
+    const result=rows.filter(item=>{
+      if(evidenceEntity!=='Všetko'&&item.entity!==evidenceEntity)return false
+      if(evidenceSearch&&!norm(`${item.label} ${item.reason} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${item.topDocument}`).includes(norm(evidenceSearch)))return false
+      return true
+    })
+    return [...result].sort((a,b)=>{
+      if(evidenceSort==='name')return a.label.localeCompare(b.label,'sk')
+      if(evidenceSort==='code')return `${a.kpd}/${a.ppd}`.localeCompare(`${b.kpd}/${b.ppd}`,'sk')
+      return Math.abs(amountFor(b,year))-Math.abs(amountFor(a,year))
+    })
+  },[rows,evidenceEntity,evidenceSearch,evidenceSort,year])
 
   const managementSignals=[
     {
@@ -216,8 +236,11 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
   }
 
   return <div className="itc-page">
-    <PageHeader eyebrow="Spoločný finančný pohľad 3.1 × 3.2" title="IT náklady · prevádzka, rozvoj a infraštruktúra" description={`Klasifikovaný výrez platieb z ekonomického dashboardu za roky ${years[0]}–${years.at(-1)}. Všetky roky sú porovnávané za rovnaké obdobie ${dataset.meta.periodLabel}; záporné korekcie a refundácie ostávajú v čistých sumách.`} actions={<button className="button button-primary" onClick={exportCurrent}><Icon name="download" size={17}/> Export CSV</button>}/>
+    <PageHeader eyebrow="Spoločný finančný pohľad 3.1 × 3.2" title={financeView==='costs'?"IT náklady · prevádzka, rozvoj a infraštruktúra":"SIT 2026 · čerpanie kontraktových úloh IT"} description={financeView==='costs'?`Klasifikovaný výrez platieb z ekonomického dashboardu za roky ${years[0]}–${years.at(-1)}. Všetky roky sú porovnávané za rovnaké obdobie ${dataset.meta.periodLabel}; záporné korekcie a refundácie ostávajú v čistých sumách.`:"Samostatný manažérsky pohľad na rozpočet, mesačné a kvartálne čerpanie úloh 10, 22 a 25. Zdrojový snapshot pokrýva január až máj 2026."} actions={financeView==='costs'?<button className="button button-primary" onClick={exportCurrent}><Icon name="download" size={17}/> Export CSV</button>:undefined}/>
 
+    <div className="itc-module-switch" role="tablist" aria-label="Finančné pohľady"><button className={financeView==='costs'?'active':''} onClick={()=>setFinanceView('costs')}><Icon name="capacity" size={17}/>IT náklady</button><button className={financeView==='contracts'?'active':''} onClick={()=>setFinanceView('contracts')}><Icon name="tasks" size={17}/>Úlohy 10 / 22 / 25</button></div>
+
+    {financeView==='contracts'?<ContractSpending/>:<>{/* IT cost intelligence */}
     <section className="itc-source-note"><Icon name="database" size={20}/><div><strong>Zdroj: {dataset.meta.sourceTitle}</strong><span>vytvorené {dataset.meta.sourceGeneratedAt} · klasifikácia v{dataset.meta.classificationVersion} · {dataset.items.length} klasifikovaných vecných položiek{dataset.meta.validationTotalsMatch?' · ročné súčty overené proti druhému dashboardu':''}</span></div><Badge tone="purple">{dataset.meta.periodLabel}</Badge></section>
 
     <section className="itc-filters panel">
@@ -265,12 +288,23 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
       <div className="itc-recommendations"><h4>Čo by som z týchto dát riadil ďalej</h4>{recommendations.map((text,index)=><div key={text}><b>{String(index+1).padStart(2,'0')}</b><p>{text}</p></div>)}</div>
     </section>
 
-    <section className="panel">
-      <div className="panel-heading"><div><span className="eyebrow">DÔKAZNÁ VRSTVA</span><h3>Položky zahrnuté do IT nákladov · {year}</h3><p>Tabuľka ukazuje agregované poznámky zo zdrojového dashboardu. Suma je čistá vrátane mínusových korekcií.</p></div><Badge tone="info">{rows.length} položiek</Badge></div>
-      <div className="table-scroll"><table className="itc-table"><thead><tr><th>Položka</th><th>KPD / PPD</th><th>RUN/CHANGE</th><th>Kategória / entita</th><th>Dôvera</th><th>TOP doklad</th><th className="number">{year}</th></tr></thead><tbody>{rows.slice(0,250).map(item=><tr key={item.id}><td><strong>{item.label}</strong><small>{item.reason}</small></td><td><strong>{item.kpd} / {item.ppd||'—'}</strong></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td><Badge tone={item.confidence==='vysoká'?'success':'warning'}>{item.confidence}</Badge></td><td><strong>{item.topDocument}</strong></td><td className={`number ${amountFor(item,year)<0?'itc-negative':''}`}><strong>{money.format(amountFor(item,year))}</strong></td></tr>)}</tbody></table></div>
-      {rows.length>250&&<div className="itc-table-note">Zobrazených je 250 najväčších položiek. Export CSV obsahuje celý aktuálny výber ({rows.length}).</div>}
+    <section className="panel itc-evidence-panel">
+      <div className="panel-heading"><div><span className="eyebrow">DÔKAZNÁ VRSTVA</span><h3>Položky zahrnuté do IT nákladov · {year}</h3><p>Kompaktný auditovateľný detail s vlastným filtrovaním. Suma je čistá vrátane mínusových korekcií.</p></div><Badge tone="info">{evidenceRows.length} / {rows.length}</Badge></div>
+      <div className="itc-evidence-toolbar">
+        <label className="itc-evidence-search"><span>Hľadať v tabuľke</span><div><Icon name="search" size={15}/><input value={evidenceSearch} onChange={event=>setEvidenceSearch(event.target.value)} placeholder="položka, doklad, KPD, entita…"/></div></label>
+        <label><span>Entita</span><select value={evidenceEntity} onChange={event=>setEvidenceEntity(event.target.value)}><option>Všetko</option>{evidenceEntities.map(value=><option key={value}>{value}</option>)}</select></label>
+        <label><span>Zoradiť</span><select value={evidenceSort} onChange={event=>setEvidenceSort(event.target.value as typeof evidenceSort)}><option value="amount">Podľa sumy</option><option value="name">Podľa názvu</option><option value="code">Podľa KPD / PPD</option></select></label>
+        <label><span>Riadkov</span><select value={evidenceLimit} onChange={event=>setEvidenceLimit(Number(event.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={250}>250</option><option value={1000}>Všetky</option></select></label>
+        <button className={`itc-density-button ${evidenceDense?'active':''}`} onClick={()=>setEvidenceDense(value=>!value)}><Icon name="matrix" size={15}/>{evidenceDense?'Kompaktné':'Vzdušné'}</button>
+        <button className="itc-density-button" onClick={()=>{setEvidenceSearch('');setEvidenceEntity('Všetko');setEvidenceSort('amount')}}>Reset</button>
+      </div>
+      <div className={`itc-evidence-shell ${evidenceDense?'dense':''}`}>
+        <table className="itc-table"><colgroup><col className="itc-col-item"/><col className="itc-col-code"/><col className="itc-col-mode"/><col className="itc-col-category"/><col className="itc-col-confidence"/><col className="itc-col-document"/><col className="itc-col-amount"/></colgroup><thead><tr><th>Položka</th><th>KPD / PPD</th><th>RUN/CHANGE</th><th>Kategória / entita</th><th>Dôvera</th><th>TOP doklad</th><th className="number">{year}</th></tr></thead><tbody>{evidenceRows.slice(0,evidenceLimit).map(item=><tr key={item.id}><td><strong>{item.label}</strong><small>{item.reason}</small></td><td><strong>{item.kpd} / {item.ppd||'—'}</strong></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td><Badge tone={item.confidence==='vysoká'?'success':'warning'}>{item.confidence}</Badge></td><td><strong>{item.topDocument||'—'}</strong></td><td className={`number ${amountFor(item,year)<0?'itc-negative':''}`}><strong>{money.format(amountFor(item,year))}</strong></td></tr>)}</tbody></table>
+      </div>
+      <div className="itc-table-note">Zobrazených {Math.min(evidenceRows.length,evidenceLimit)} z {evidenceRows.length} položiek. Hlavička aj pravý stĺpec so sumou zostávajú pri rolovaní viditeľné; na menších obrazovkách sa tabuľka roluje iba vo vlastnom paneli.</div>
     </section>
 
     <section className="itc-method panel"><Icon name="shield" size={22}/><div><h3>Metodika a hranice pohľadu</h3><p>{dataset.meta.method} Nejde o účtovnú preklasifikáciu ani o náhradu hlavnej knihy; ide o manažérsky IT výrez z dodaných dát.</p><ul>{dataset.meta.exclusions.map(item=><li key={item}>{item}</li>)}</ul></div></section>
+    </>}
   </div>
 }

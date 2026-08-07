@@ -10,16 +10,41 @@ import {
   type TechnologyModel,
 } from '../data/technologyCatalog'
 import type { AppState } from '../types'
+import costData from '../data/itCosts.json'
+import './TechnologyCatalog.css'
 
-type Tab = 'overview' | 'explorer' | 'models' | 'capacity' | 'licenses' | 'impact'
+type Tab = 'overview' | 'explorer' | 'table' | 'models' | 'capacity' | 'licenses' | 'impact'
 type Go = (view: string) => void
+type QuickFilter = 'all' | 'impact' | 'gaps' | 'cost' | 'license'
+
+interface TechnologyCostValue { year:number; amount:number }
+interface TechnologyCostItem { entity:string; category:string; mode:'Prevádzka'|'Rozvoj'; values:TechnologyCostValue[] }
+interface TechnologyCostDataset { items:TechnologyCostItem[] }
+const technologyCosts=costData as TechnologyCostDataset
+const techMoney=new Intl.NumberFormat('sk-SK',{style:'currency',currency:'EUR',minimumFractionDigits:0,maximumFractionDigits:0})
+const technologyEntityAliases:Record<string,string[]>={
+  'DC VaV':['datove centrum','dátové centrum','dc vav','dcvav'],
+  'KOMIS':['komis','sk cris','skcris','scidap'],
+  'CRZP/APS':['crzp','aps','antiplag'],
+  'CREPČ/CREUČ':['crepč','creuč','crepc','creuc'],
+  'DMS / Fabasoft':['fabasoft','dms','registratura','registratúra'],
+  'VEMA':['vema'],
+  'MUVV':['muvv','mvl'],
+  'ESET':['eset'],
+  'Mitel':['mitel'],
+  'Zoho':['zoho'],
+  'Adobe':['adobe'],
+  'Mailchimp':['mailchimp'],
+  'Hosting / domény':['hosting','domena','doména'],
+  'Internet / hosting':['internet hosting','webhosting'],
+}
 
 function csv(value: unknown) {
   return `"${String(value ?? '').replace(/"/g, '""')}"`
 }
 
 function normalize(value: string) {
-  return value.toLocaleLowerCase('sk')
+  return value.toLocaleLowerCase('sk').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
 }
 
 function modelTone(model: TechnologyModel) {
@@ -69,20 +94,54 @@ function blastRadius(state: AppState, item: TechnologyItem) {
   return { services, cmdb, tickets, changes, problems, critical, score }
 }
 
+function known(value:string){ return Boolean(value && !/na potvrdenie|neurčen/i.test(value)) }
+function technologyHealth(item:TechnologyItem){
+  const documentation=itemCompleteness(item)
+  const observability=known(item.monitoring)?100:35
+  const continuity=known(item.backup)?100:35
+  const ownership=known(item.owner)?100:40
+  const end=item.licenseEnd||item.supportEnd
+  const lifecycle=end?dateState(end).days<0?20:dateState(end).days<=90?55:100:known(item.lifecycle)?80:50
+  const score=Math.round(documentation*.35+observability*.2+continuity*.2+ownership*.15+lifecycle*.1)
+  return {score,documentation,observability,continuity,ownership,lifecycle}
+}
+
+function technologyCostContext(state:AppState,item:TechnologyItem,year=2026){
+  const services=relatedServices(state,item).map(service=>service.name).join(' ')
+  const haystack=normalize(`${item.name} ${item.category} ${item.kind} ${item.platform} ${item.note} ${services}`)
+  const entities=Object.entries(technologyEntityAliases).filter(([,aliases])=>aliases.some(alias=>haystack.includes(normalize(alias)))).map(([entity])=>entity)
+  const matched=technologyCosts.items.filter(cost=>entities.includes(cost.entity))
+  const amount=matched.reduce((total,cost)=>total+(cost.values.find(value=>value.year===year)?.amount||0),0)
+  const run=matched.filter(cost=>cost.mode==='Prevádzka').reduce((total,cost)=>total+(cost.values.find(value=>value.year===year)?.amount||0),0)
+  const change=matched.filter(cost=>cost.mode==='Rozvoj').reduce((total,cost)=>total+(cost.values.find(value=>value.year===year)?.amount||0),0)
+  return {amount,run,change,entities}
+}
+
 export default function TechnologyCatalog({ state, go }: { state: AppState; go: Go }) {
   const [tab, setTab] = useState<Tab>('overview')
   const [query, setQuery] = useState('')
   const [model, setModel] = useState<'all' | TechnologyModel>('all')
   const [location, setLocation] = useState('all')
+  const [quickFilter,setQuickFilter]=useState<QuickFilter>('all')
   const items = useMemo(() => buildTechnologyItems(state), [state])
   const [selectedId, setSelectedId] = useState('platform-vmware')
   const selected = items.find(item => item.id === selectedId) || items[0]
   const locations = useMemo<string[]>(() => Array.from(new Set<string>(items.map(item => item.location))).sort((a: string, b: string) => a.localeCompare(b, 'sk')), [items])
-  const filtered = items.filter(item =>
-    (model === 'all' || item.model === model) &&
-    (location === 'all' || item.location === location) &&
-    normalize(`${item.name} ${item.category} ${item.kind} ${item.location} ${item.platform} ${item.serverHints.join(' ')} ${item.note}`).includes(normalize(query)),
-  )
+  const impactById=useMemo(()=>new Map(items.map(item=>[item.id,blastRadius(state,item).score])),[items,state])
+  const healthById=useMemo(()=>new Map(items.map(item=>[item.id,technologyHealth(item)])),[items])
+  const costById=useMemo(()=>new Map(items.map(item=>[item.id,technologyCostContext(state,item)])),[items,state])
+  const filtered = items.filter(item => {
+    const licenseDays=dateState(item.licenseEnd||item.supportEnd).days
+    const quickOk=quickFilter==='all' ||
+      (quickFilter==='impact'&&(impactById.get(item.id)||0)>=70) ||
+      (quickFilter==='gaps'&&itemCompleteness(item)<80) ||
+      (quickFilter==='cost'&&(costById.get(item.id)?.amount||0)>0) ||
+      (quickFilter==='license'&&Number.isFinite(licenseDays)&&licenseDays<=90)
+    return quickOk &&
+      (model === 'all' || item.model === model) &&
+      (location === 'all' || item.location === location) &&
+      normalize(`${item.name} ${item.category} ${item.kind} ${item.location} ${item.platform} ${item.serverHints.join(' ')} ${item.note}`).includes(normalize(query))
+  })
   const modelGroups = (['IaaS', 'PaaS', 'SaaS'] as TechnologyModel[]).map(value => ({
     model: value,
     items: items.filter(item => item.model === value),
@@ -95,6 +154,11 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
   const averageCompleteness = items.length ? Math.round(items.reduce((sum, item) => sum + itemCompleteness(item), 0) / items.length) : 0
   const impact = selected ? blastRadius(state, selected) : null
   const records = selected ? recordsForItem(state, selected) : []
+  const selectedHealth=selected?healthById.get(selected.id):null
+  const selectedCost=selected?costById.get(selected.id):null
+  const highImpactCount=items.filter(item=>(impactById.get(item.id)||0)>=70).length
+  const costLinkedCount=items.filter(item=>(costById.get(item.id)?.amount||0)>0).length
+  const expiringCount=items.filter(item=>{const days=dateState(item.licenseEnd||item.supportEnd).days;return Number.isFinite(days)&&days<=90}).length
 
   function exportCsv() {
     const rows = [
@@ -110,7 +174,7 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
     URL.revokeObjectURL(url)
   }
 
-  return <>
+  return <div className="technology-v22">
     <PageHeader
       eyebrow="Spoločný modul odborov 3.1 a 3.2"
       title="Technologický katalóg a infraštruktúrny explorer"
@@ -128,9 +192,18 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
       <article><span>LOKALITY</span><strong>{locations.length}</strong><small>produkčné, lokálne a cloudové umiestnenia</small></article>
     </section>
 
+    <section className="technology-command-bar">
+      <label className="technology-global-search"><span>Hľadať v technologickom modeli</span><div><Icon name="search" size={17}/><input value={query} onChange={(event:ChangeEvent<HTMLInputElement>)=>setQuery(event.target.value)} placeholder="technológia, systém, služba, server, platforma, lokalita…"/></div></label>
+      <label><span>Model</span><select value={model} onChange={(event:ChangeEvent<HTMLSelectElement>)=>setModel(event.target.value as typeof model)}><option value="all">Všetky</option><option>IaaS</option><option>PaaS</option><option>SaaS</option></select></label>
+      <label><span>Lokalita</span><select value={location} onChange={(event:ChangeEvent<HTMLSelectElement>)=>setLocation(event.target.value)}><option value="all">Všetky lokality</option>{locations.map(value=><option key={value}>{value}</option>)}</select></label>
+      <div className="technology-quick-filters"><button className={quickFilter==='all'?'active':''} onClick={()=>setQuickFilter('all')}>Všetko</button><button className={quickFilter==='impact'?'active':''} onClick={()=>setQuickFilter('impact')}>Vysoký dopad {highImpactCount}</button><button className={quickFilter==='gaps'?'active':''} onClick={()=>setQuickFilter('gaps')}>Neúplné {gaps.length}</button><button className={quickFilter==='cost'?'active':''} onClick={()=>setQuickFilter('cost')}>S nákladmi {costLinkedCount}</button><button className={quickFilter==='license'?'active':''} onClick={()=>setQuickFilter('license')}>Termín ≤ 90 dní {expiringCount}</button></div>
+      <span className="technology-result-count">{filtered.length}</span>
+    </section>
+
     <div className="view-tabs technology-tabs" role="tablist" aria-label="Pohľady technologického katalógu">
       <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}><Icon name="dashboard"/>Prehľad</button>
       <button className={tab === 'explorer' ? 'active' : ''} onClick={() => setTab('explorer')}><Icon name="systems"/>Explorer <b>{items.length}</b></button>
+      <button className={tab === 'table' ? 'active' : ''} onClick={() => setTab('table')}><Icon name="matrix"/>Tabuľka</button>
       <button className={tab === 'models' ? 'active' : ''} onClick={() => setTab('models')}><Icon name="services"/>IaaS · PaaS · SaaS</button>
       <button className={tab === 'capacity' ? 'active' : ''} onClick={() => setTab('capacity')}><Icon name="capacity"/>Kapacita a výkon</button>
       <button className={tab === 'licenses' ? 'active' : ''} onClick={() => setTab('licenses')}><Icon name="calendar"/>Licencie <b>{licenseItems.length}</b></button>
@@ -138,6 +211,7 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
     </div>
 
     {tab === 'overview' && <>
+      <section className="technology-briefing"><article><Icon name="risk" size={18}/><span><strong>{highImpactCount}</strong><small>technológií s vysokým blast radius</small></span><button onClick={()=>{setQuickFilter('impact');setTab('table')}}>Zobraziť</button></article><article><Icon name="warning" size={18}/><span><strong>{gaps.length}</strong><small>položiek s neúplnými údajmi</small></span><button onClick={()=>{setQuickFilter('gaps');setTab('table')}}>Zobraziť</button></article><article><Icon name="calendar" size={18}/><span><strong>{expiringCount}</strong><small>licenčných/podporných termínov do 90 dní alebo po termíne</small></span><button onClick={()=>setTab('licenses')}>Licencie</button></article><article><Icon name="capacity" size={18}/><span><strong>{costLinkedCount}</strong><small>technológií s priamou COST väzbou 2026</small></span><button onClick={()=>{setQuickFilter('cost');setTab('table')}}>Náklady</button></article></section>
       <section className="technology-model-grid">
         {modelGroups.map(group => <article className={`panel technology-model-card technology-model-${group.model.toLowerCase()}`} key={group.model}>
           <div className="panel-heading"><div><span className="eyebrow">Servisný model</span><h3>{group.model}</h3></div><Badge tone={modelTone(group.model)}>{group.items.length}</Badge></div>
@@ -168,12 +242,7 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
     </>}
 
     {tab === 'explorer' && <>
-      <div className="filter-panel technology-filter">
-        <label><span>Vyhľadávanie</span><div className="search-input"><Icon name="search" size={17}/><input value={query} onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)} placeholder="Server, CRZP, VMware, lokalita, platforma..."/></div></label>
-        <label><span>Model</span><select value={model} onChange={(event: ChangeEvent<HTMLSelectElement>) => setModel(event.target.value as typeof model)}><option value="all">Všetky modely</option><option>IaaS</option><option>PaaS</option><option>SaaS</option></select></label>
-        <label><span>Lokalita</span><select value={location} onChange={(event: ChangeEvent<HTMLSelectElement>) => setLocation(event.target.value)}><option value="all">Všetky lokality</option>{locations.map(value => <option key={value}>{value}</option>)}</select></label>
-        <span className="result-pill">{filtered.length} položiek</span>
-      </div>
+      <div className="technology-explorer-summary"><span><b>{filtered.length}</b> položiek vo výbere</span><small>Globálne filtre zostávajú aktívne pri prepínaní medzi Explorerom a tabuľkou.</small></div>
       <section className="technology-explorer-layout">
         <div className="technology-explorer-list">{filtered.map(item => <button className={selected?.id === item.id ? 'active' : ''} key={item.id} onClick={() => setSelectedId(item.id)}>
           <span className={`technology-model-mark technology-model-mark-${item.model.toLowerCase()}`}>{item.model}</span>
@@ -183,7 +252,9 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
         {selected && <article className="panel technology-detail-panel">
           <div className="technology-detail-head"><div><Badge tone={modelTone(selected.model)}>{selected.model}</Badge><span>{selected.category}</span><h2>{selected.name}</h2></div><Badge tone={evidenceTone(selected.evidence)}>{selected.evidence}</Badge></div>
           <p>{selected.note || 'Bez doplňujúcej poznámky.'}</p>
+          <div className="technology-360-kpis"><section><span>Technology Health</span><strong>{selectedHealth?.score??0}/100</strong><small>pripravenosť dát, monitoringu, backupu, ownera a lifecycle</small></section><section><span>Dopad výpadku</span><strong>{impact?.score??0}/100</strong><small>{impact?.services.length??0} služieb · {impact?.critical??0} kritických</small></section><section><span>IT náklady 2026</span><strong>{selectedCost&&selectedCost.amount?techMoney.format(selectedCost.amount):'bez priamej väzby'}</strong><small>{selectedCost?.entities.join(' · ')||'mapovanie len pri jednoznačnej entite'}</small></section><section><span>Väzby</span><strong>{relatedServices(state,selected).length + relatedCmdb(state,selected).length + records.length}</strong><small>služby + CMDB + architektonické záznamy</small></section></div>
           <Progress value={itemCompleteness(selected)} label="Úplnosť technologických údajov"/>
+          {selectedHealth&&<div className="technology-health-breakdown"><span><b>{selectedHealth.documentation}</b>dokumentácia</span><span><b>{selectedHealth.observability}</b>monitoring</span><span><b>{selectedHealth.continuity}</b>backup</span><span><b>{selectedHealth.ownership}</b>owner</span><span><b>{selectedHealth.lifecycle}</b>lifecycle</span></div>}
           <div className="technology-detail-grid">
             <section><small>Lokalita</small><strong>{selected.location}</strong><span>{selected.environment}</span></section>
             <section><small>Platforma / verzia</small><strong>{selected.platform}</strong><span>{selected.lifecycle}</span></section>
@@ -193,10 +264,12 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
             <section><small>Servery / hostitelia</small><strong>{selected.serverHints.length ? selected.serverHints.join(' · ') : 'Na potvrdenie'}</strong></section>
           </div>
           <div className="technology-linked-services"><small>Prepojené služby</small><div>{relatedServices(state, selected).map(service => <button key={service.id} onClick={() => go('services')}><Icon name="services" size={15}/>{service.name}</button>)}{!relatedServices(state, selected).length && <span>Bez jednoznačnej väzby na službu.</span>}</div></div>
-          <div className="technology-detail-actions"><button className="button button-secondary button-small" onClick={() => go('cmdb')}><Icon name="cmdb" size={16}/>Otvoriť CMDB</button><button className="button button-secondary button-small" onClick={() => go('architecture')}><Icon name="substitute" size={16}/>Architektúra služieb</button><button className="button button-primary button-small" onClick={() => setTab('impact')}><Icon name="risk" size={16}/>Analyzovať dopad</button></div>
+          <div className="technology-detail-actions"><button className="button button-secondary button-small" onClick={() => go('cmdb')}><Icon name="cmdb" size={16}/>Otvoriť CMDB</button><button className="button button-secondary button-small" onClick={() => go('architecture')}><Icon name="substitute" size={16}/>Architektúra služieb</button>{selectedCost&&selectedCost.amount>0&&<button className="button button-secondary button-small" onClick={() => go('itCosts')}><Icon name="capacity" size={16}/>IT náklady</button>}<button className="button button-primary button-small" onClick={() => setTab('impact')}><Icon name="risk" size={16}/>Analyzovať dopad</button></div>
         </article>}
       </section>
     </>}
+
+    {tab === 'table' && <section className="panel technology-table-panel"><div className="panel-heading"><div><span className="eyebrow">RÝCHLY REGISTER</span><h3>Technológie · služby · náklady · riziko</h3><p>Kompaktný pohľad pre rýchle triedenie a prechod do 360° detailu.</p></div><Badge tone="info">{filtered.length}</Badge></div><div className="technology-table-wrap"><table className="technology-table"><thead><tr><th>Technológia</th><th>Model</th><th>Lokalita</th><th>Owner</th><th>Health</th><th>Dopad</th><th className="number">IT náklad 2026</th><th></th></tr></thead><tbody>{filtered.map(item=>{const health=healthById.get(item.id);const score=impactById.get(item.id)||0;const cost=costById.get(item.id);return <tr key={item.id}><td><strong>{item.name}</strong><small>{item.category} · {item.kind}</small></td><td><Badge tone={modelTone(item.model)}>{item.model}</Badge></td><td>{item.location}</td><td>{item.owner}</td><td><Badge tone={(health?.score||0)>=80?'success':(health?.score||0)>=60?'warning':'danger'}>{health?.score||0}/100</Badge></td><td><Badge tone={score>=70?'danger':score>=40?'warning':'info'}>{score}/100</Badge></td><td className="number"><strong>{cost?.amount?techMoney.format(cost.amount):'—'}</strong></td><td><button className="technology-open-detail" onClick={()=>{setSelectedId(item.id);setTab('explorer')}}>360° <Icon name="chevron" size={14}/></button></td></tr>})}</tbody></table></div></section>}
 
     {tab === 'models' && <section className="technology-model-columns">{modelGroups.map(group => <article className="panel" key={group.model}>
       <div className="panel-heading"><div><span className="eyebrow">Technologická vrstva</span><h3>{group.model}</h3></div><Badge tone={modelTone(group.model)}>{group.items.length}</Badge></div>
@@ -228,5 +301,5 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
         <div className="technology-impact-sections"><section><h4>Dotknuté služby</h4>{impact.services.map(service => <button key={service.id} onClick={() => go('services')}><strong>{service.name}</strong><Badge tone={service.criticality === 'Kritická' ? 'danger' : service.criticality === 'Vysoká' ? 'warning' : 'info'}>{service.criticality}</Badge></button>)}{!impact.services.length && <p>Nie je potvrdená konkrétna služba.</p>}</section><section><h4>CMDB a hostitelia</h4>{impact.cmdb.map(cmdb => <button key={cmdb.id} onClick={() => go('cmdb')}><strong>{cmdb.name}</strong><small>{cmdb.type} · {cmdb.hostname || cmdb.location}</small></button>)}{!impact.cmdb.length && selected.serverHints.map(server => <span key={server}><strong>{server}</strong><small>serverová väzba zo zdroja</small></span>)}</section><section><h4>ITSM udalosti</h4><span><b>{impact.tickets.length}</b> incidentov a požiadaviek</span><span><b>{impact.problems.length}</b> problémov</span><span><b>{impact.changes.length}</b> zmien</span></section><section><h4>Zdrojové architektonické väzby</h4>{records.map(record => <span key={record.id}><strong>{record.title}</strong><small>{record.evidence}</small></span>)}{!records.length && <p>Bez samostatného architektonického záznamu.</p>}</section></div>
       </article>
     </section>}
-  </>
+  </div>
 }
