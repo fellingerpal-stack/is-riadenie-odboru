@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import type { AppRole, UserProfile } from '../types'
+import { normalizeAccessScopes } from '../lib/accessControl'
 import {
   cloudRequired,
   getPasswordRecoveryUrl,
@@ -49,6 +50,7 @@ function normalizeProfile(row: unknown): UserProfile | null {
     jobTitle: String(item.job_title ?? ''),
     phone: String(item.phone ?? ''),
     role: normalizeRole(item.role),
+    accessScopes: normalizeAccessScopes(item.access_scopes, normalizeRole(item.role), String(item.department ?? '')),
     isActive: Boolean(item.is_active),
     lastLoginAt: String(item.last_login_at ?? ''),
     acceptedAt: String(item.accepted_at ?? ''),
@@ -87,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return null
     const detailed = await supabase
       .from('profiles')
-      .select('id, organization_id, full_name, email, department, job_title, phone, role, is_active, last_login_at, accepted_at, invited_at, invite_expires_at, created_at, updated_at')
+      .select('id, organization_id, full_name, email, department, job_title, phone, role, access_scopes, is_active, last_login_at, accepted_at, invited_at, invite_expires_at, created_at, updated_at')
       .eq('id', userId)
       .maybeSingle()
 
