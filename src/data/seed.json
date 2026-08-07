@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "0.23.0",
+    "version": "0.24.0",
     "organization": "CVTI SR",
     "unit": "Odbor 3.2",
     "sourceDate": "2026-07-30",
@@ -4538,5 +4538,6 @@
       "note": "Portál je súčasťou webového ekosystému."
     }
   ],
-  "architectureOverrides": []
+  "architectureOverrides": [],
+  "supplierRecords": []
 }
