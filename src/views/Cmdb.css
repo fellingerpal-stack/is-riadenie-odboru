@@ -3,3 +3,309 @@
 @media(max-width:1100px){.asset-overview-grid,.asset-import-layout{grid-template-columns:1fr}.asset-form{grid-template-columns:repeat(2,1fr)}.asset-mapping>div{grid-template-columns:repeat(2,1fr)}.asset-360-grid{grid-template-columns:1fr}}
 @media(max-width:780px){.asset-briefing{align-items:flex-start;flex-direction:column}.asset-briefing-score{text-align:left}.asset-kpis{grid-template-columns:repeat(2,1fr)}.asset-toolbar{grid-template-columns:1fr 1fr}.asset-toolbar .search-box{grid-column:1/-1}.asset-intelligence-list{grid-template-columns:1fr}.asset-import-summary,.asset-360-kpis{grid-template-columns:repeat(2,1fr)}.asset-relations-list>button,.asset-lifecycle-list>button{grid-template-columns:1fr}.asset-relations-list>button>span{justify-content:flex-start}.asset-form,.asset-mapping>div{grid-template-columns:1fr}.asset-history article{grid-template-columns:1fr}.asset-360-head{flex-direction:column}.asset-360-actions{justify-content:flex-start}}
 @media(max-width:520px){.asset-kpis,.asset-toolbar,.asset-import-summary,.asset-360-kpis{grid-template-columns:1fr}.asset-toolbar .search-box{grid-column:auto}.asset-360-grid dl{grid-template-columns:1fr}.asset-360-grid dd{margin-bottom:5px}}
+
+/* Release 0.27.2 – vizuálne zjednotenie Asset management */
+.asset-page{
+  --asset-accent:#236daf;
+  --asset-accent-2:#0e8c84;
+  --asset-accent-soft:#edf6fd;
+  --asset-border:#dbe5ee;
+  --asset-border-strong:#c9d8e6;
+  --asset-muted:#6e7f90;
+}
+
+.asset-page :is(button,input,select,textarea){font:inherit}
+.asset-page :is(button,input,select,textarea):focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(35,109,175,.14),0 0 0 1px rgba(14,140,132,.22);
+}
+
+.asset-page .button,
+.asset-page .icon-button{transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background-color .16s ease,color .16s ease}
+.asset-page .button:hover,
+.asset-page .icon-button:hover{transform:translateY(-1px)}
+.asset-page .button-secondary:hover{border-color:#b9cbdb;background:#f8fbfd}
+.asset-page .button-ghost:hover{background:#eef4f8;color:#34526c}
+.asset-page .icon-button{border:1px solid transparent;background:#f6f9fc;color:#587084}
+.asset-page .icon-button:hover{background:#edf5fb;border-color:#d5e3ef;color:#225f89}
+
+.asset-briefing{
+  padding:24px 26px;
+  margin-bottom:18px;
+  border:1px solid #d7e7f1;
+  border-radius:20px;
+  background:linear-gradient(120deg,#f4fbff 0%,#f8fdfc 100%);
+  box-shadow:0 10px 24px rgba(30,62,91,.05);
+}
+.asset-briefing span{font-size:10px;letter-spacing:.14em;color:#2b7ba9}
+.asset-briefing strong{margin:6px 0 5px;font-size:26px;line-height:1.15;color:#173552}
+.asset-briefing p{font-size:12px;line-height:1.55;color:#66798c}
+.asset-briefing-score b{font-size:46px;color:#123b5e}
+.asset-briefing-score>span{font-size:12px;font-weight:800;color:#4d6e86}
+.asset-briefing-score small{font-size:10px;color:#7d90a0}
+
+.asset-kpis{gap:13px;margin-bottom:18px}
+.asset-kpis button{
+  position:relative;
+  min-height:108px;
+  border:1px solid var(--asset-border);
+  border-radius:16px;
+  padding:16px 16px 14px;
+  background:linear-gradient(180deg,#fff 0%,#fbfdff 100%);
+  box-shadow:0 8px 22px rgba(28,47,70,.045);
+  transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background-color .16s ease;
+}
+.asset-kpis button::before{
+  content:"";
+  position:absolute;
+  inset:0 0 auto 0;
+  height:4px;
+  border-radius:16px 16px 0 0;
+  background:linear-gradient(90deg,var(--asset-accent),var(--asset-accent-2));
+  opacity:.14;
+}
+.asset-kpis button:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:#c8d9e7}
+.asset-kpis button.alert{border-color:#efd4d8;background:linear-gradient(180deg,#fff 0%,#fff8f9 100%)}
+.asset-kpis button.alert::before{background:linear-gradient(90deg,#c43c46,#e58790);opacity:.26}
+.asset-kpis span{font-size:10px;letter-spacing:.085em;color:#768697}
+.asset-kpis strong{margin:8px 0 6px;font-size:34px;line-height:1;color:#183957}
+.asset-kpis small{font-size:10px;line-height:1.45;color:#8090a0;white-space:normal;overflow:visible;text-overflow:clip}
+.asset-kpis .alert strong{color:#a5323e}
+
+.asset-tabs{
+  display:flex;
+  gap:4px;
+  width:100%;
+  max-width:100%;
+  margin-bottom:16px;
+  padding:5px;
+  border:1px solid var(--asset-border);
+  border-radius:15px;
+  background:linear-gradient(180deg,#eef3f6 0%,#e8eef3 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.65);
+}
+.asset-tabs button{
+  flex:0 0 auto;
+  min-height:42px;
+  padding:0 16px;
+  border:1px solid transparent;
+  border-radius:11px;
+  color:#5a6d7f;
+  font-size:12px;
+  font-weight:800;
+  white-space:nowrap;
+  transition:background-color .16s ease,box-shadow .16s ease,color .16s ease,border-color .16s ease;
+}
+.asset-tabs button:hover{color:#2b628b;background:rgba(255,255,255,.45)}
+.asset-tabs button.active{
+  background:white;
+  color:#1f5e89;
+  border-color:#d8e3ec;
+  box-shadow:0 5px 14px rgba(30,50,75,.10);
+}
+
+.asset-overview-grid{gap:17px}
+.asset-attention-list{gap:8px}
+.asset-attention-list>button,
+.asset-relations-list>button,
+.asset-lifecycle-list>button{
+  border:1px solid transparent;
+  border-radius:14px;
+  margin-top:0;
+  padding:12px 12px;
+  background:linear-gradient(180deg,#fff 0%,#fbfdff 100%);
+  box-shadow:0 2px 8px rgba(29,50,75,.03);
+  transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background-color .16s ease;
+}
+.asset-attention-list>button:first-child,
+.asset-relations-list>button:first-child,
+.asset-lifecycle-list>button:first-child{border-top:1px solid transparent}
+.asset-attention-list>button:hover,
+.asset-relations-list>button:hover,
+.asset-lifecycle-list>button:hover{
+  border-color:#d4e3ee;
+  background:#f8fbfd;
+  transform:translateY(-1px);
+  box-shadow:0 10px 20px rgba(28,47,70,.06);
+}
+.asset-attention-list strong,.asset-relations-list strong,.asset-lifecycle-list strong{font-size:12px;color:#253c53}
+.asset-attention-list small,.asset-relations-list small,.asset-lifecycle-list small{font-size:9px;color:#7c8b98;line-height:1.45}
+.asset-health-ring{width:44px;height:44px;font-size:12px}
+.asset-attention-meta small{margin-top:6px}
+
+.asset-intelligence-list{gap:11px}
+.asset-intelligence-list button{
+  min-height:84px;
+  align-items:flex-start;
+  gap:11px;
+  border:1px solid var(--asset-border);
+  background:linear-gradient(180deg,#fff 0%,#fbfdff 100%);
+  border-radius:14px;
+  padding:14px;
+  box-shadow:0 5px 12px rgba(30,50,75,.04);
+  transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
+}
+.asset-intelligence-list button:hover{transform:translateY(-2px);border-color:#c9dae8;background:#fff;box-shadow:var(--shadow)}
+.asset-intelligence-list strong{font-size:12px;color:#294157}
+.asset-intelligence-list small{font-size:9px;color:#7b8b99;line-height:1.45;margin-top:3px}
+
+.asset-toolbar{
+  grid-template-columns:minmax(320px,1.8fr) repeat(4,minmax(140px,.6fr)) auto;
+  gap:10px;
+  align-items:center;
+  padding:14px;
+  margin-bottom:14px;
+  border-radius:18px;
+}
+.asset-toolbar .search-box,
+.asset-toolbar select,
+.asset-inventory-cell select,
+.asset-import-controls select,
+.asset-mapping select,
+.asset-form input,
+.asset-form select,
+.asset-form textarea,
+.asset-page .field input,
+.asset-page .field select,
+.asset-page .field textarea{
+  border:1px solid var(--asset-border);
+  border-radius:12px;
+  background:#fff;
+  color:#31485d;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85);
+}
+.asset-toolbar .search-box{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:46px;
+  padding:0 14px;
+  background:#fff;
+  border:1px solid var(--asset-border);
+  border-radius:13px;
+}
+.asset-toolbar .search-box svg{color:#7a8a9a}
+.asset-toolbar .search-box input{
+  width:100%;
+  height:44px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#324a60;
+  box-shadow:none;
+}
+.asset-toolbar select,
+.asset-import-controls select,
+.asset-mapping select,
+.asset-form select,
+.asset-page .field select{
+  appearance:none;
+  min-height:46px;
+  padding:0 40px 0 14px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='%23697B8C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 14px center;
+}
+.asset-toolbar .button{min-height:46px;padding-inline:18px}
+.asset-table-shell{
+  border:1px solid var(--asset-border);
+  border-radius:16px;
+  background:#fff;
+  box-shadow:0 10px 24px rgba(30,50,75,.05);
+}
+.asset-table{font-size:11px}
+.asset-table th{background:#f3f6fa;color:#5b6d80;font-size:10px}
+.asset-table td{padding:10px 10px}
+.asset-table td strong{font-size:11px;color:#2a4055}
+.asset-table td small{font-size:8px;color:#81909d;line-height:1.45}
+.asset-primary{padding:2px 0}
+.asset-primary strong{font-size:11px}
+.asset-ci-icon{width:34px;height:34px;border-radius:10px;background:#edf6fd;color:#28729e}
+.asset-health-score{width:42px;height:30px;border-radius:9px;font-size:12px}
+.asset-table-footer{margin-top:10px;font-size:9px;color:#7f8f9d}
+.asset-row-danger td{background:#fff8f8!important}
+
+.asset-inventory-cell{gap:6px 8px}
+.asset-inventory-cell select{height:34px;padding:0 34px 0 10px;font-size:10px;background-position:right 10px center}
+
+.asset-import-layout{gap:18px}
+.asset-import-start p{font-size:12px;line-height:1.6}
+.asset-import-actions{gap:10px}
+.asset-import-actions .button{min-height:44px}
+.asset-import-rules strong{font-size:10px}
+.asset-import-rules span{font-size:9px;padding:6px 9px}
+.asset-import-controls{gap:12px}
+.asset-import-summary{gap:10px}
+.asset-import-summary span{border:1px solid #e5edf3;background:#f7fafc;padding:12px;font-size:9px}
+.asset-import-summary b{font-size:20px}
+.asset-mapping{border-color:#dfe8ef;border-radius:13px}
+.asset-mapping summary{padding:12px 14px;font-size:11px;color:#304d65}
+.asset-mapping>div{gap:10px;padding:0 14px 14px}
+.asset-mapping label span{font-size:8px;margin-bottom:5px}
+.asset-import-preview{border:1px solid #e3ebf1;border-radius:13px;background:#fff}
+
+.asset-relations-panel,.asset-lifecycle-panel{padding:20px}
+.asset-relations-list,.asset-lifecycle-list{gap:8px}
+.asset-relations-list>button{grid-template-columns:minmax(210px,1fr) 180px minmax(210px,1fr)}
+.asset-relations-list>button>span{font-size:10px;color:#56809b}
+.asset-lifecycle-list>button{grid-template-columns:68px minmax(220px,1fr) minmax(200px,.75fr) auto}
+.asset-lifecycle-days{width:58px;height:40px;border-radius:11px;font-size:10px}
+
+.asset-360-head{gap:22px}
+.asset-360-head h2{font-size:24px}
+.asset-360-head p{font-size:11px;line-height:1.55}
+.asset-360-actions{gap:8px}
+.asset-360-actions .button{min-height:40px}
+.asset-360-kpis{gap:10px;margin:17px 0}
+.asset-360-kpis article{border-color:#e2ebf1;border-radius:13px;padding:12px}
+.asset-360-kpis span{font-size:8px}
+.asset-360-kpis strong{font-size:18px}
+.asset-360-kpis small{font-size:8px;line-height:1.45}
+.asset-360-grid{gap:12px}
+.asset-360-grid section,.asset-health-detail,.asset-history{border-color:#e2ebf1;border-radius:13px}
+.asset-360-grid h3,.asset-health-detail h3,.asset-history h3{font-size:12px}
+.asset-360-grid dt{font-size:9px}
+.asset-360-grid dd{font-size:10px}
+.asset-health-detail span,.asset-history strong,.asset-history p{font-size:9px}
+.asset-history article{grid-template-columns:150px 120px 1fr auto;gap:10px}
+.asset-history span,.asset-history small{font-size:8px}
+
+.asset-form{gap:12px}
+.asset-form input,
+.asset-form select,
+.asset-page .field input,
+.asset-page .field select{
+  min-height:42px;
+  padding:0 12px;
+}
+.asset-form textarea,
+.asset-page .field textarea{
+  min-height:92px;
+  padding:10px 12px;
+  resize:vertical;
+}
+
+.inline-alert{padding:11px 13px;border-radius:12px;font-size:10px}
+
+@media(max-width:1450px){
+  .asset-toolbar{grid-template-columns:minmax(260px,1fr) repeat(3,minmax(120px,.5fr)) auto}
+}
+@media(max-width:1350px){
+  .asset-kpis button{min-height:100px}
+}
+@media(max-width:1100px){
+  .asset-toolbar{grid-template-columns:1fr 1fr}
+  .asset-toolbar .search-box{grid-column:1/-1}
+  .asset-tabs{width:100%;overflow:auto}
+}
+@media(max-width:780px){
+  .asset-briefing strong{font-size:22px}
+  .asset-kpis strong{font-size:28px}
+  .asset-toolbar{grid-template-columns:1fr}
+  .asset-toolbar .search-box{grid-column:auto}
+  .asset-tabs{padding:4px}
+  .asset-tabs button{min-height:40px}
+  .asset-attention-list>button,
+  .asset-relations-list>button,
+  .asset-lifecycle-list>button{padding:12px}
+}
