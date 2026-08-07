@@ -33,8 +33,9 @@ import OitRelations from './views/OitRelations'
 import ServiceArchitecture from './views/ServiceArchitecture'
 import TechnologyCatalog from './views/TechnologyCatalog'
 import ItCosts from './views/ItCosts'
+import OperationsIntelligence from './views/OperationsIntelligence'
 
-type ViewKey='portals'|'technology'|'itCosts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'technology'|'intelligence'|'itCosts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -45,6 +46,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
   {label:'Spoločné',items:[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
+    {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
   ]},
   {label:'Prehľad ORIS',items:[{key:'dashboard',label:'Dashboard ORIS',icon:'dashboard',roles:allRoles}]},
@@ -79,6 +81,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
   {label:'Spoločné',items:[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
+    {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
   ]},
   {label:'OIT',items:[
@@ -100,6 +103,7 @@ const portalNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Portál',items:[
     {key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
+    {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
   ]},
   {label:'Systém',items:[
@@ -308,7 +312,7 @@ export default function App(){
     }
   },[auth.configured,auth.profile?.organizationId])
 
-  const workspace=view==='portals'||view==='technology'||view==='itCosts'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='technology'||view==='intelligence'||view==='itCosts'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>item.roles?.includes(role))})).filter(group=>group.items.length),[role,workspace])
@@ -577,6 +581,7 @@ export default function App(){
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span>{syncError}</span></div>}
         {view==='portals'&&<DepartmentPortal go={go}/>}
         {view==='technology'&&<TechnologyCatalog state={state} go={go}/>}
+        {view==='intelligence'&&<OperationsIntelligence state={state} go={go}/>}
         {view==='itCosts'&&<ItCosts state={state} go={go}/>}
         {view==='oit'&&<OitDashboard go={go}/>}
         {view==='oitRaci'&&<OitRaci orisItems={state.raci} orisEmployees={state.employees} substitutions={state.substitutions}/>}
