@@ -1,3 +1,11 @@
+# Release 0.26.0 – Scoped IAM + finančné obdobie
+
+- IAM matica 3.1 / 3.2 / spoločné s úrovňami none/read/write.
+- Serverové scope kontroly v Supabase a bezpečný čiastočný zápis snapshotu.
+- Prepínač IT nákladov Jan–Jún / Jan–Dec; celý rok 2023–2025.
+- Nový reprodukovateľný full-year IT dataset.
+- Vyžaduje SQL `IS_Riadenie_odboru_v0.26.0_IAM_SCOPE.sql`.
+
 # Release 0.25.0 – Financial Actions & Optimization
 
 ## Hlavný cieľ

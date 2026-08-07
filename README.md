@@ -1,10 +1,10 @@
 # IS Riadenie odboru
 
-**Aktuálny release: v0.25.0 – Financial Actions & Optimization.**
+**Aktuálny release: v0.26.0 – Scoped IAM + finančné obdobie.**
 
 Spoločný modul **Dodávatelia** prepája IČO zo SIT platieb, zmluvné referencie, informačné systémy a adminom spravované kontaktné/metadátové karty. Zoznam je read-only dostupný všetkým prihláseným rolám; upravovať ho môže iba administrátor. Riadiace centrum IT používa rovnaké pomenovanie dodávateľov podľa IČO.
 
-Podrobnosti: `RELEASE_NOTES_0.25.md` a `README_NASADENIE_0.25.txt`.
+Podrobnosti: `RELEASE_NOTES_0.26.md`, `IAM_SCOPED_ACCESS_0.26.md` a `README_NASADENIE_0.26.txt`.
 
 ---
 
@@ -18,9 +18,11 @@ React + TypeScript + Vite aplikácia pre spoločné riadenie:
 Aplikácia prepája RACI, ľudí a výkon rolí, služby, projekty, úlohy, ServiceDesk, Change, Problem, IAM, CMDB, riziká, digitálne portfólio, dátové centrá, technologický katalóg a architektúru služieb.
 
 
-## Verzia 0.25.0
+## Verzia 0.26.0
 
-Financial Actions & Optimization mení finančné odporúčania na pracovnú riadiacu vrstvu. Obsahuje RUN baseline a indexáciu, cost-owner pohľad, orientačné unit economics DC VaV, COST × single-R priorizáciu a evidenciu riadiacich opatrení s vlastníkom, termínom, KPI a stavom. Opatrenia používajú existujúci synchronizovaný `actions` register; nový SQL nie je potrebný.
+Scoped IAM oddeľuje globálnu aplikačnú rolu od prístupu do Odboru 3.1, Odboru 3.2 a spoločných modulov. Administrátor nastavuje pre každý scope `Bez prístupu / Iba čítanie / Čítanie + zápis`. Supabase migrácia v0.26 presadzuje scope aj serverovo.
+
+IT náklady dostali prepínač `Jan–Jún / Jan–Dec`. Celoročný konzervatívny IT výrez je dostupný pre 2023–2025; 2026 ostáva H1, pretože zdroj zatiaľ nemá júl–december. **Release 0.26 vyžaduje SQL `IS_Riadenie_odboru_v0.26.0_IAM_SCOPE.sql`.**
 
 ## Verzia 0.21.0
 
@@ -67,3 +69,8 @@ Pre release 0.21.0 sa nespúšťa nový Supabase SQL skript.
 Pre release 0.20.0 sa nespúšťa nový Supabase SQL skript.
 
 Pre release 0.19.0 sa nespúšťa nový Supabase SQL skript.
+
+
+## Release 0.26
+
+Scoped IAM oddeľuje práva pre Odbor 3.1, Odbor 3.2 a spoločné moduly. IT náklady podporujú prepnutie porovnateľného H1 a celého roka 2023–2025. Pred nasadením aplikácie spustite `IS_Riadenie_odboru_v0.26.0_IAM_SCOPE.sql`.
