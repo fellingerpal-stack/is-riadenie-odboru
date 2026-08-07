@@ -179,7 +179,7 @@ export default function TechnologyCatalog({ state, go }: { state: AppState; go: 
       eyebrow="Spoločný modul odborov 3.1 a 3.2"
       title="Technologický katalóg a infraštruktúrny explorer"
       description="Interaktívny pohľad od fyzickej a virtuálnej infraštruktúry cez platformy až po informačné systémy, služby, licencie, výkonové kapacity a dopady výpadkov."
-      actions={<button className="button button-secondary" onClick={exportCsv}><Icon name="download" size={17}/>Export CSV</button>}
+      actions={<><button className="button button-secondary" onClick={()=>go('intelligence')}><Icon name="shield" size={17}/>Riadiace centrum</button><button className="button button-secondary" onClick={exportCsv}><Icon name="download" size={17}/>Export CSV</button></>}
     />
 
     <div className="technology-source-note"><Icon name="shield" size={20}/><div><strong>Jednotný technologický model CVTI SR</strong><span>Údaje sa skladajú z CMDB, registra služieb ORIS, technickej architektúry OIT, inventárov oboch lokalít a prevádzkového reportu. Odvodené položky sú označené a musia byť potvrdené vlastníkom.</span></div></div>
