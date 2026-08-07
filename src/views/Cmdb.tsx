@@ -18,6 +18,7 @@ const scopeLabels: Record<AccessScope, string> = { oit: '3.1 OIT', oris: '3.2 OR
 
 type AssetTab = 'overview' | 'register' | 'inventory' | 'import' | 'relations' | 'lifecycle'
 type DuplicateMode = 'skip' | 'update' | 'create'
+type SavedAssetView = { id:string; name:string; search:string; type:string; status:string; criticality:string; scope:'Všetky'|AccessScope; inventoryOnly:string }
 
 function parseDate(value: string) {
   if (!value) return null
@@ -146,6 +147,13 @@ export default function Cmdb({
   const [duplicateMode, setDuplicateMode] = useState<DuplicateMode>('skip')
   const [importScope, setImportScope] = useState<AccessScope>(() => scopeForNew(canWriteOit, canWriteOris, canWriteShared))
   const [importMessage, setImportMessage] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [bulkAction, setBulkAction] = useState('inventoryStatus')
+  const [bulkValue, setBulkValue] = useState('Nájdené')
+  const [savedViews, setSavedViews] = useState<SavedAssetView[]>(() => {
+    try { return JSON.parse(localStorage.getItem('cvti-asset-saved-views') || '[]') as SavedAssetView[] } catch { return [] }
+  })
+  const [savedViewName, setSavedViewName] = useState('')
 
   const canEditScope = (assetScope: AccessScope) => {
     if (!['admin', 'manager', 'resolver'].includes(role)) return false
@@ -246,6 +254,48 @@ export default function Cmdb({
     const next = { ...relation, id: relation.id || crypto.randomUUID() }
     onRelationshipsChange(exists ? relationships.map((item) => item.id === relation.id ? next : item) : [next, ...relationships])
     setRelationEditing(null)
+  }
+
+  const toggleSelected = (id: string) => setSelectedIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
+  const selectableFiltered = filtered.filter(item => canEditScope(item.scope))
+  const allFilteredSelected = selectableFiltered.length > 0 && selectableFiltered.every(item => selectedIds.includes(item.id))
+  const toggleAllFiltered = () => setSelectedIds(current => allFilteredSelected ? current.filter(id => !selectableFiltered.some(item => item.id === id)) : [...new Set([...current, ...selectableFiltered.map(item => item.id)])])
+
+  const persistSavedViews = (next: SavedAssetView[]) => { setSavedViews(next); localStorage.setItem('cvti-asset-saved-views', JSON.stringify(next)) }
+  const saveCurrentView = () => {
+    const name = savedViewName.trim() || window.prompt('Názov uloženého pohľadu:')?.trim() || ''
+    if (!name) return
+    const next = [...savedViews.filter(view => view.name.toLocaleLowerCase('sk') !== name.toLocaleLowerCase('sk')), { id: crypto.randomUUID(), name, search, type, status, criticality, scope, inventoryOnly }]
+    persistSavedViews(next); setSavedViewName('')
+  }
+  const applySavedView = (id: string) => {
+    const view = savedViews.find(item => item.id === id); if (!view) return
+    setSearch(view.search); setType(view.type); setStatus(view.status); setCriticality(view.criticality); setScope(view.scope); setInventoryOnly(view.inventoryOnly)
+  }
+  const deleteSavedView = () => {
+    if (!savedViews.length) return
+    const name = window.prompt(`Zadaj názov pohľadu na odstránenie:
+${savedViews.map(view=>`• ${view.name}`).join('\n')}`)?.trim()
+    if (!name) return
+    persistSavedViews(savedViews.filter(view => view.name.toLocaleLowerCase('sk') !== name.toLocaleLowerCase('sk')))
+  }
+  const applyBulkAction = () => {
+    if (!selectedIds.length || !bulkValue.trim()) return
+    const selected = new Set(selectedIds)
+    const today = new Date().toISOString().slice(0,10)
+    const next = items.map(item => {
+      if (!selected.has(item.id) || !canEditScope(item.scope)) return item
+      let candidate = { ...item }
+      if (bulkAction === 'location') candidate.location = bulkValue
+      else if (bulkAction === 'assignedTo') candidate.assignedTo = bulkValue
+      else if (bulkAction === 'businessOwner') candidate.businessOwner = bulkValue
+      else if (bulkAction === 'technicalOwner') candidate.technicalOwner = bulkValue
+      else if (bulkAction === 'lifecycle') candidate.lifecycle = bulkValue
+      else if (bulkAction === 'inventoryStatus') { candidate.inventoryStatus = bulkValue; candidate.lastInventoryDate = today }
+      else if (bulkAction === 'scope' && ['oit','oris','shared'].includes(bulkValue)) candidate.scope = bulkValue as AccessScope
+      return appendHistory(candidate, 'Hromadná úprava', currentUser, `${bulkAction}: ${bulkValue}`)
+    })
+    onItemsChange(next); setSelectedIds([])
   }
 
   const exportCsv = () => {
@@ -366,10 +416,13 @@ export default function Cmdb({
         <select value={criticality} onChange={(event) => setCriticality(event.target.value)}><option>Všetky</option>{criticalities.map((value) => <option key={value}>{value}</option>)}</select>
         {tab === 'inventory' && <select value={inventoryOnly} onChange={(event) => setInventoryOnly(event.target.value)}><option>Všetky</option>{inventoryStates.map((value) => <option key={value}>{value}</option>)}</select>}
         <button className="button button-secondary" onClick={() => { setSearch(''); setScope('Všetky'); setType('Všetky'); setStatus('Všetky'); setCriticality('Všetky'); setInventoryOnly('Všetky') }}>Reset</button>
+        <div className="asset-saved-views"><select defaultValue="" onChange={(event)=>{if(event.target.value)applySavedView(event.target.value);event.target.value=''}}><option value="">Uložené pohľady</option>{savedViews.map(view=><option key={view.id} value={view.id}>{view.name}</option>)}</select><button className="icon-button" title="Uložiť aktuálne filtre" onClick={saveCurrentView}><Icon name="plus" size={16}/></button>{savedViews.length>0&&<button className="icon-button" title="Odstrániť uložený pohľad" onClick={deleteSavedView}><Icon name="trash" size={15}/></button>}</div>
       </section>
-      <div className="table-shell asset-table-shell"><table className="data-table asset-table"><thead><tr><th>Aktívum</th><th>Typ / scope</th><th>Identifikácia</th><th>Pridelenie / lokalita</th><th>Owner / služba</th>{tab==='inventory'&&<th>Inventúra</th>}<th>Health</th><th>Lifecycle</th><th></th></tr></thead><tbody>{filtered.map((item) => {
+      {selectedIds.length>0&&<section className="asset-bulk-bar"><div><Badge tone="info">{selectedIds.length} označených</Badge><span>Hromadná úprava</span></div><select value={bulkAction} onChange={event=>{setBulkAction(event.target.value);setBulkValue(event.target.value==='inventoryStatus'?'Nájdené':event.target.value==='lifecycle'?'V prevádzke':event.target.value==='scope'?'shared':'')}}><option value="inventoryStatus">Inventúrny stav</option><option value="location">Lokalita</option><option value="assignedTo">Pridelené osobe</option><option value="businessOwner">Vecný vlastník</option><option value="technicalOwner">Technický vlastník</option><option value="lifecycle">Lifecycle</option>{role==='admin'&&<option value="scope">Scope</option>}</select>{bulkAction==='inventoryStatus'?<select value={bulkValue} onChange={event=>setBulkValue(event.target.value)}>{inventoryStates.map(value=><option key={value}>{value}</option>)}</select>:bulkAction==='lifecycle'?<select value={bulkValue} onChange={event=>setBulkValue(event.target.value)}>{lifecycleStates.map(value=><option key={value}>{value}</option>)}</select>:bulkAction==='scope'?<select value={bulkValue} onChange={event=>setBulkValue(event.target.value)}><option value="oit">3.1 OIT</option><option value="oris">3.2 ORIS</option><option value="shared">Spoločné</option></select>:<input value={bulkValue} onChange={event=>setBulkValue(event.target.value)} placeholder="Nová hodnota…"/>}<button className="button button-primary" disabled={!bulkValue.trim()} onClick={applyBulkAction}>Použiť</button><button className="button button-ghost" onClick={()=>setSelectedIds([])}>Zrušiť výber</button></section>}
+      <div className="table-shell asset-table-shell"><table className="data-table asset-table"><thead><tr><th className="asset-select-col"><input type="checkbox" aria-label="Označiť filtrované" checked={allFilteredSelected} onChange={toggleAllFiltered}/></th><th>Aktívum</th><th>Typ / scope</th><th>Identifikácia</th><th>Pridelenie / lokalita</th><th>Owner / služba</th>{tab==='inventory'&&<th>Inventúra</th>}<th>Health</th><th>Lifecycle</th><th></th></tr></thead><tbody>{filtered.map((item) => {
         const health = assetHealth(item).score; const expiry = nearestExpiry(item)
         return <tr key={item.id} className={item.inventoryStatus === 'Nenájdené' ? 'asset-row-danger' : ''}>
+          <td className="asset-select-col"><input type="checkbox" aria-label={`Označiť ${item.name}`} disabled={!canEditScope(item.scope)} checked={selectedIds.includes(item.id)} onChange={()=>toggleSelected(item.id)}/></td>
           <td><button className="asset-primary" onClick={() => setDetail(item)}><span className="asset-ci-icon"><Icon name="cmdb" size={17}/></span><span><strong>{item.name}</strong><small>{item.id}{item.manufacturer || item.model ? ` · ${item.manufacturer} ${item.model}` : ''}</small></span></button></td>
           <td><strong>{item.type}</strong><small>{scopeLabels[item.scope]} · {item.assetClass}</small></td>
           <td><strong>{item.assetTag || '—'}</strong><small>S/N {item.serialNumber || '—'}{item.hostname ? ` · ${item.hostname}` : ''}</small></td>
