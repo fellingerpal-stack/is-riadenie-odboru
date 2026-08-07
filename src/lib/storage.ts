@@ -3,7 +3,7 @@ import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, Change
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.26.0'
+const CURRENT_VERSION = '0.27.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as AppState
@@ -299,10 +299,16 @@ function migrateRecertificationCampaign(campaign: RecertificationCampaign): Rece
 
 function migrateCmdbItem(item: CmdbItem): CmdbItem {
   const source = (item ?? {}) as Partial<CmdbItem>
+  const createdAt = typeof source.createdAt === 'string' && source.createdAt
+    ? source.createdAt
+    : (typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : new Date().toISOString())
+  const scope = source.scope === 'oit' || source.scope === 'oris' || source.scope === 'shared' ? source.scope : 'oris'
   return {
     id: typeof source.id === 'string' ? source.id : '',
     name: typeof source.name === 'string' && source.name ? source.name : 'Bez názvu',
     type: typeof source.type === 'string' && source.type ? source.type : 'Iné',
+    assetClass: typeof source.assetClass === 'string' && source.assetClass ? source.assetClass : 'Digitálne aktívum / CI',
+    scope,
     category: typeof source.category === 'string' ? source.category : '',
     status: typeof source.status === 'string' && source.status ? source.status : 'V prevádzke',
     criticality: typeof source.criticality === 'string' && source.criticality ? source.criticality : 'Stredná',
@@ -310,9 +316,18 @@ function migrateCmdbItem(item: CmdbItem): CmdbItem {
     businessOwner: typeof source.businessOwner === 'string' ? source.businessOwner : '',
     technicalOwner: typeof source.technicalOwner === 'string' ? source.technicalOwner : '',
     custodian: typeof source.custodian === 'string' ? source.custodian : '',
+    assignedTo: typeof source.assignedTo === 'string' ? source.assignedTo : '',
+    department: typeof source.department === 'string' ? source.department : '',
     environment: typeof source.environment === 'string' ? source.environment : '',
     location: typeof source.location === 'string' ? source.location : '',
+    room: typeof source.room === 'string' ? source.room : '',
+    costCenter: typeof source.costCenter === 'string' ? source.costCenter : '',
     supplier: typeof source.supplier === 'string' ? source.supplier : '',
+    supplierIco: typeof source.supplierIco === 'string' ? source.supplierIco : '',
+    contractRef: typeof source.contractRef === 'string' ? source.contractRef : '',
+    contractTask: typeof source.contractTask === 'string' ? source.contractTask : '',
+    manufacturer: typeof source.manufacturer === 'string' ? source.manufacturer : '',
+    model: typeof source.model === 'string' ? source.model : '',
     version: typeof source.version === 'string' ? source.version : '',
     hostname: typeof source.hostname === 'string' ? source.hostname : '',
     ipAddress: typeof source.ipAddress === 'string' ? source.ipAddress : '',
@@ -323,16 +338,31 @@ function migrateCmdbItem(item: CmdbItem): CmdbItem {
     licenseEnd: typeof source.licenseEnd === 'string' ? source.licenseEnd : '',
     contractEnd: typeof source.contractEnd === 'string' ? source.contractEnd : '',
     supportEnd: typeof source.supportEnd === 'string' ? source.supportEnd : '',
+    plannedReplacementDate: typeof source.plannedReplacementDate === 'string' ? source.plannedReplacementDate : '',
+    retirementDate: typeof source.retirementDate === 'string' ? source.retirementDate : '',
+    acquisitionMethod: typeof source.acquisitionMethod === 'string' ? source.acquisitionMethod : '',
+    purchasePrice: typeof source.purchasePrice === 'number' && Number.isFinite(source.purchasePrice) ? source.purchasePrice : (typeof source.cost === 'number' && Number.isFinite(source.cost) ? source.cost : 0),
+    annualOperatingCost: typeof source.annualOperatingCost === 'number' && Number.isFinite(source.annualOperatingCost) ? source.annualOperatingCost : 0,
+    licenseCostAnnual: typeof source.licenseCostAnnual === 'number' && Number.isFinite(source.licenseCostAnnual) ? source.licenseCostAnnual : 0,
+    currency: typeof source.currency === 'string' && source.currency ? source.currency : 'EUR',
     cost: typeof source.cost === 'number' && Number.isFinite(source.cost) ? source.cost : 0,
     dataClassification: typeof source.dataClassification === 'string' ? source.dataClassification : 'Interné',
     monitoring: typeof source.monitoring === 'string' ? source.monitoring : '',
     backup: typeof source.backup === 'string' ? source.backup : '',
     documentation: typeof source.documentation === 'string' ? source.documentation : '',
     lifecycle: typeof source.lifecycle === 'string' && source.lifecycle ? source.lifecycle : 'V prevádzke',
+    inventoryStatus: typeof source.inventoryStatus === 'string' && source.inventoryStatus ? source.inventoryStatus : 'Neoverené',
+    lastInventoryDate: typeof source.lastInventoryDate === 'string' ? source.lastInventoryDate : '',
+    inventoryNote: typeof source.inventoryNote === 'string' ? source.inventoryNote : '',
+    source: typeof source.source === 'string' && source.source ? source.source : 'Migrácia z CMDB',
+    qrCode: typeof source.qrCode === 'string' ? source.qrCode : '',
     linkedTicketIds: Array.isArray(source.linkedTicketIds) ? source.linkedTicketIds : [],
     linkedChangeIds: Array.isArray(source.linkedChangeIds) ? source.linkedChangeIds : [],
+    history: Array.isArray(source.history) ? source.history : [],
     note: typeof source.note === 'string' ? source.note : '',
-    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : new Date().toISOString(),
+    createdAt,
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+    updatedBy: typeof source.updatedBy === 'string' ? source.updatedBy : '',
   }
 }
 
