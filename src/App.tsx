@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AppRole, AppState, CloudSnapshot, SyncState } from './types'
+import type { AccessScope, AppRole, AppState, CloudSnapshot, SyncState } from './types'
 import { exportState, importState, loadRole, loadState, migrateState, resetState, saveRole, saveState } from './lib/storage'
 import { loadCurrentSnapshot, saveCurrentSnapshot } from './lib/cloud'
+import { canReadScope, canWriteScope, defaultAccessScopes, profileAccess } from './lib/accessControl'
 import { loadWorkData, subscribeToWorkData, syncWorkProjects, syncWorkTasks, type WorkDatabaseState } from './lib/workCloud'
 import { loadHelpdeskData, subscribeToHelpdeskData, syncServiceQueues, syncServiceSlaPolicies, syncServiceTickets, type HelpdeskDatabaseState } from './lib/helpdeskCloud'
 import { loadIamData, subscribeToIamData, syncIamCampaigns, syncIamCatalog, syncIamRequests, type IamDatabaseState } from './lib/iamCloud'
@@ -238,26 +239,61 @@ export default function App(){
   const canManage=role==='admin'||role==='manager'
   const canResolve=canManage||role==='resolver'
   const canSubmit=canResolve||role==='employee'
+  const accessProfile=auth.profile??{role,department:'Odbor 3.2',accessScopes:defaultAccessScopes(role,'Odbor 3.2')}
+  const canReadOit=canReadScope(accessProfile,'oit')
+  const canReadOris=canReadScope(accessProfile,'oris')
+  const canReadShared=canReadScope(accessProfile,'shared')
+  const canWriteOit=canWriteScope(accessProfile,'oit')
+  const canWriteOris=canWriteScope(accessProfile,'oris')
+  const canWriteShared=canWriteScope(accessProfile,'shared')
+  const canManageOris=canManage&&canWriteOris
+  const canResolveOris=canResolve&&canWriteOris
+  const canSubmitOris=canSubmit&&canWriteOris
+  const canResolveOit=canResolve&&canWriteOit
+  const canManageShared=canManage&&canWriteShared
+  const canSaveSnapshot=canResolve&&(canWriteOris||canWriteOit||canWriteShared)
   const displayName=auth.configured?(auth.profile?.fullName||auth.user?.email||'Používateľ'):'Pavol Horváth'
   const resetMode=auth.recoveryMode||new URLSearchParams(location.search).get('reset')==='1'||location.hash.startsWith('#/reset-password')
+
+  function viewScope(key:ViewKey):AccessScope|'admin'|'portal'{
+    if(key==='users'||key==='roadmap')return 'admin'
+    if(key==='portals')return 'portal'
+    if(key==='technology'||key==='intelligence'||key==='itCosts'||key==='suppliers')return 'shared'
+    if(key.startsWith('oit'))return 'oit'
+    return 'oris'
+  }
+  function canAccessView(key:ViewKey){
+    const item=allNavGroups.flatMap(group=>group.items).find(candidate=>candidate.key===key)
+    if(!(item?.roles?.includes(role)??false))return false
+    const scope=viewScope(key)
+    if(scope==='admin')return role==='admin'
+    if(scope==='portal')return true
+    return canReadScope(accessProfile,scope)
+  }
+  function accessFallback():ViewKey{
+    if(canReadOris)return 'dashboard'
+    if(canReadOit)return 'oit'
+    if(canReadShared)return 'technology'
+    return 'portals'
+  }
 
   useEffect(()=>{stateRef.current=state;saveState(state)},[state])
   useEffect(()=>{if(!auth.configured)saveRole(demoRole)},[demoRole,auth.configured])
   useEffect(()=>{
     const onHash=()=>{
       const next=initialView()
-      const allowed=allNavGroups.flatMap(group=>group.items).find(item=>item.key===next)?.roles?.includes(role)??false
-      if(!allowed){setView('portals');location.hash='/portals'}
+      const allowed=canAccessView(next)
+      if(!allowed){const fallback=accessFallback();setView(fallback);location.hash=`/${fallback}`}
       else setView(next)
     }
     addEventListener('hashchange',onHash)
     return()=>removeEventListener('hashchange',onHash)
-  },[role])
+  },[role,canReadOit,canReadOris,canReadShared])
 
   useEffect(()=>{
-    const allowed=allNavGroups.flatMap(group=>group.items).find(item=>item.key===view)?.roles?.includes(role)??false
-    if(!allowed){setView('portals');location.hash='/portals'}
-  },[role,view])
+    const allowed=canAccessView(view)
+    if(!allowed){const fallback=accessFallback();setView(fallback);location.hash=`/${fallback}`}
+  },[role,view,canReadOit,canReadOris,canReadShared])
 
   useEffect(()=>{
     if(!auth.configured){setSync('local');return}
@@ -275,10 +311,10 @@ export default function App(){
   },[state,auth.configured,auth.profile,sync])
 
   useEffect(()=>{
-    if(!auth.configured||!auth.profile||!canResolve||sync!=='dirty')return
+    if(!auth.configured||!auth.profile||!canSaveSnapshot||sync!=='dirty')return
     const timer=window.setTimeout(()=>void saveCloud(),1400)
     return()=>window.clearTimeout(timer)
-  },[sync,state,auth.configured,auth.profile?.id,canResolve])
+  },[sync,state,auth.configured,auth.profile?.id,canSaveSnapshot])
 
   useEffect(()=>{
     if(!auth.configured||!auth.profile?.organizationId)return
@@ -319,13 +355,13 @@ export default function App(){
   const workspace=view==='portals'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
-  const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>item.roles?.includes(role))})).filter(group=>group.items.length),[role,workspace])
+  const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
   const workspaceName=workspace==='oit'?'Odbor 3.1':workspace==='oris'?'Odbor 3.2':'Portál odborov'
   const workspaceDetail=workspace==='oit'?'Správa a prevádzka IT infraštruktúry':workspace==='oris'?'Prevádzka a rozvoj IS · projektové riadenie':'CVTI SR · odbory 3.1 a 3.2'
 
   function go(next:string){
     const key=next as ViewKey
-    const allowed=allNavGroups.flatMap(group=>group.items).find(item=>item.key===key)?.roles?.includes(role)??false
+    const allowed=canAccessView(key)
     if(!allowed)return
     setView(key);location.hash=`/${key}`;setSidebarOpen(false);window.scrollTo({top:0,behavior:'smooth'})
   }
@@ -548,7 +584,7 @@ export default function App(){
   }
 
   async function saveCloud(){
-    if(!canResolve||!auth.configured)return
+    if(!canSaveSnapshot||!auth.configured)return
     setSync('saving');setSyncError('')
     try{
       const payload=stateRef.current
@@ -577,16 +613,16 @@ export default function App(){
     {sidebarOpen&&<button className="sidebar-overlay" onClick={()=>setSidebarOpen(false)} aria-label="Zavrieť menu"/>}
     <div className="app-main">
       <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setSidebarOpen(true)}><Icon name="menu"/></button><div><small>{workspaceName}</small><strong>{currentLabel}</strong></div></div><div className="topbar-right">
-        {auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canResolve&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
+        {auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canSaveSnapshot&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
         <div className={`data-mode data-mode-${sync}`} title={syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{syncLabel(sync)}</span></div>
-        <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{roleLabel(role)}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
+        <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{roleLabel(role)} · {workspace==='oit'?'3.1':workspace==='oris'?'3.2':'Spoločné'} {profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='write'?'W':profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='read'?'R':'—'}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
       </div></header>
       <main className="content">
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span>{syncError}</span></div>}
-        {view==='portals'&&<DepartmentPortal go={go}/>}
+        {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared}/>}
         {view==='technology'&&<TechnologyCatalog state={state} go={go}/>}
         {view==='intelligence'&&<OperationsIntelligence state={state} go={go}/>}
-        {view==='itCosts'&&<ItCosts state={state} go={go} canEdit={canManage} currentUser={displayName} onActionsChange={actions=>setState(current=>({...current,actions}))}/>}
+        {view==='itCosts'&&<ItCosts state={state} go={go} canEdit={canManageShared} currentUser={displayName} onActionsChange={actions=>setState(current=>({...current,actions}))}/>}
         {view==='suppliers'&&<Suppliers state={state} canEdit={role==='admin'} currentUser={displayName} role={role} onChange={supplierRecords=>setState(current=>({...current,supplierRecords}))} go={go}/>}
         {view==='oit'&&<OitDashboard go={go}/>}
         {view==='oitRaci'&&<OitRaci orisItems={state.raci} orisEmployees={state.employees} substitutions={state.substitutions}/>}
@@ -595,24 +631,24 @@ export default function App(){
         {view==='oitSystems'&&<OitSystems/>}
         {view==='oitOperations'&&<OitOperations/>}
         {view==='oitRelations'&&<OitRelations state={state} go={go}/>}
-        {view==='oitArchitecture'&&<ServiceArchitecture state={state} go={go} perspective="oit" canEdit={canResolve} currentUser={displayName} onArchitectureChange={architectureOverrides=>setState(current=>({...current,architectureOverrides}))}/>}
-        {view==='architecture'&&<ServiceArchitecture state={state} go={go} perspective="oris" canEdit={canResolve} currentUser={displayName} onArchitectureChange={architectureOverrides=>setState(current=>({...current,architectureOverrides}))}/>}
+        {view==='oitArchitecture'&&<ServiceArchitecture state={state} go={go} perspective="oit" canEdit={canResolveOit} currentUser={displayName} onArchitectureChange={architectureOverrides=>setState(current=>({...current,architectureOverrides}))}/>}
+        {view==='architecture'&&<ServiceArchitecture state={state} go={go} perspective="oris" canEdit={canResolveOris} currentUser={displayName} onArchitectureChange={architectureOverrides=>setState(current=>({...current,architectureOverrides}))}/>}
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
-        {view==='people'&&<People employees={state.employees} raci={state.raci} capacity={state.capacity} canEdit={canManage} onChange={employees=>setState(current=>({...current,employees}))}/>} 
-        {view==='raci'&&<Raci items={state.raci} employees={state.employees} substitutions={state.substitutions} canEdit={canManage} onChange={raci=>setState(current=>({...current,raci}))}/>} 
-        {view==='services'&&<Services services={state.services} canEdit={canManage} onChange={services=>setState(current=>({...current,services}))}/>} 
-        {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManage} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
-        {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManage} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
-        {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolve} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
-        {view==='helpdesk'&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} canEdit={canSubmit} canConfigure={canResolve} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies}/>} 
-        {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
-        {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolve} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
-        {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmit} canConfigure={canResolve} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
-        {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} canEdit={canResolve} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
-        {view==='webs'&&<WebRegistry canEdit={canResolve} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
-        {view==='informationSystems'&&<InformationSystems canEdit={canResolve} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
-        {view==='risks'&&<Risks risks={state.risks} canEdit={canManage} onChange={risks=>setState(current=>({...current,risks}))}/>} 
-        {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManage} onChange={decisions=>setState(current=>({...current,decisions}))}/>} 
+        {view==='people'&&<People employees={state.employees} raci={state.raci} capacity={state.capacity} canEdit={canManageOris} onChange={employees=>setState(current=>({...current,employees}))}/>} 
+        {view==='raci'&&<Raci items={state.raci} employees={state.employees} substitutions={state.substitutions} canEdit={canManageOris} onChange={raci=>setState(current=>({...current,raci}))}/>} 
+        {view==='services'&&<Services services={state.services} canEdit={canManageOris} onChange={services=>setState(current=>({...current,services}))}/>} 
+        {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManageOris} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
+        {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManageOris} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
+        {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
+        {view==='helpdesk'&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies}/>} 
+        {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
+        {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
+        {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
+        {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} canEdit={canResolveOris} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
+        {view==='webs'&&<WebRegistry canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
+        {view==='informationSystems'&&<InformationSystems canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
+        {view==='risks'&&<Risks risks={state.risks} canEdit={canManageOris} onChange={risks=>setState(current=>({...current,risks}))}/>} 
+        {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManageOris} onChange={decisions=>setState(current=>({...current,decisions}))}/>} 
         {view==='users'&&role==='admin'&&<Users currentUserId={auth.profile?.id??'local-admin'} currentUserName={displayName} configured={auth.configured}/>} 
         {view==='roadmap'&&role==='admin'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
       </main>
