@@ -1,10 +1,10 @@
 # IS Riadenie odboru
 
-**Aktuálny release: v0.24.1 – Dodávateľ v dôkaznej tabuľke IT nákladov + optimalizácia tabuľky.**
+**Aktuálny release: v0.25.0 – Financial Actions & Optimization.**
 
 Spoločný modul **Dodávatelia** prepája IČO zo SIT platieb, zmluvné referencie, informačné systémy a adminom spravované kontaktné/metadátové karty. Zoznam je read-only dostupný všetkým prihláseným rolám; upravovať ho môže iba administrátor. Riadiace centrum IT používa rovnaké pomenovanie dodávateľov podľa IČO.
 
-Podrobnosti: `RELEASE_NOTES_0.24.md` a `README_NASADENIE_0.24.txt`.
+Podrobnosti: `RELEASE_NOTES_0.25.md` a `README_NASADENIE_0.25.txt`.
 
 ---
 
@@ -16,6 +16,11 @@ React + TypeScript + Vite aplikácia pre spoločné riadenie:
 - **3.2 Odbor prevádzky, rozvoja informačných systémov a projektové riadenie**.
 
 Aplikácia prepája RACI, ľudí a výkon rolí, služby, projekty, úlohy, ServiceDesk, Change, Problem, IAM, CMDB, riziká, digitálne portfólio, dátové centrá, technologický katalóg a architektúru služieb.
+
+
+## Verzia 0.25.0
+
+Financial Actions & Optimization mení finančné odporúčania na pracovnú riadiacu vrstvu. Obsahuje RUN baseline a indexáciu, cost-owner pohľad, orientačné unit economics DC VaV, COST × single-R priorizáciu a evidenciu riadiacich opatrení s vlastníkom, termínom, KPI a stavom. Opatrenia používajú existujúci synchronizovaný `actions` register; nový SQL nie je potrebný.
 
 ## Verzia 0.21.0
 
