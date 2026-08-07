@@ -227,3 +227,11 @@ Upravené súbory:
 - `package.json`
 
 Databázová schéma tejto aplikácie sa v release 0.22.0 nemení. Kontraktové čerpanie je zabalený, auditovateľný snapshot pripravený na neskoršie napojenie na mesačný Supabase view / import.
+
+
+# 0.28.0 – Smart Workspace & UX Simplification
+- Moje centrum a personalizovaná pracovná fronta.
+- Globálne hľadanie Ctrl+K.
+- Data Quality Center.
+- Asset saved views a hromadné operácie.
+- Zjednodušená navigácia spoločného portálu.
