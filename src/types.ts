@@ -552,6 +552,32 @@ export interface AppState {
   cmdbItems: CmdbItem[]
   cmdbRelationships: CmdbRelationship[]
   architectureOverrides: ServiceArchitectureRecord[]
+  supplierRecords: SupplierRecord[]
+}
+
+
+export interface SupplierRecord {
+  id: string
+  ico: string
+  name: string
+  status: string
+  category: string
+  source: string
+  website: string
+  crzUrl: string
+  contractPdfUrl: string
+  dmsUrl: string
+  salesContact: string
+  salesEmail: string
+  salesPhone: string
+  supplierProjectManager: string
+  customerProjectManager: string
+  contractManager: string
+  serviceOwner: string
+  escalationContact: string
+  note: string
+  updatedAt: string
+  updatedBy: string
 }
 
 export interface UserProfile {
