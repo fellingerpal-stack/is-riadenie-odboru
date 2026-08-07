@@ -586,7 +586,7 @@ export default function App(){
         {view==='portals'&&<DepartmentPortal go={go}/>}
         {view==='technology'&&<TechnologyCatalog state={state} go={go}/>}
         {view==='intelligence'&&<OperationsIntelligence state={state} go={go}/>}
-        {view==='itCosts'&&<ItCosts state={state} go={go}/>}
+        {view==='itCosts'&&<ItCosts state={state} go={go} canEdit={canManage} currentUser={displayName} onActionsChange={actions=>setState(current=>({...current,actions}))}/>}
         {view==='suppliers'&&<Suppliers state={state} canEdit={role==='admin'} currentUser={displayName} role={role} onChange={supplierRecords=>setState(current=>({...current,supplierRecords}))} go={go}/>}
         {view==='oit'&&<OitDashboard go={go}/>}
         {view==='oitRaci'&&<OitRaci orisItems={state.raci} orisEmployees={state.employees} substitutions={state.substitutions}/>}
