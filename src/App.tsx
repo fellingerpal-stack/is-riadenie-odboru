@@ -10,6 +10,7 @@ import { useAuth } from './auth/AuthContext'
 import AuthScreen from './auth/AuthScreen'
 import CloudSetupScreen from './auth/CloudSetupScreen'
 import { Badge, Field, Icon, Modal, type IconName } from './components/UI'
+import GlobalSearch from './components/GlobalSearch'
 import Dashboard from './views/Dashboard'
 import People from './views/People'
 import Raci from './views/Raci'
@@ -36,8 +37,10 @@ import TechnologyCatalog from './views/TechnologyCatalog'
 import ItCosts from './views/ItCosts'
 import OperationsIntelligence from './views/OperationsIntelligence'
 import Suppliers from './views/Suppliers'
+import MyWorkspace from './views/MyWorkspace'
+import DataQuality from './views/DataQuality'
 
-type ViewKey='portals'|'technology'|'intelligence'|'itCosts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -45,7 +48,7 @@ const managementRoles:AppRole[]=['admin','manager']
 const resolverRoles:AppRole[]=['admin','manager','resolver']
 const employeeRoles:AppRole[]=['admin','manager','resolver','employee']
 const orisNavGroups:{label:string;items:NavItem[]}[]=[
-  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
+  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},{key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},{key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles}]},
   {label:'Spoločné',items:[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
@@ -81,7 +84,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
   ]},
 ]
 const oitNavGroups:{label:string;items:NavItem[]}[]=[
-  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles}]},
+  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},{key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},{key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles}]},
   {label:'Spoločné',items:[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
@@ -105,17 +108,23 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
   ]},
 ]
 const portalNavGroups:{label:string;items:NavItem[]}[]=[
-  {label:'Portál',items:[
+  {label:'Pracovný priestor',items:[
     {key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},
-    {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
+    {key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
-    {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
-    {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
-    {key:'cmdb',label:'Asset management',icon:'cmdb',roles:allRoles,badge:s=>(Array.isArray(s.cmdbItems)?s.cmdbItems:[]).filter(i=>!i.businessOwner&&!i.technicalOwner&&!i.assignedTo||i.lifecycle==='Na obnovu'||i.inventoryStatus==='Nenájdené'||i.inventoryStatus==='Nezhoda').length},
+    {key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles},
   ]},
-  {label:'Systém',items:[
-    {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
-    {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:['admin']},
+  {label:'IT prostredie',items:[
+    {key:'technology',label:'Technológie a služby',icon:'systems',roles:['admin','manager','resolver','viewer']},
+    {key:'cmdb',label:'Asset management',icon:'cmdb',roles:allRoles,badge:s=>(Array.isArray(s.cmdbItems)?s.cmdbItems:[]).filter(i=>!i.businessOwner&&!i.technicalOwner&&!i.assignedTo||i.lifecycle==='Na obnovu'||i.inventoryStatus==='Nenájdené'||i.inventoryStatus==='Nezhoda').length},
+    {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
+  ]},
+  {label:'Financie',items:[
+    {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
+  ]},
+  {label:'Správa',items:[
+    {key:'users',label:'Používatelia a IAM',icon:'user',roles:['admin']},
+    {key:'roadmap',label:'Nastavenia a roadmap',icon:'roadmap',roles:['admin']},
   ]},
 ]
 const allNavGroups=[...orisNavGroups,...oitNavGroups,...portalNavGroups]
@@ -214,6 +223,7 @@ export default function App(){
   const [view,setView]=useState<ViewKey>(()=>initialView())
   const [sidebarOpen,setSidebarOpen]=useState(false)
   const [profileOpen,setProfileOpen]=useState(false)
+  const [globalSearchOpen,setGlobalSearchOpen]=useState(false)
   const [sync,setSync]=useState<SyncState>(auth.configured?'loading':'local')
   const [syncError,setSyncError]=useState('')
   const [snapshot,setSnapshot]=useState<CloudSnapshot|null>(null)
@@ -259,7 +269,7 @@ export default function App(){
 
   function viewScope(key:ViewKey):AccessScope|'admin'|'portal'{
     if(key==='users'||key==='roadmap')return 'admin'
-    if(key==='portals')return 'portal'
+    if(key==='portals'||key==='myWorkspace'||key==='dataQuality')return 'portal'
     if(key==='technology'||key==='intelligence'||key==='itCosts'||key==='suppliers'||key==='cmdb')return 'shared'
     if(key.startsWith('oit'))return 'oit'
     return 'oris'
@@ -354,7 +364,16 @@ export default function App(){
     }
   },[auth.configured,auth.profile?.organizationId])
 
-  const workspace=view==='portals'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='cmdb'?'portal':view.startsWith('oit')?'oit':'oris'
+  useEffect(()=>{
+    const handler=(event:KeyboardEvent)=>{
+      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();setGlobalSearchOpen(true)}
+      if(event.key==='Escape')setGlobalSearchOpen(false)
+    }
+    window.addEventListener('keydown',handler)
+    return()=>window.removeEventListener('keydown',handler)
+  },[])
+
+  const workspace=view==='portals'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='cmdb'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
@@ -615,6 +634,7 @@ export default function App(){
     {sidebarOpen&&<button className="sidebar-overlay" onClick={()=>setSidebarOpen(false)} aria-label="Zavrieť menu"/>}
     <div className="app-main">
       <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setSidebarOpen(true)}><Icon name="menu"/></button><div><small>{workspaceName}</small><strong>{currentLabel}</strong></div></div><div className="topbar-right">
+        <button className="top-search-trigger" title="Globálne hľadanie (Ctrl+K)" onClick={()=>setGlobalSearchOpen(true)}><Icon name="search" size={16}/><span>Hľadať</span><kbd>Ctrl K</kbd></button>
         {auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canSaveSnapshot&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
         <div className={`data-mode data-mode-${sync}`} title={syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{syncLabel(sync)}</span></div>
         <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{roleLabel(role)} · {workspace==='oit'?'3.1':workspace==='oris'?'3.2':'Spoločné'} {profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='write'?'W':profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='read'?'R':'—'}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
@@ -622,6 +642,8 @@ export default function App(){
       <main className="content">
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span>{syncError}</span></div>}
         {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared}/>}
+        {view==='myWorkspace'&&<MyWorkspace state={state} currentUser={displayName} role={role} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
+        {view==='dataQuality'&&<DataQuality state={state} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
         {view==='technology'&&<TechnologyCatalog state={state} go={go}/>}
         {view==='intelligence'&&<OperationsIntelligence state={state} go={go}/>}
         {view==='itCosts'&&<ItCosts state={state} go={go} canEdit={canManageShared} currentUser={displayName} onActionsChange={actions=>setState(current=>({...current,actions}))}/>}
@@ -655,6 +677,7 @@ export default function App(){
         {view==='roadmap'&&role==='admin'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
       </main>
     </div>
+    {globalSearchOpen&&<GlobalSearch state={state} onClose={()=>setGlobalSearchOpen(false)} go={key=>go(key)} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared}/>}
     {profileOpen&&<AccountProfileModal onClose={()=>setProfileOpen(false)}/>}
   </div>
 }
