@@ -1,5 +1,8 @@
 export type RaciCode = '' | 'R' | 'A' | 'C' | 'I' | 'R/A'
 export type AppRole = 'admin' | 'manager' | 'resolver' | 'employee' | 'viewer'
+export type AccessLevel = 'none' | 'read' | 'write'
+export type AccessScope = 'oit' | 'oris' | 'shared'
+export interface UserAccessScopes { oit: AccessLevel; oris: AccessLevel; shared: AccessLevel }
 
 export interface Meta {
   version: string
@@ -589,6 +592,7 @@ export interface UserProfile {
   jobTitle: string
   phone: string
   role: AppRole
+  accessScopes: UserAccessScopes
   isActive: boolean
   lastLoginAt: string
   acceptedAt: string
