@@ -8,6 +8,7 @@ import { resolveSupplierName } from '../lib/supplierDirectory'
 import data from '../data/itCosts.json'
 import paymentData from '../data/contractPayments.json'
 import ContractSpending from './ContractSpending'
+import FinancialOptimization from './FinancialOptimization'
 import './ItCosts.css'
 
 type Go = (view:string)=>void
@@ -159,7 +160,7 @@ function downloadCsv(filename:string,rows:string[][]){
   link.href=url;link.download=filename;link.click();URL.revokeObjectURL(url)
 }
 
-export default function ItCosts({state,go}:{state:AppState;go:Go}){
+export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{state:AppState;go:Go;canEdit:boolean;currentUser:string;onActionsChange:(actions:AppState['actions'])=>void}){
   const years=dataset.meta.years
   const [year,setYear]=useState(years.at(-1)??2026)
   const [mode,setMode]=useState('Všetko')
@@ -282,13 +283,29 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
     },
   ] as const
 
-  const recommendations=[] as string[]
-  if(runShare>=85)recommendations.push('Vytvoriť samostatný RUN baseline pre prevádzku a každoročne sledovať jeho indexáciu; CHANGE rozpočet držať oddelene, aby prevádzka „nezožrala“ rozvoj.')
-  if(topTwoShare>=70)recommendations.push('Pre najväčšie dve nákladové oblasti viesť samostatný cost-owner, SLA/KPI a plán optimalizácie; vysoká koncentrácia znamená, že pár rozhodnutí vysvetľuje väčšinu IT výdavkov.')
-  if((entityTotals.find(item=>item.name==='DC VaV')?.amount??0)>selectedTotal*.35)recommendations.push('Pri DC VaV prepojiť € náklady s kapacitou, energiou, dostupnosťou a využitím infraštruktúry. Následne bude možné sledovať náklad na prevádzkovú jednotku, nie iba absolútnu sumu.')
-  if(raciMappedShare<70)recommendations.push(`Doplniť COST → SERVICE/RACI mapovanie pre nákladové entity bez procesnej väzby. Aktuálne je priamo spárovaných ${number.format(raciMappedShare)} % vybraného objemu; cieľom by malo byť aspoň 80–90 % pri významných IT službách.`)
-  if(singleRExposureShare>=25)recommendations.push(`Pri nákladovo významných službách so single-R rizikom spojiť finančnú prioritu so zastupiteľnosťou. Vo výbere je takto exponovaných ${money.format(singleRExposure)} (${number.format(singleRExposureShare)} %).`)
-  if(changeTotal<selectedTotal*.15)recommendations.push('Nízky podiel CHANGE neinterpretovať ako úplný obraz investícií: zdroj pokrýva najmä bežné výdavky 632–637. Kapitálové 7xx položky v dodaných dashboardoch nie sú súčasťou tohto výrezu.')
+  const runTrend=years.map(trendYear=>({
+    year:trendYear,
+    amount:dataset.items.filter(item=>{
+      if(item.mode!=='Prevádzka')return false
+      if(category!=='Všetko'&&item.category!==category)return false
+      if(confidence!=='Všetko'&&item.confidence!==confidence)return false
+      if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${item.topDocument}`).includes(norm(search)))return false
+      return true
+    }).reduce((sum,item)=>sum+amountFor(item,trendYear),0),
+  }))
+  const optimizationEntities=entityTotals.map(entity=>{
+    const context=entityContexts.get(entity.name)??raciContext(entity.name,state)
+    return {
+      name:entity.name,
+      category:entity.category,
+      amount:entity.amount,
+      modeRun:entity.modeRun,
+      modeChange:entity.modeChange,
+      raciLinks:context.oris+context.oit,
+      singleR:context.singleR,
+      route:relatedRoute(entity.name,entity.category),
+    }
+  })
 
   function exportCurrent(){
     downloadCsv(`it-naklady-${year}.csv`,[
@@ -347,8 +364,9 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
     <section className="panel itc-intelligence">
       <div className="panel-heading"><div><span className="eyebrow">FINANČNÁ INTELIGENCIA</span><h3>Riadiace signály nad nákladmi</h3><p>Vysvetliteľné pravidlá nad aktuálnym výberom – bez externého AI API a bez odosielania ekonomických údajov mimo aplikácie.</p></div></div>
       <div className="itc-signal-grid">{managementSignals.map(signal=><article key={signal.title} className={`itc-signal ${signal.tone}`}><span>{signal.title}</span><strong>{signal.value}</strong><p>{signal.text}</p></article>)}</div>
-      <div className="itc-recommendations"><h4>Čo by som z týchto dát riadil ďalej</h4>{recommendations.map((text,index)=><div key={text}><b>{String(index+1).padStart(2,'0')}</b><p>{text}</p></div>)}</div>
     </section>
+
+    <FinancialOptimization state={state} year={year} runTrend={runTrend} selectedTotal={selectedTotal} runTotal={runTotal} changeTotal={changeTotal} entities={optimizationEntities} canEdit={canEdit} currentUser={currentUser} onActionsChange={onActionsChange} go={go}/>
 
     <section className="panel itc-evidence-panel">
       <div className="panel-heading"><div><span className="eyebrow">DÔKAZNÁ VRSTVA</span><h3>Položky zahrnuté do IT nákladov · {year}</h3><p>Kompaktný auditovateľný detail s vlastným filtrovaním. Suma je čistá vrátane mínusových korekcií.</p></div><Badge tone="info">{evidenceRows.length} / {rows.length}</Badge></div>
