@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import type { Employee, RaciCode, RaciItem } from '../types'
+import type { Employee, RaciCode, RaciItem, Substitution } from '../types'
 import { Badge, Empty, Icon, Modal, PageHeader } from '../components/UI'
 import { buildOrisRaciAnalytics } from '../lib/raciAnalytics'
 import RaciDepartmentComparison, { RaciPeopleCards } from './RaciComparison'
+import RaciIntelligence from './RaciIntelligence'
 import './Raci.css'
 
 const codes: RaciCode[] = ['', 'R', 'A', 'C', 'I', 'R/A']
@@ -18,7 +19,7 @@ const externalParticipants = new Set([
   'Dodávateľ / partner',
 ])
 
-type ViewMode = 'overview' | 'people' | 'compare' | 'matrix' | 'rules'
+type ViewMode = 'overview' | 'intelligence' | 'people' | 'compare' | 'matrix' | 'rules'
 type InsightTone = 'danger' | 'warning' | 'info'
 
 interface InsightSettings {
@@ -246,11 +247,13 @@ function insightTone(score: number): InsightTone {
 export default function Raci({
   items,
   employees = [],
+  substitutions = [],
   canEdit,
   onChange,
 }: {
   items: RaciItem[]
   employees?: Employee[]
+  substitutions?: Substitution[]
   canEdit: boolean
   onChange: (items: RaciItem[]) => void
 }) {
@@ -482,6 +485,16 @@ export default function Raci({
         <button
           type="button"
           role="tab"
+          aria-selected={view === 'intelligence'}
+          className={view === 'intelligence' ? 'active' : ''}
+          onClick={() => setView('intelligence')}
+        >
+          <Icon name="decision" size={18} />
+          RACI Intelligence
+        </button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={view === 'people'}
           className={view === 'people' ? 'active' : ''}
           onClick={() => setView('people')}
@@ -654,6 +667,10 @@ export default function Raci({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {view === 'intelligence' ? (
+        <RaciIntelligence orisItems={items} orisEmployees={employees} substitutions={substitutions} />
       ) : null}
 
       {view === 'people' ? (

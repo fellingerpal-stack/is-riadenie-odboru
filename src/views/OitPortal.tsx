@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { Badge, Empty, Icon, Modal, PageHeader, Progress } from '../components/UI'
 import { oitData, type OitRaciRow, type OitRackItem } from '../data/oitData'
 import { loadOitTopologyDocuments, type OitTopologyDocuments } from '../lib/oitDocuments'
-import type { Employee, RaciItem } from '../types'
+import type { Employee, RaciItem, Substitution } from '../types'
 import RaciDepartmentComparison from './RaciComparison'
+import RaciIntelligence from './RaciIntelligence'
 
 type Go=(view:string)=>void
 
@@ -101,11 +102,11 @@ export function OitDashboard({go}:{go:Go}){
   </>
 }
 
-export function OitRaci({orisItems,orisEmployees=[]}:{orisItems:RaciItem[];orisEmployees?:Employee[]}){
+export function OitRaci({orisItems,orisEmployees=[],substitutions=[]}:{orisItems:RaciItem[];orisEmployees?:Employee[];substitutions?:Substitution[]}){
   const [area,setArea]=useState('all')
   const [query,setQuery]=useState('')
   const [issue,setIssue]=useState('all')
-  const [tab,setTab]=useState<'overview'|'matrix'|'risks'|'people'|'compare'|'rules'>('overview')
+  const [tab,setTab]=useState<'overview'|'intelligence'|'matrix'|'risks'|'people'|'compare'|'rules'>('overview')
   const [peopleSort,setPeopleSort]=useState<'R'|'A'|'spof'|'participation'>('R')
   const [settings,setSettings]=useState<OitRaciInsightSettings>(loadOitRaciSettings)
   const rows=useMemo(()=>oitData.raciAreas.flatMap(a=>a.rows.map(row=>({...row,areaId:a.id,areaTitle:a.title}))),[])
@@ -164,12 +165,15 @@ export function OitRaci({orisItems,orisEmployees=[]}:{orisItems:RaciItem[];orisE
     </section>
     <div className="raci-view-tabs oit-raci-view-tabs" role="tablist" aria-label="Pohľady RACI OIT">
       <button className={tab==='overview'?'active':''} onClick={()=>setTab('overview')}><Icon name="dashboard" size={18}/>Manažérsky pohľad <span>{signals.length}</span></button>
+      <button className={tab==='intelligence'?'active':''} onClick={()=>setTab('intelligence')}><Icon name="decision" size={18}/>RACI Intelligence</button>
       <button className={tab==='matrix'?'active':''} onClick={()=>setTab('matrix')}><Icon name="matrix" size={18}/>RACI matica <span>{rows.length}</span></button>
       <button className={tab==='risks'?'active':''} onClick={()=>setTab('risks')}><Icon name="risk" size={18}/>Riadenie a kontinuita <span>{singleR}</span></button>
       <button className={tab==='people'?'active':''} onClick={()=>setTab('people')}><Icon name="people" size={18}/>Ľudia a výkon rolí</button>
       <button className={tab==='compare'?'active':''} onClick={()=>setTab('compare')}><Icon name="substitute" size={18}/>Porovnanie 3.1 / 3.2</button>
       <button className={tab==='rules'?'active':''} onClick={()=>setTab('rules')}><Icon name="shield" size={18}/>Pravidlá</button>
     </div>
+
+    {tab==='intelligence'&&<RaciIntelligence orisItems={orisItems} orisEmployees={orisEmployees} substitutions={substitutions}/>}
 
     {tab==='overview'&&<div className="raci-insight-view oit-raci-insight-view">
       <section className="raci-insight-hero"><div><div className="raci-insight-eyebrow">Riadiaci signál OIT</div><h2>{structuralIssues.length?`${structuralIssues.length} procesov má formálnu medzeru v R alebo A.`:'Matica je formálne úplná; hlavnou témou je zastupiteľnosť a koncentrácia know-how.'}</h2><p>Výsledok nehodnotí odpracované hodiny. Zobrazuje, kde chýba vlastník alebo vykonávateľ, kde je iba jeden R a kde sa veľká časť praktického výkonu koncentruje na jedného pracovníka.</p></div><div className={`raci-readiness readiness-${readiness>=75?'good':readiness>=55?'watch':'risk'}`}><span>Orientačná pripravenosť</span><strong>{readiness}%</strong><small>podľa aktívnych pravidiel</small></div></section>
