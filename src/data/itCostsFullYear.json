@@ -1,0 +1,1113 @@
+{
+  "meta": {
+    "title": "Finančný pohľad IT – celý rok",
+    "sourceTitle": "Dashboard vývoja nákladov – január až december 2023–2025",
+    "sourceGeneratedAt": "20. júla 2026 o 17:16",
+    "periodLabel": "január až december",
+    "years": [
+      2023,
+      2024,
+      2025
+    ],
+    "comparedMonths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "classificationVersion": "1.2-full-year",
+    "validationSourceTitle": "",
+    "validationPeriod": "január až december",
+    "validationTotalsMatch": null,
+    "method": "Konzervatívny full-year IT výrez: explicitné IT/DC VaV normalizované položky + presne dorekoncilované priame IT KPD/PPD kódy. Generické účtovné kódy bez explicitnej IT väzby sa nedopočítavajú.",
+    "exclusions": [
+      "generické služby bez explicitnej IT väzby",
+      "vedecké a publikačné databázové predplatné",
+      "položky, ktoré sa z full-year agregátu nedajú bezpečne priradiť k IT bez detailného riadkového zdroja"
+    ],
+    "coverageNote": "Celý rok je dostupný pre 2023–2025. Rok 2026 má v zdrojovej bráne zatiaľ pokrytie iba január–jún a preto sa pre 2026 celý rok nezobrazuje ako skutočnosť."
+  },
+  "sourceTotals": [
+    {
+      "year": 2023,
+      "amount": 27311790.0,
+      "rowCount": 0
+    },
+    {
+      "year": 2024,
+      "amount": 22716464.2,
+      "rowCount": 0
+    },
+    {
+      "year": 2025,
+      "amount": 20842259.33,
+      "rowCount": 0
+    }
+  ],
+  "items": [
+    {
+      "id": "ITFY-98ff92c5aa5d",
+      "kpd": "637",
+      "ppd": "040",
+      "label": "DCVaV refundácia",
+      "category": "Dátové centrum DC VaV",
+      "mode": "Prevádzka",
+      "entity": "DC VaV",
+      "confidence": "vysoká",
+      "reason": "explicitná väzba na DC VaV; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": -37338.0,
+          "rowCount": 4
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": -37338.0,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-45f5b2e6a173",
+      "kpd": "632",
+      "ppd": "001",
+      "label": "Elektricka energia DCVaV",
+      "category": "Dátové centrum DC VaV",
+      "mode": "Prevádzka",
+      "entity": "DC VaV",
+      "confidence": "vysoká",
+      "reason": "explicitná väzba na DC VaV; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 331175.53,
+          "rowCount": 12
+        }
+      ],
+      "totalAmount": 331175.53,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-93cbadaeaea4",
+      "kpd": "632",
+      "ppd": "001",
+      "label": "Elektricka energia DCVaV",
+      "category": "Dátové centrum DC VaV",
+      "mode": "Prevádzka",
+      "entity": "DC VaV",
+      "confidence": "vysoká",
+      "reason": "explicitná väzba na DC VaV; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 231775.4,
+          "rowCount": 12
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 231775.4,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-3fca712456eb",
+      "kpd": "632",
+      "ppd": "001",
+      "label": "Elektricka energia DCVaV",
+      "category": "Dátové centrum DC VaV",
+      "mode": "Prevádzka",
+      "entity": "DC VaV",
+      "confidence": "vysoká",
+      "reason": "explicitná väzba na DC VaV; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 339427.7,
+          "rowCount": 12
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 339427.7,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-f0c50a991e6b",
+      "kpd": "636",
+      "ppd": "001",
+      "label": "Nájom nebytových priest. DCVaV 1. Q",
+      "category": "Dátové centrum DC VaV",
+      "mode": "Prevádzka",
+      "entity": "DC VaV",
+      "confidence": "vysoká",
+      "reason": "explicitná väzba na DC VaV; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 27531.68,
+          "rowCount": 4
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 27531.68,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-d4b14d192a76",
+      "kpd": "636",
+      "ppd": "001",
+      "label": "Nájom nebytových priest. DCVaV 1Q",
+      "category": "Dátové centrum DC VaV",
+      "mode": "Prevádzka",
+      "entity": "DC VaV",
+      "confidence": "vysoká",
+      "reason": "explicitná väzba na DC VaV; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 32056.2,
+          "rowCount": 4
+        }
+      ],
+      "totalAmount": 32056.2,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-f1e66817b866",
+      "kpd": "636",
+      "ppd": "001",
+      "label": "Nájom nebytových priest. DCVaV 1Q",
+      "category": "Dátové centrum DC VaV",
+      "mode": "Prevádzka",
+      "entity": "DC VaV",
+      "confidence": "vysoká",
+      "reason": "explicitná väzba na DC VaV; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 30422.56,
+          "rowCount": 4
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 30422.56,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-e11960168b66",
+      "kpd": "635",
+      "ppd": "004",
+      "label": "Servis non ITtechnológie DCVaV",
+      "category": "Dátové centrum DC VaV",
+      "mode": "Prevádzka",
+      "entity": "DC VaV",
+      "confidence": "vysoká",
+      "reason": "explicitná väzba na DC VaV; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 37207.5,
+          "rowCount": 5
+        }
+      ],
+      "totalAmount": 37207.5,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-fdbfd658c7ca",
+      "kpd": "633",
+      "ppd": "002",
+      "label": "Ostatné položky 633 / 002 – full-year rezíduum priameho IT kódu",
+      "category": "HW a koncové zariadenia",
+      "mode": "Rozvoj",
+      "entity": "Výpočtová technika",
+      "confidence": "stredná",
+      "reason": "KPD 633 / PPD 002 Výpočtová technika; rezíduum do presného ročného súčtu KPD/PPD",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 29170.1,
+          "rowCount": 17
+        },
+        {
+          "year": 2024,
+          "amount": 337832.93,
+          "rowCount": 23
+        },
+        {
+          "year": 2025,
+          "amount": 271980.35,
+          "rowCount": 37
+        }
+      ],
+      "totalAmount": 638983.38,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-81c5013d9086",
+      "kpd": "633",
+      "ppd": "013",
+      "label": "Ostatné položky 633 / 013 – full-year rezíduum priameho IT kódu",
+      "category": "Licencie, softvér a cloud",
+      "mode": "Prevádzka",
+      "entity": "Softvér / licencie",
+      "confidence": "stredná",
+      "reason": "KPD 633 / PPD 013 Softvér a licencie; rezíduum do presného ročného súčtu KPD/PPD",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 127913.69,
+          "rowCount": 22
+        },
+        {
+          "year": 2025,
+          "amount": 181768.81,
+          "rowCount": 67
+        }
+      ],
+      "totalAmount": 309682.5,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-5a1908f06af0",
+      "kpd": "635",
+      "ppd": "009",
+      "label": "Technická podpora CREPČ1",
+      "category": "Prevádzka a rozvoj IS",
+      "mode": "Prevádzka",
+      "entity": "CREPČ/CREUČ",
+      "confidence": "vysoká",
+      "reason": "KPD 635 / PPD 009 – aplikačná/technická podpora; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 9450.0,
+          "rowCount": 4
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 9450.0,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-25f4fcfdda94",
+      "kpd": "635",
+      "ppd": "009",
+      "label": "Technická podpora CREUČ",
+      "category": "Prevádzka a rozvoj IS",
+      "mode": "Prevádzka",
+      "entity": "CREPČ/CREUČ",
+      "confidence": "vysoká",
+      "reason": "KPD 635 / PPD 009 – aplikačná/technická podpora; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 2436.0,
+          "rowCount": 4
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 2436.0,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-e713db72add5",
+      "kpd": "635",
+      "ppd": "011",
+      "label": "Prevádzková podpora Fabasoft",
+      "category": "Prevádzka a rozvoj IS",
+      "mode": "Prevádzka",
+      "entity": "DMS / Fabasoft",
+      "confidence": "stredná",
+      "reason": "KPD 635 / PPD 011 – softvérová alebo technická podpora; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 16540.01,
+          "rowCount": 9
+        }
+      ],
+      "totalAmount": 16540.01,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-39b49b691c45",
+      "kpd": "635",
+      "ppd": "011",
+      "label": "Servis Fabasoft",
+      "category": "Prevádzka a rozvoj IS",
+      "mode": "Prevádzka",
+      "entity": "DMS / Fabasoft",
+      "confidence": "stredná",
+      "reason": "KPD 635 / PPD 011 – softvérová alebo technická podpora; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 12000.0,
+          "rowCount": 10
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 12000.0,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-c8813b78dc67",
+      "kpd": "635",
+      "ppd": "002",
+      "label": "Ostatné položky 635 / 002 – full-year rezíduum priameho IT kódu",
+      "category": "Servis a údržba IT",
+      "mode": "Prevádzka",
+      "entity": "Výpočtová technika",
+      "confidence": "stredná",
+      "reason": "KPD 635 / PPD 002 Údržba výpočtovej techniky; rezíduum do presného ročného súčtu KPD/PPD",
+      "values": [
+        {
+          "year": 2023,
+          "amount": -13022.4,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": -3387.9,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": -16410.3,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-8f26be007b44",
+      "kpd": "635",
+      "ppd": "002",
+      "label": "Servis tlačiarenského zariadenia Canon",
+      "category": "Servis a údržba IT",
+      "mode": "Prevádzka",
+      "entity": "Výpočtová technika",
+      "confidence": "stredná",
+      "reason": "KPD 635 / PPD 002 Údržba výpočtovej techniky; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 11440.8,
+          "rowCount": 4
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 11440.8,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-0a540f114947",
+      "kpd": "635",
+      "ppd": "002",
+      "label": "Servis tlačiarenského zariadenia Canon",
+      "category": "Servis a údržba IT",
+      "mode": "Prevádzka",
+      "entity": "Výpočtová technika",
+      "confidence": "stredná",
+      "reason": "KPD 635 / PPD 002 Údržba výpočtovej techniky; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 3387.9,
+          "rowCount": 4
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 3387.9,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-46bbd0c8821b",
+      "kpd": "635",
+      "ppd": "002",
+      "label": "Servis tlačiarne",
+      "category": "Servis a údržba IT",
+      "mode": "Prevádzka",
+      "entity": "Výpočtová technika",
+      "confidence": "stredná",
+      "reason": "KPD 635 / PPD 002 Údržba výpočtovej techniky; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 1581.6,
+          "rowCount": 4
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 1581.6,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-547c54f08f20",
+      "kpd": "633",
+      "ppd": "003",
+      "label": "Ostatné položky 633 / 003 – full-year rezíduum priameho IT kódu",
+      "category": "Sieť a telekomunikačná technika",
+      "mode": "Rozvoj",
+      "entity": "Telekomunikačná technika",
+      "confidence": "stredná",
+      "reason": "KPD 633 / PPD 003 Telekomunikačná technika; rezíduum do presného ročného súčtu KPD/PPD",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 67130.49,
+          "rowCount": 33
+        }
+      ],
+      "totalAmount": 67130.49,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-aa7eb1faed15",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Mes.poplatok pripojenie PBX Lamačská",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 1157.43,
+          "rowCount": 11
+        }
+      ],
+      "totalAmount": 1157.43,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-3eb87d5c3e72",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Mes.poplatok pripojenie PBX SG",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 1157.43,
+          "rowCount": 11
+        }
+      ],
+      "totalAmount": 1157.43,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-a66b99842a92",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Ostatné položky 632 / 005 – full-year rezíduum priameho IT kódu",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; rezíduum do presného ročného súčtu KPD/PPD",
+      "values": [
+        {
+          "year": 2023,
+          "amount": -12894.18,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": -14157.05,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": -18715.72,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": -45766.95,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-3b6341fa7a1a",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Ružomberok - telefon",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 2110.68,
+          "rowCount": 12
+        }
+      ],
+      "totalAmount": 2110.68,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-b9c6af868acf",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Ružomberok - telefon",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 1887.6,
+          "rowCount": 11
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 1887.6,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-d32dadaf0800",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Telef. poplatky BB",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 1752.32,
+          "rowCount": 32
+        }
+      ],
+      "totalAmount": 1752.32,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-c937c18bbec8",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Telef. poplatky LM",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 2767.72,
+          "rowCount": 48
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 2767.72,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-9aa3e6901cb2",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Telefonné poplatky Brusel",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 2348.73,
+          "rowCount": 12
+        }
+      ],
+      "totalAmount": 2348.73,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-efe278600218",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Telefonné poplatky Brusel",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 1830.51,
+          "rowCount": 10
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 1830.51,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-1e6334716f00",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Telefonné poplatky MI",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 8241.85,
+          "rowCount": 30
+        }
+      ],
+      "totalAmount": 8241.85,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-c9432fbc72c1",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Telefonné poplatky MLC",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 1202.12,
+          "rowCount": 11
+        }
+      ],
+      "totalAmount": 1202.12,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-db0e2e0bf98b",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "Telefonné poplatky SG",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 12894.18,
+          "rowCount": 180
+        },
+        {
+          "year": 2024,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2025,
+          "amount": 745.16,
+          "rowCount": 3
+        }
+      ],
+      "totalAmount": 13639.34,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-fdd004a2ac8e",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "telefonné poplatky",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 2733.74,
+          "rowCount": 33
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 2733.74,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    },
+    {
+      "id": "ITFY-13bb4ab2b78a",
+      "kpd": "632",
+      "ppd": "005",
+      "label": "telefonné poplatky Lamačská",
+      "category": "Telekomunikácie",
+      "mode": "Prevádzka",
+      "entity": "Telefónne služby",
+      "confidence": "stredná",
+      "reason": "KPD 632 / PPD 005 Telefónne služby; full-year normalizovaná položka",
+      "values": [
+        {
+          "year": 2023,
+          "amount": 0.0,
+          "rowCount": 0
+        },
+        {
+          "year": 2024,
+          "amount": 4937.48,
+          "rowCount": 7
+        },
+        {
+          "year": 2025,
+          "amount": 0.0,
+          "rowCount": 0
+        }
+      ],
+      "totalAmount": 4937.48,
+      "topDocument": "—",
+      "latestDocumentCount": 0,
+      "latestZakCount": 0
+    }
+  ]
+}
