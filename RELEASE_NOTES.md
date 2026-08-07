@@ -1,3 +1,9 @@
+# Release 0.23.0 – Service 360 a Riadiace centrum IT
+
+Pozri `RELEASE_NOTES_0.23.md`.
+
+---
+
 # Release 0.22.0 – Technology Intelligence + SIT finančné čerpanie
 
 Release 0.22.0 spája tri oblasti, ktoré boli doteraz oddelené: technologický katalóg, RACI/prevádzkové väzby a finančné náklady. Súčasne zlepšuje prácu s detailnou tabuľkou IT nákladov a pridáva samostatný manažérsky pohľad na kontraktové úlohy 10, 22 a 25.
