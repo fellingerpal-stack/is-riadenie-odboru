@@ -51,6 +51,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
     {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
+    {key:'cmdb',label:'Asset management',icon:'cmdb',roles:allRoles,badge:s=>(Array.isArray(s.cmdbItems)?s.cmdbItems:[]).filter(i=>!i.businessOwner&&!i.technicalOwner&&!i.assignedTo||i.lifecycle==='Na obnovu'||i.inventoryStatus==='Nenájdené'||i.inventoryStatus==='Nezhoda').length},
   ]},
   {label:'Prehľad ORIS',items:[{key:'dashboard',label:'Dashboard ORIS',icon:'dashboard',roles:allRoles}]},
   {label:'Organizácia',items:[
@@ -71,7 +72,6 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'changes',label:'Change management',icon:'change',roles:resolverRoles,badge:s=>(Array.isArray(s.changes)?s.changes:[]).filter(c=>!['Dokončená','Zamietnutá','Rollback','Zrušená'].includes(c.status)).length},
     {key:'problems',label:'Problem management',icon:'problem',roles:resolverRoles,badge:s=>(Array.isArray(s.problems)?s.problems:[]).filter(p=>!['Vyriešený','Uzatvorený'].includes(p.status)).length},
     {key:'iam',label:'IAM / Prístupy',icon:'iam',roles:employeeRoles,badge:s=>(Array.isArray(s.accessRequests)?s.accessRequests:[]).filter(r=>!['Dokončená','Zamietnutá','Zrušená'].includes(r.status)).length},
-    {key:'cmdb',label:'CMDB / Aktíva',icon:'cmdb',roles:['admin','manager','resolver','viewer'],badge:s=>(Array.isArray(s.cmdbItems)?s.cmdbItems:[]).filter(i=>!i.businessOwner||!i.technicalOwner||i.lifecycle==='Na obnovu').length},
     {key:'risks',label:'Riziká',icon:'risk',roles:['admin','manager','resolver','viewer'],badge:s=>s.risks.filter(r=>r.status!=='Ukončené').length},
     {key:'decisions',label:'Rozhodnutia',icon:'decision',roles:['admin','manager','viewer'],badge:s=>s.decisions.filter(d=>d.status!=='Schválené').length},
   ]},
@@ -87,6 +87,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
     {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
+    {key:'cmdb',label:'Asset management',icon:'cmdb',roles:allRoles,badge:s=>(Array.isArray(s.cmdbItems)?s.cmdbItems:[]).filter(i=>!i.businessOwner&&!i.technicalOwner&&!i.assignedTo||i.lifecycle==='Na obnovu'||i.inventoryStatus==='Nenájdené'||i.inventoryStatus==='Nezhoda').length},
   ]},
   {label:'OIT',items:[
     {key:'oit',label:'Prehľad OIT',icon:'dashboard',roles:['admin','manager','resolver','viewer']},
@@ -110,6 +111,7 @@ const portalNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
     {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
+    {key:'cmdb',label:'Asset management',icon:'cmdb',roles:allRoles,badge:s=>(Array.isArray(s.cmdbItems)?s.cmdbItems:[]).filter(i=>!i.businessOwner&&!i.technicalOwner&&!i.assignedTo||i.lifecycle==='Na obnovu'||i.inventoryStatus==='Nenájdené'||i.inventoryStatus==='Nezhoda').length},
   ]},
   {label:'Systém',items:[
     {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
@@ -258,7 +260,7 @@ export default function App(){
   function viewScope(key:ViewKey):AccessScope|'admin'|'portal'{
     if(key==='users'||key==='roadmap')return 'admin'
     if(key==='portals')return 'portal'
-    if(key==='technology'||key==='intelligence'||key==='itCosts'||key==='suppliers')return 'shared'
+    if(key==='technology'||key==='intelligence'||key==='itCosts'||key==='suppliers'||key==='cmdb')return 'shared'
     if(key.startsWith('oit'))return 'oit'
     return 'oris'
   }
@@ -352,7 +354,7 @@ export default function App(){
     }
   },[auth.configured,auth.profile?.organizationId])
 
-  const workspace=view==='portals'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='cmdb'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
@@ -644,7 +646,7 @@ export default function App(){
         {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
         {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
         {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
-        {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} canEdit={canResolveOris} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
+        {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} employees={Array.isArray(state.employees)?state.employees:[]} suppliers={Array.isArray(state.supplierRecords)?state.supplierRecords:[]} role={role} currentUser={displayName} canWriteOit={canWriteOit} canWriteOris={canWriteOris} canWriteShared={canWriteShared} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
         {view==='webs'&&<WebRegistry canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
         {view==='informationSystems'&&<InformationSystems canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
         {view==='risks'&&<Risks risks={state.risks} canEdit={canManageOris} onChange={risks=>setState(current=>({...current,risks}))}/>} 
