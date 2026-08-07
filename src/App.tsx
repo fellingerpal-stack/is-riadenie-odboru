@@ -34,8 +34,9 @@ import ServiceArchitecture from './views/ServiceArchitecture'
 import TechnologyCatalog from './views/TechnologyCatalog'
 import ItCosts from './views/ItCosts'
 import OperationsIntelligence from './views/OperationsIntelligence'
+import Suppliers from './views/Suppliers'
 
-type ViewKey='portals'|'technology'|'intelligence'|'itCosts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'technology'|'intelligence'|'itCosts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -48,6 +49,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
+    {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
   ]},
   {label:'Prehľad ORIS',items:[{key:'dashboard',label:'Dashboard ORIS',icon:'dashboard',roles:allRoles}]},
   {label:'Organizácia',items:[
@@ -83,6 +85,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
+    {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
   ]},
   {label:'OIT',items:[
     {key:'oit',label:'Prehľad OIT',icon:'dashboard',roles:['admin','manager','resolver','viewer']},
@@ -105,6 +108,7 @@ const portalNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
+    {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
   ]},
   {label:'Systém',items:[
     {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
@@ -312,7 +316,7 @@ export default function App(){
     }
   },[auth.configured,auth.profile?.organizationId])
 
-  const workspace=view==='portals'||view==='technology'||view==='intelligence'||view==='itCosts'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>item.roles?.includes(role))})).filter(group=>group.items.length),[role,workspace])
@@ -583,6 +587,7 @@ export default function App(){
         {view==='technology'&&<TechnologyCatalog state={state} go={go}/>}
         {view==='intelligence'&&<OperationsIntelligence state={state} go={go}/>}
         {view==='itCosts'&&<ItCosts state={state} go={go}/>}
+        {view==='suppliers'&&<Suppliers state={state} canEdit={role==='admin'} currentUser={displayName} role={role} onChange={supplierRecords=>setState(current=>({...current,supplierRecords}))} go={go}/>}
         {view==='oit'&&<OitDashboard go={go}/>}
         {view==='oitRaci'&&<OitRaci orisItems={state.raci} orisEmployees={state.employees} substitutions={state.substitutions}/>}
         {view==='oitDc'&&<OitDataCenter/>}
