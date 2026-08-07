@@ -1,3 +1,16 @@
+# Release notes
+
+## v0.24.0 – Register a správa dodávateľov
+
+- spoločný read-only register dodávateľov pre všetky prihlásené roly,
+- admin-only správa kontaktných a zmluvných metadát,
+- automatické pomenovanie známych dodávateľov podľa IČO (vrátane InterWay),
+- Supplier 360: platby, zmluvy, úlohy, strediská, IS, SLA, kontakty a odkazy,
+- rovnaké názvy dodávateľov v Riadiacom centre IT a Service 360,
+- bez novej Supabase databázovej schémy.
+
+Podrobnosti: `RELEASE_NOTES_0.24.md`.
+
 # Release 0.23.0 – Service 360 a Riadiace centrum IT
 
 Pozri `RELEASE_NOTES_0.23.md`.

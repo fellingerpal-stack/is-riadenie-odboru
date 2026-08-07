@@ -1,10 +1,10 @@
 # IS Riadenie odboru
 
-**Aktuálny release: v0.23.0 – Service 360 a Riadiace centrum IT.** – release 0.22.0
+**Aktuálny release: v0.24.0 – Register a správa dodávateľov.**
 
-Aktuálny release rozširuje spoločný portál o **Technology Intelligence / Explorer 2.0**, kompaktnejšiu dôkaznú tabuľku IT nákladov a nový pohľad na **SIT kontraktové úlohy 10 / 22 / 25** s mesačným, kvartálnym a kumulatívnym čerpaním.
+Spoločný modul **Dodávatelia** prepája IČO zo SIT platieb, zmluvné referencie, informačné systémy a adminom spravované kontaktné/metadátové karty. Zoznam je read-only dostupný všetkým prihláseným rolám; upravovať ho môže iba administrátor. Riadiace centrum IT používa rovnaké pomenovanie dodávateľov podľa IČO.
 
-Podrobnosti: `RELEASE_NOTES_0.22.md` a `README_NASADENIE_0.22.txt`.
+Podrobnosti: `RELEASE_NOTES_0.24.md` a `README_NASADENIE_0.24.txt`.
 
 ---
 
