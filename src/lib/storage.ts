@@ -3,10 +3,10 @@ import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, Change
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.27.0'
+const CURRENT_VERSION = '0.27.1'
 
 export function cloneSeed(): AppState {
-  return structuredClone(seed) as AppState
+  return structuredClone(seed) as unknown as AppState
 }
 
 function migrateTask(task: Task): Task {
@@ -297,7 +297,7 @@ function migrateRecertificationCampaign(campaign: RecertificationCampaign): Rece
 }
 
 
-function migrateCmdbItem(item: CmdbItem): CmdbItem {
+function migrateCmdbItem(item: Partial<CmdbItem>): CmdbItem {
   const source = (item ?? {}) as Partial<CmdbItem>
   const createdAt = typeof source.createdAt === 'string' && source.createdAt
     ? source.createdAt
@@ -466,7 +466,9 @@ export function migrateState(input: AppState): AppState {
     accessRequests: Array.isArray(source.accessRequests) ? source.accessRequests.map(migrateAccessRequest) : defaults.accessRequests,
     accessCatalog: Array.isArray(source.accessCatalog) ? source.accessCatalog.map(migrateAccessCatalog) : defaults.accessCatalog,
     recertificationCampaigns: Array.isArray(source.recertificationCampaigns) ? source.recertificationCampaigns.map(migrateRecertificationCampaign) : defaults.recertificationCampaigns,
-    cmdbItems: Array.isArray(source.cmdbItems) ? source.cmdbItems.map(migrateCmdbItem) : defaults.cmdbItems,
+    cmdbItems: Array.isArray(source.cmdbItems)
+      ? source.cmdbItems.map(migrateCmdbItem)
+      : (defaults.cmdbItems as unknown as Partial<CmdbItem>[]).map(migrateCmdbItem),
     cmdbRelationships: Array.isArray(source.cmdbRelationships) ? source.cmdbRelationships.map(migrateCmdbRelationship) : defaults.cmdbRelationships,
     architectureOverrides: Array.isArray(source.architectureOverrides) ? source.architectureOverrides.map(migrateArchitectureRecord) : [],
     supplierRecords: Array.isArray(source.supplierRecords) ? source.supplierRecords.map(migrateSupplierRecord) : [],
