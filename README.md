@@ -1,6 +1,6 @@
 # IS Riadenie odboru
 
-**Aktuálny release: v0.24.0 – Register a správa dodávateľov.**
+**Aktuálny release: v0.24.1 – Dodávateľ v dôkaznej tabuľke IT nákladov + optimalizácia tabuľky.**
 
 Spoločný modul **Dodávatelia** prepája IČO zo SIT platieb, zmluvné referencie, informačné systémy a adminom spravované kontaktné/metadátové karty. Zoznam je read-only dostupný všetkým prihláseným rolám; upravovať ho môže iba administrátor. Riadiace centrum IT používa rovnaké pomenovanie dodávateľov podľa IČO.
 
