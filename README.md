@@ -1,3 +1,11 @@
+# IS Riadenie odboru – release 0.22.0
+
+Aktuálny release rozširuje spoločný portál o **Technology Intelligence / Explorer 2.0**, kompaktnejšiu dôkaznú tabuľku IT nákladov a nový pohľad na **SIT kontraktové úlohy 10 / 22 / 25** s mesačným, kvartálnym a kumulatívnym čerpaním.
+
+Podrobnosti: `RELEASE_NOTES_0.22.md` a `README_NASADENIE_0.22.txt`.
+
+---
+
 # IS Riadenie odboru CVTI SR
 
 React + TypeScript + Vite aplikácia pre spoločné riadenie:
