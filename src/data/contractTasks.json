@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "title": "SIT 2026 – kontraktové úlohy IT",
+    "source": "čerpanie SIT · snapshot 01–05/2026",
+    "period": "január až máj 2026",
+    "year": 2026,
+    "monthsLoaded": 5,
+    "method": "Rozpočty, vyčerpané sumy a mesačné čerpanie sú prevzaté zo súhrnného hárku čerpanie SIT. Jún až december nie sú v tomto snapshote považované za nulové čerpanie, ale za obdobie bez načítaných údajov."
+  },
+  "tasks": [
+    {
+      "code": "10",
+      "centers": ["328", "130"],
+      "name": "Správa a prevádzka dátového centra pre výskum a vývoj",
+      "description": "Správa a prevádzka dátového centra pre výskum a vývoj, vrátane pracoviska centrálneho manažmentu teleprezentačných zariadení.",
+      "budget": 909630,
+      "spent": 385592.09,
+      "remaining": 524037.91,
+      "monthly": [21478.07, 124760.73, 64504.75, 58064.15, 116784.39]
+    },
+    {
+      "code": "22",
+      "centers": ["341"],
+      "name": "CRZP a APS",
+      "description": "Správa a prevádzka Centrálneho registra záverečných, rigoróznych a habilitačných prác (CRZP) a Systému na odhaľovanie plagiátov (APS).",
+      "budget": 93552,
+      "spent": 30773.98,
+      "remaining": 62778.02,
+      "monthly": [0, 5586.88, 1832.34, 4050.07, 19304.69]
+    },
+    {
+      "code": "25",
+      "centers": ["345"],
+      "name": "Informačné technológie zo štátneho rozpočtu",
+      "description": "Zabezpečenie informačných technológií financovaných zo štátneho rozpočtu.",
+      "budget": 65501,
+      "spent": 37482.38,
+      "remaining": 28018.62,
+      "monthly": [2776.60, 4386.26, 4345.58, 6611.57, 19362.37]
+    }
+  ]
+}
