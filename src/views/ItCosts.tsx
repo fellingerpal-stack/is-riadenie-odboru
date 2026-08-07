@@ -4,7 +4,9 @@ import type { AppState } from '../types'
 import { Badge, Icon, PageHeader } from '../components/UI'
 import { oitData } from '../data/oitData'
 import { splitRaciRoles } from '../lib/raciAnalytics'
+import { resolveSupplierName } from '../lib/supplierDirectory'
 import data from '../data/itCosts.json'
+import paymentData from '../data/contractPayments.json'
 import ContractSpending from './ContractSpending'
 import './ItCosts.css'
 
@@ -29,6 +31,18 @@ interface CostItem {
   latestDocumentCount:number
   latestZakCount:number
 }
+interface PaymentRow {
+  supplierId:string
+  supplierLabel:string
+  document:string
+  note:string
+  kpd:string
+  ppd:string
+  amount:number
+}
+interface PaymentDataset { payments:PaymentRow[] }
+interface EvidenceSupplier { key:string; name:string; ico:string; match:'doklad'|'položka'|'none'; multiple:number }
+
 interface CostDataset {
   meta:{
     title:string
@@ -49,6 +63,7 @@ interface CostDataset {
 }
 
 const dataset=data as CostDataset
+const paymentDataset=paymentData as PaymentDataset
 const money=new Intl.NumberFormat('sk-SK',{style:'currency',currency:'EUR',minimumFractionDigits:2,maximumFractionDigits:2})
 const compactMoney=new Intl.NumberFormat('sk-SK',{style:'currency',currency:'EUR',notation:'compact',maximumFractionDigits:1})
 const number=new Intl.NumberFormat('sk-SK',{maximumFractionDigits:1})
@@ -56,6 +71,43 @@ const number=new Intl.NumberFormat('sk-SK',{maximumFractionDigits:1})
 function amountFor(item:CostItem,year:number){return item.values.find(value=>value.year===year)?.amount??0}
 function percent(value:number,total:number){return total?value/total*100:0}
 function norm(value:string){return value.toLocaleLowerCase('sk-SK').normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
+function normalizedCode(value:string){return String(value||'').replace(/^0+/,'')||'0'}
+function evidenceSupplierFor(item:CostItem,year:number,state:AppState):EvidenceSupplier{
+  if(year!==2026)return {key:'',name:'',ico:'',match:'none',multiple:0}
+  const exactDocument=String(item.topDocument||'').trim()
+  let candidates=exactDocument&&exactDocument!=='—'
+    ? paymentDataset.payments.filter(payment=>payment.document===exactDocument)
+    : []
+  let match:EvidenceSupplier['match']=candidates.length?'doklad':'none'
+  if(!candidates.length){
+    const label=norm(item.label)
+    candidates=paymentDataset.payments.filter(payment=>
+      norm(payment.note)===label&&
+      normalizedCode(payment.kpd)===normalizedCode(item.kpd)&&
+      normalizedCode(payment.ppd)===normalizedCode(item.ppd)
+    )
+    if(candidates.length)match='položka'
+  }
+  if(!candidates.length)return {key:'',name:'',ico:'',match:'none',multiple:0}
+  const grouped=new Map<string,number>()
+  candidates.forEach(payment=>{
+    const id=String(payment.supplierId||'bez-ico')
+    grouped.set(id,(grouped.get(id)||0)+Math.abs(Number(payment.amount)||0))
+  })
+  const suppliers=[...grouped.entries()].sort((a,b)=>b[1]-a[1])
+  const primary=suppliers[0]?.[0]||''
+  if(!primary)return {key:'',name:'',ico:'',match:'none',multiple:0}
+  const rawIco=primary.replace(/\D/g,'')
+  const ico=primary==='bez-ico'?'':rawIco.length>8?rawIco:rawIco.padStart(8,'0')
+  const fallback=primary==='bez-ico'?'Bez IČO / interné položky':`Firma / IČO ${primary}`
+  return {
+    key:primary,
+    name:resolveSupplierName(state,primary,fallback),
+    ico,
+    match,
+    multiple:Math.max(0,suppliers.length-1),
+  }
+}
 function signedPct(value:number){return `${value>0?'+':''}${number.format(value)} %`}
 function roleCount(assignments:Record<string,unknown>,role:'R'|'A'){return Object.values(assignments).filter(value=>splitRaciRoles(value).includes(role)).length}
 
@@ -117,7 +169,8 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
   const [financeView,setFinanceView]=useState<'costs'|'contracts'>('costs')
   const [evidenceSearch,setEvidenceSearch]=useState('')
   const [evidenceEntity,setEvidenceEntity]=useState('Všetko')
-  const [evidenceSort,setEvidenceSort]=useState<'amount'|'name'|'code'>('amount')
+  const [evidenceSupplier,setEvidenceSupplier]=useState('Všetko')
+  const [evidenceSort,setEvidenceSort]=useState<'amount'|'name'|'code'|'supplier'>('amount')
   const [evidenceLimit,setEvidenceLimit]=useState(100)
   const [evidenceDense,setEvidenceDense]=useState(true)
   const categories=useMemo(()=>Array.from(new Set(dataset.items.map(item=>item.category))).sort((a,b)=>a.localeCompare(b,'sk')),[ ])
@@ -168,18 +221,27 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
   const singleRExposure=entityTotals.reduce((sum,item)=>sum+((entityContexts.get(item.name)?.singleR??0)>0?item.amount:0),0)
   const singleRExposureShare=percent(singleRExposure,selectedTotal)
   const evidenceEntities=useMemo(()=>Array.from(new Set(rows.map(item=>item.entity))).sort((a,b)=>a.localeCompare(b,'sk')),[rows])
+  const evidenceSupplierMeta=useMemo(()=>new Map(rows.map(item=>[item.id,evidenceSupplierFor(item,year,state)])),[rows,year,state])
+  const evidenceSuppliers=useMemo(()=>{
+    const unique=new Map<string,string>()
+    evidenceSupplierMeta.forEach(value=>{if(value.key)unique.set(value.key,value.name)})
+    return [...unique.entries()].sort((a,b)=>a[1].localeCompare(b[1],'sk'))
+  },[evidenceSupplierMeta])
   const evidenceRows=useMemo(()=>{
     const result=rows.filter(item=>{
+      const supplier=evidenceSupplierMeta.get(item.id)??{key:'',name:'',ico:'',match:'none',multiple:0}
       if(evidenceEntity!=='Všetko'&&item.entity!==evidenceEntity)return false
-      if(evidenceSearch&&!norm(`${item.label} ${item.reason} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${item.topDocument}`).includes(norm(evidenceSearch)))return false
+      if(evidenceSupplier!=='Všetko'&&supplier.key!==evidenceSupplier)return false
+      if(evidenceSearch&&!norm(`${item.label} ${item.reason} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${item.topDocument} ${supplier.name} ${supplier.ico}`).includes(norm(evidenceSearch)))return false
       return true
     })
     return [...result].sort((a,b)=>{
       if(evidenceSort==='name')return a.label.localeCompare(b.label,'sk')
       if(evidenceSort==='code')return `${a.kpd}/${a.ppd}`.localeCompare(`${b.kpd}/${b.ppd}`,'sk')
+      if(evidenceSort==='supplier')return (evidenceSupplierMeta.get(a.id)?.name||'ZZZ').localeCompare(evidenceSupplierMeta.get(b.id)?.name||'ZZZ','sk')
       return Math.abs(amountFor(b,year))-Math.abs(amountFor(a,year))
     })
-  },[rows,evidenceEntity,evidenceSearch,evidenceSort,year])
+  },[rows,evidenceEntity,evidenceSupplier,evidenceSearch,evidenceSort,year,evidenceSupplierMeta])
 
   const managementSignals=[
     {
@@ -230,8 +292,8 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
 
   function exportCurrent(){
     downloadCsv(`it-naklady-${year}.csv`,[
-      ['Rok','Režim','Kategória','Entita','KPD','PPD','Položka','Suma','Dôvera','TOP doklad','Dôvod klasifikácie'],
-      ...rows.map(item=>[String(year),item.mode,item.category,item.entity,item.kpd,item.ppd,item.label,String(amountFor(item,year)),item.confidence,item.topDocument,item.reason]),
+      ['Rok','Režim','Kategória','Entita','Dodávateľ','IČO','KPD','PPD','Položka','Suma','Dôvera','TOP doklad','Dôvod klasifikácie'],
+      ...rows.map(item=>{const supplier=evidenceSupplierFor(item,year,state);return [String(year),item.mode,item.category,item.entity,supplier.name,supplier.ico,item.kpd,item.ppd,item.label,String(amountFor(item,year)),item.confidence,item.topDocument,item.reason]}),
     ])
   }
 
@@ -293,13 +355,14 @@ export default function ItCosts({state,go}:{state:AppState;go:Go}){
       <div className="itc-evidence-toolbar">
         <label className="itc-evidence-search"><span>Hľadať v tabuľke</span><div><Icon name="search" size={15}/><input value={evidenceSearch} onChange={event=>setEvidenceSearch(event.target.value)} placeholder="položka, doklad, KPD, entita…"/></div></label>
         <label><span>Entita</span><select value={evidenceEntity} onChange={event=>setEvidenceEntity(event.target.value)}><option>Všetko</option>{evidenceEntities.map(value=><option key={value}>{value}</option>)}</select></label>
-        <label><span>Zoradiť</span><select value={evidenceSort} onChange={event=>setEvidenceSort(event.target.value as typeof evidenceSort)}><option value="amount">Podľa sumy</option><option value="name">Podľa názvu</option><option value="code">Podľa KPD / PPD</option></select></label>
+        <label><span>Dodávateľ</span><select value={evidenceSupplier} onChange={event=>setEvidenceSupplier(event.target.value)}><option>Všetko</option>{evidenceSuppliers.map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>
+        <label><span>Zoradiť</span><select value={evidenceSort} onChange={event=>setEvidenceSort(event.target.value as typeof evidenceSort)}><option value="amount">Podľa sumy</option><option value="name">Podľa názvu</option><option value="supplier">Podľa dodávateľa</option><option value="code">Podľa KPD / PPD</option></select></label>
         <label><span>Riadkov</span><select value={evidenceLimit} onChange={event=>setEvidenceLimit(Number(event.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={250}>250</option><option value={1000}>Všetky</option></select></label>
         <button className={`itc-density-button ${evidenceDense?'active':''}`} onClick={()=>setEvidenceDense(value=>!value)}><Icon name="matrix" size={15}/>{evidenceDense?'Kompaktné':'Vzdušné'}</button>
-        <button className="itc-density-button" onClick={()=>{setEvidenceSearch('');setEvidenceEntity('Všetko');setEvidenceSort('amount')}}>Reset</button>
+        <button className="itc-density-button" onClick={()=>{setEvidenceSearch('');setEvidenceEntity('Všetko');setEvidenceSupplier('Všetko');setEvidenceSort('amount')}}>Reset</button>
       </div>
       <div className={`itc-evidence-shell ${evidenceDense?'dense':''}`}>
-        <table className="itc-table"><colgroup><col className="itc-col-item"/><col className="itc-col-code"/><col className="itc-col-mode"/><col className="itc-col-category"/><col className="itc-col-confidence"/><col className="itc-col-document"/><col className="itc-col-amount"/></colgroup><thead><tr><th>Položka</th><th>KPD / PPD</th><th>RUN/CHANGE</th><th>Kategória / entita</th><th>Dôvera</th><th>TOP doklad</th><th className="number">{year}</th></tr></thead><tbody>{evidenceRows.slice(0,evidenceLimit).map(item=><tr key={item.id}><td><strong>{item.label}</strong><small>{item.reason}</small></td><td><strong>{item.kpd} / {item.ppd||'—'}</strong></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td><Badge tone={item.confidence==='vysoká'?'success':'warning'}>{item.confidence}</Badge></td><td><strong>{item.topDocument||'—'}</strong></td><td className={`number ${amountFor(item,year)<0?'itc-negative':''}`}><strong>{money.format(amountFor(item,year))}</strong></td></tr>)}</tbody></table>
+        <table className="itc-table"><colgroup><col className="itc-col-item"/><col className="itc-col-code"/><col className="itc-col-mode"/><col className="itc-col-category"/><col className="itc-col-supplier"/><col className="itc-col-confidence"/><col className="itc-col-document"/><col className="itc-col-amount"/></colgroup><thead><tr><th>Položka</th><th>KPD / PPD</th><th>RUN/CHANGE</th><th>Kategória / entita</th><th>Dodávateľ</th><th>Dôvera</th><th>TOP doklad</th><th className="number">{year}</th></tr></thead><tbody>{evidenceRows.slice(0,evidenceLimit).map(item=>{const supplier=evidenceSupplierMeta.get(item.id)??{key:'',name:'',ico:'',match:'none',multiple:0};return <tr key={item.id}><td><strong>{item.label}</strong><small>{item.reason}</small></td><td className="itc-code-cell"><strong>{item.kpd} / {item.ppd||'—'}</strong></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td className="itc-supplier-cell">{supplier.key?<><strong>{supplier.name}{supplier.multiple?` +${supplier.multiple}`:''}</strong><small>{supplier.ico?`IČO ${supplier.ico}`:'bez IČO'} · {supplier.match==='doklad'?'zhoda dokladu':'zhoda položky'}</small></>:<><strong>—</strong><small>bez spoľahlivej zhody</small></>}</td><td><Badge tone={item.confidence==='vysoká'?'success':'warning'}>{item.confidence}</Badge></td><td className="itc-document-cell"><strong>{item.topDocument||'—'}</strong></td><td className={`number ${amountFor(item,year)<0?'itc-negative':''}`}><strong>{money.format(amountFor(item,year))}</strong></td></tr>})}</tbody></table>
       </div>
       <div className="itc-table-note">Zobrazených {Math.min(evidenceRows.length,evidenceLimit)} z {evidenceRows.length} položiek. Hlavička aj pravý stĺpec so sumou zostávajú pri rolovaní viditeľné; na menších obrazovkách sa tabuľka roluje iba vo vlastnom paneli.</div>
     </section>
