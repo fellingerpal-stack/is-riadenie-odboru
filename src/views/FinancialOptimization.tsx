@@ -36,10 +36,12 @@ function actionTone(status:string){
 }
 
 export default function FinancialOptimization({
-  state,year,runTrend,selectedTotal,runTotal,changeTotal,entities,canEdit,currentUser,onActionsChange,go,
+  state,year,periodLabel,periodMode,runTrend,selectedTotal,runTotal,changeTotal,entities,canEdit,currentUser,onActionsChange,go,
 }:{
   state:AppState
   year:number
+  periodLabel:string
+  periodMode:'h1'|'fullYear'
   runTrend:RunTrendPoint[]
   selectedTotal:number
   runTotal:number
@@ -84,7 +86,7 @@ export default function FinancialOptimization({
       dependency:config.dependency,
       kpi:config.kpi,
       directorDecision:config.decision,
-      note:`[${key}] Vytvorené z Financial Actions & Optimization v0.25 · ${year} · ${currentUser}`,
+      note:`[${key}] Vytvorené z Financial Actions & Optimization v0.26 · ${year} · ${periodLabel} · ${currentUser}`,
     }
     onActionsChange([...state.actions,action])
   }
@@ -119,7 +121,7 @@ export default function FinancialOptimization({
   ]
 
   return <section className="panel finopt-panel">
-    <div className="panel-heading"><div><span className="eyebrow">FINANCIAL ACTIONS & OPTIMIZATION</span><h3>Od odporúčania k riadeniu</h3><p>RUN baseline, cost-owneri, DC VaV unit economics a finančne prioritizované RACI riziká. Výpočty rešpektujú aktuálny finančný výber.</p></div><Badge tone={financialActions.some(a=>a.status!=='Ukončené')?'warning':'success'}>{financialActions.filter(a=>a.status!=='Ukončené').length} otvorených</Badge></div>
+    <div className="panel-heading"><div><span className="eyebrow">FINANCIAL ACTIONS & OPTIMIZATION</span><h3>Od odporúčania k riadeniu</h3><p>RUN baseline, cost-owneri, DC VaV unit economics a finančne prioritizované RACI riziká. Výpočty rešpektujú aktuálny rok aj obdobie <strong>{periodLabel}</strong>.</p></div><Badge tone={financialActions.some(a=>a.status!=='Ukončené')?'warning':'success'}>{financialActions.filter(a=>a.status!=='Ukončené').length} otvorených</Badge></div>
     <div className="finopt-tabs">
       <button className={tab==='actions'?'active':''} onClick={()=>setTab('actions')}><Icon name="tasks" size={16}/> Riadiace opatrenia</button>
       <button className={tab==='run'?'active':''} onClick={()=>setTab('run')}><Icon name="capacity" size={16}/> RUN baseline</button>
@@ -134,16 +136,16 @@ export default function FinancialOptimization({
     </div>}
 
     {tab==='run'&&<div className="finopt-run-grid">
-      <div className="finopt-metric-card"><span>RUN {year}</span><strong>{money.format(runTotal)}</strong><small>{selectedTotal?number.format(runTotal/selectedTotal*100):'0'} % aktuálneho IT výberu</small></div>
-      <div className="finopt-metric-card"><span>CHANGE {year}</span><strong>{money.format(changeTotal)}</strong><small>držané oddelene od RUN baseline</small></div>
+      <div className="finopt-metric-card"><span>RUN {year} · {periodLabel}</span><strong>{money.format(runTotal)}</strong><small>{selectedTotal?number.format(runTotal/selectedTotal*100):'0'} % aktuálneho IT výberu</small></div>
+      <div className="finopt-metric-card"><span>CHANGE {year} · {periodLabel}</span><strong>{money.format(changeTotal)}</strong><small>držané oddelene od RUN baseline</small></div>
       <div className="finopt-run-chart">{runTrend.map(point=>{const index=baseline?point.amount/baseline*100:0;return <div key={point.year} className="finopt-run-row"><b>{point.year}</b><span><i style={{width:`${Math.max(1,Math.abs(point.amount)/maxRun*100)}%`}}/></span><strong>{money.format(point.amount)}</strong><em>{baseline?`index ${number.format(index)}`:'—'}</em></div>})}</div>
-      <div className="finopt-note"><Icon name="shield" size={18}/><p><strong>Interpretácia:</strong> baseline je pracovný manažérsky ukazovateľ z porovnateľného IT výrezu, nie schválený rozpočet. Pri zmene rozsahu dát alebo služieb treba baseline metodicky prepočítať.</p></div>
+      <div className="finopt-note"><Icon name="shield" size={18}/><p><strong>Interpretácia:</strong> baseline je pracovný manažérsky ukazovateľ pre obdobie {periodLabel}, nie schválený rozpočet. {periodMode==='fullYear'?'Celoročný režim používa konzervatívny full-year IT výrez 2023–2025.':'H1 režim je auditovateľný detail január–jún 2022–2026.'} Pri zmene rozsahu dát alebo služieb treba baseline metodicky prepočítať.</p></div>
     </div>}
 
     {tab==='owners'&&<div className="finopt-owner-table"><div className="finopt-owner-head"><span>Oblasť</span><span>Náklad</span><span>Podiel</span><span>RACI</span><span>Riadenie</span></div>{ownerEntities.map(entity=>{const key=actionKey('OWNER',entity.name);const existing=state.actions.find(a=>actionMatches(a,key));return <div className="finopt-owner-row" key={entity.name}><div><strong>{entity.name}</strong><small>{entity.category}</small></div><b>{money.format(entity.amount)}</b><span>{selectedTotal?number.format(entity.amount/selectedTotal*100):'0'} %</span><span className={entity.singleR?'danger-text':''}>{entity.raciLinks} väzieb · {entity.singleR} single-R</span><div>{entity.route&&<button className="text-button" onClick={()=>go(entity.route)}>Detail</button>}{existing?<Badge tone={actionTone(existing.status)}>{existing.status}</Badge>:canEdit&&<button className="text-button" onClick={()=>createAction({type:'OWNER',subject:entity.name,title:`Určiť cost-ownera: ${entity.name}`,output:`Potvrdený vlastník nákladov, SLA/KPI a optimalizačný plán pre ${entity.name}.`,kpi:'Ročný náklad; SLA/KPI; odchýlka od baseline',dependency:'Finančné dáta + služba/zmluva/RACI',owner:'Cost-owner – určiť',decision:'Potvrdiť vlastníka a KPI.',days:90})}>+ Opatrenie</button>}</div></div>})}</div>}
 
     {tab==='dc'&&<div className="finopt-dc-grid">
-      <article><span>Náklad DC VaV · {year}</span><strong>{money.format(dcCost)}</strong><small>klasifikovaný nákladový výrez</small></article>
+      <article><span>Náklad DC VaV · {year} · {periodLabel}</span><strong>{money.format(dcCost)}</strong><small>klasifikovaný nákladový výrez</small></article>
       <article><span>€/rack</span><strong>{racks?money.format(dcCost/racks):'—'}</strong><small>{racks} evidovaných rackov v DC VaV</small></article>
       <article><span>€/evidované zariadenie</span><strong>{devices?money.format(dcCost/devices):'—'}</strong><small>{devices} neprázdnych inventárnych položiek</small></article>
       <article><span>€/TB využitého storage</span><strong>{storageUsed?money.format(dcCost/storageUsed):'—'}</strong><small>{storageUsed?`${number.format(storageUsed)} TB využitých`:'kapacita nedostupná'}</small></article>

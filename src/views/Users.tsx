@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { AppRole, UserAuditEntry, UserProfile } from '../types'
+import type { AccessLevel, AccessScope, AppRole, UserAccessScopes, UserAuditEntry, UserProfile } from '../types'
 import {
   cancelUserInvitation,
   friendlyUserOperationError,
@@ -22,6 +22,7 @@ import {
   saveLocalUser,
 } from '../lib/localUsers'
 import { useAuth } from '../auth/AuthContext'
+import { ACCESS_LEVEL_LABELS, ACCESS_SCOPE_LABELS, defaultAccessScopes, normalizeAccessScopes } from '../lib/accessControl'
 import { Badge, Field, Icon, Modal, PageHeader } from '../components/UI'
 
 const roles: { value: AppRole; label: string; description: string }[] = [
@@ -31,6 +32,27 @@ const roles: { value: AppRole; label: string; description: string }[] = [
   { value: 'employee', label: 'Zamestnanec', description: 'Používateľský prístup k vlastným požiadavkám a prideleným záznamom.' },
   { value: 'viewer', label: 'Čitateľ', description: 'Prístup iba na čítanie povolených informácií.' },
 ]
+
+
+const accessLevels: { value: AccessLevel; short: string }[] = [
+  { value: 'none', short: '—' },
+  { value: 'read', short: 'R' },
+  { value: 'write', short: 'W' },
+]
+const accessScopes: AccessScope[] = ['oit', 'oris', 'shared']
+
+function accessTone(level: AccessLevel): 'success' | 'info' | 'neutral' {
+  return level === 'write' ? 'success' : level === 'read' ? 'info' : 'neutral'
+}
+
+function AccessBadges({ profile }: { profile: UserProfile }) {
+  const scopes = normalizeAccessScopes(profile.accessScopes, profile.role, profile.department)
+  return <div className="access-badges">{accessScopes.map((scope) => <Badge key={scope} tone={accessTone(scopes[scope])}>{scope === 'oit' ? '3.1' : scope === 'oris' ? '3.2' : 'Spol.'} {scopes[scope] === 'write' ? 'W' : scopes[scope] === 'read' ? 'R' : '—'}</Badge>)}</div>
+}
+
+function AccessMatrix({ value, disabled = false, onChange }: { value: UserAccessScopes; disabled?: boolean; onChange: (value: UserAccessScopes) => void }) {
+  return <section className="access-matrix"><header><div><strong>Rozsah prístupu</strong><span>R = iba čítanie · W = čítanie a zápis · — = bez prístupu</span></div></header><div className="access-matrix-grid">{accessScopes.map((scope) => <label key={scope}><span>{ACCESS_SCOPE_LABELS[scope]}</span><select disabled={disabled} value={value[scope]} onChange={(event) => onChange({ ...value, [scope]: event.target.value as AccessLevel })}>{accessLevels.map((level) => <option key={level.value} value={level.value}>{level.short} · {ACCESS_LEVEL_LABELS[level.value]}</option>)}</select></label>)}</div><p>Aplikačná rola určuje maximálnu schopnosť používateľa; táto matica určuje, v ktorom pracovnom priestore ju môže použiť.</p></section>
+}
 
 type AccountState = 'active' | 'invited' | 'expired' | 'cancelled' | 'inactive'
 type UserTab = 'users' | 'onboarding' | 'audit'
@@ -85,7 +107,7 @@ const accountStateInfo: Record<AccountState, { label: string; tone: 'success' | 
 }
 
 function blankInvite(): Omit<UserProfile, 'id' | 'organizationId' | 'isActive' | 'lastLoginAt' | 'acceptedAt' | 'invitedAt' | 'inviteExpiresAt' | 'createdAt' | 'updatedAt'> {
-  return { fullName: '', email: '', department: 'Odbor 3.2', jobTitle: '', phone: '', role: 'employee' }
+  return { fullName: '', email: '', department: 'Odbor 3.2', jobTitle: '', phone: '', role: 'employee', accessScopes: defaultAccessScopes('employee', 'Odbor 3.2') }
 }
 
 export default function Users({ currentUserId, currentUserName, configured }: { currentUserId: string; currentUserName: string; configured: boolean }) {
@@ -341,13 +363,14 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
         <Badge tone="info">{filtered.length} z {profiles.length}</Badge>
       </section>
       <section className="panel users-panel">
-        {loading ? <div className="loading-block">Načítavam používateľov…</div> : filtered.length ? <div className="table-scroll users-table-shell" role="region" aria-label="Zoznam používateľov" tabIndex={0}><table className="data-table users-table"><thead><tr><th>Používateľ</th><th>Útvar a pozícia</th><th>Aplikačná rola</th><th>Stav účtu</th><th>Prihlásenie</th><th></th></tr></thead><tbody>{filtered.map((profile) => {
+        {loading ? <div className="loading-block">Načítavam používateľov…</div> : filtered.length ? <div className="table-scroll users-table-shell" role="region" aria-label="Zoznam používateľov" tabIndex={0}><table className="data-table users-table"><thead><tr><th>Používateľ</th><th>Útvar a pozícia</th><th>Aplikačná rola</th><th>Prístupy 3.1 / 3.2</th><th>Stav účtu</th><th>Prihlásenie</th><th></th></tr></thead><tbody>{filtered.map((profile) => {
           const state = accountState(profile)
           const stateInfo = accountStateInfo[state]
           return <tr key={profile.id} className={!profile.isActive ? 'is-inactive' : ''}>
             <td><div className="user-cell"><div className="avatar avatar-small">{initials(profile.fullName || profile.email)}</div><div><strong>{profile.fullName || 'Meno nedoplnené'} {profile.id === currentUserId && <Badge tone="info">Vy</Badge>}</strong><small>{profile.email}</small><small>{profile.phone || 'Telefón nedoplnený'}</small></div></div></td>
             <td><strong className="table-main-value">{profile.department || 'Útvar neurčený'}</strong><small className="table-sub-value">{profile.jobTitle || 'Pozícia neurčená'}</small></td>
             <td><Badge tone={roleTone(profile.role)}>{roleInfo(profile.role).label}</Badge><small className="table-sub-value role-copy">{roleInfo(profile.role).description}</small></td>
+            <td><AccessBadges profile={profile}/><small className="table-sub-value">W = zápis · R = čítanie</small></td>
             <td><Badge tone={stateInfo.tone}>{stateInfo.label}</Badge><small className="table-sub-value">{state === 'invited' || state === 'expired' ? `Platnosť do ${formatDate(inviteExpiry(profile))}` : stateInfo.description}</small></td>
             <td><strong className="table-main-value">{formatDate(profile.lastLoginAt)}</strong><small className="table-sub-value">{profile.acceptedAt ? `Prijaté ${formatDate(profile.acceptedAt)}` : profile.invitedAt ? `Pozvaný ${formatDate(profile.invitedAt)}` : 'Vytvorený priamo'}</small></td>
             <td><UserRowActions profile={profile} state={state} current={profile.id === currentUserId} cloud={configured} busy={busy} onDetail={() => setDetailProfile(profile)} onEdit={() => setEditProfile(profile)} onReset={() => void resetPassword(profile)} onResend={() => void resendAccess(profile)} onCancel={() => void cancelInvitation(profile)} onOwnPassword={() => setPasswordOpen(true)}/></td>
@@ -363,11 +386,11 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
     {inviteOpen && <Modal title="Pozvať používateľa" onClose={() => setInviteOpen(false)}><div className="form-grid">
       <Field label="Meno a priezvisko"><input value={invite.fullName} onChange={(event) => setInvite({ ...invite, fullName: event.target.value })} placeholder="Meno Priezvisko"/></Field>
       <Field label="Pracovný e-mail"><input type="email" value={invite.email} onChange={(event) => setInvite({ ...invite, email: event.target.value })} placeholder="meno@cvtisr.sk"/></Field>
-      <Field label="Útvar / oddelenie"><input value={invite.department} onChange={(event) => setInvite({ ...invite, department: event.target.value })} placeholder="Odbor 3.2"/></Field>
+      <Field label="Útvar / oddelenie"><input value={invite.department} onChange={(event) => { const department=event.target.value; setInvite({ ...invite, department, accessScopes: defaultAccessScopes(invite.role, department) }) }} placeholder="Odbor 3.2"/></Field>
       <Field label="Pracovná pozícia"><input value={invite.jobTitle} onChange={(event) => setInvite({ ...invite, jobTitle: event.target.value })} placeholder="Názov pozície"/></Field>
       <Field label="Telefón"><input value={invite.phone} onChange={(event) => setInvite({ ...invite, phone: event.target.value })} placeholder="+421…"/></Field>
-      <Field label="Aplikačná rola" hint={roleInfo(invite.role).description}><select value={invite.role} onChange={(event) => setInvite({ ...invite, role: event.target.value as AppRole })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
-    </div><div className="invite-note"><Icon name="calendar" size={17}/><div><strong>Prístupový odkaz je určený na prvotné nastavenie hesla.</strong><span>Ak používateľ odkaz neotvorí včas, v záložke Onboarding mu odošlete nový.</span></div></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setInviteOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={busy || !invite.email || !invite.fullName} onClick={() => void sendInvite()}>{busy ? 'Spracúvam…' : configured ? 'Odoslať pozvanie' : 'Vytvoriť demo účet'}</button></div></Modal>}
+      <Field label="Aplikačná rola" hint={roleInfo(invite.role).description}><select value={invite.role} onChange={(event) => { const role=event.target.value as AppRole; setInvite({ ...invite, role, accessScopes: defaultAccessScopes(role, invite.department) }) }}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
+    </div><AccessMatrix value={invite.accessScopes} disabled={invite.role==='admin'} onChange={(accessScopes)=>setInvite({...invite,accessScopes})}/><div className="invite-note"><Icon name="calendar" size={17}/><div><strong>Prístupový odkaz je určený na prvotné nastavenie hesla.</strong><span>Ak používateľ odkaz neotvorí včas, v záložke Onboarding mu odošlete nový.</span></div></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setInviteOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={busy || !invite.email || !invite.fullName} onClick={() => void sendInvite()}>{busy ? 'Spracúvam…' : configured ? 'Odoslať pozvanie' : 'Vytvoriť demo účet'}</button></div></Modal>}
 
     {editProfile && <UserEditModal profile={editProfile} current={editProfile.id === currentUserId} cloud={configured} busy={busy} onClose={() => setEditProfile(null)} onSave={save} onOwnPassword={() => { setEditProfile(null); setPasswordOpen(true) }} onSetPassword={() => { setEditProfile(null); setAdminPasswordProfile(editProfile) }}/>} 
     {detailProfile && <UserDetailModal profile={profiles.find((item) => item.id === detailProfile.id) ?? detailProfile} audit={audit.filter((entry) => entry.targetUserId === detailProfile.id || entry.targetUserName === detailProfile.fullName)} current={detailProfile.id === currentUserId} cloud={configured} busy={busy} onClose={() => setDetailProfile(null)} onEdit={() => { setDetailProfile(null); setEditProfile(detailProfile) }} onReset={() => void resetPassword(detailProfile)} onResend={() => void resendAccess(detailProfile)} onCancel={() => void cancelInvitation(detailProfile)} onOwnPassword={() => { setDetailProfile(null); setPasswordOpen(true) }} onSetPassword={() => { setDetailProfile(null); setAdminPasswordProfile(detailProfile) }}/>} 
@@ -411,12 +434,12 @@ function UserEditModal({ profile, current, cloud, busy, onClose, onSave, onOwnPa
   return <Modal title="Upraviť používateľa" onClose={onClose}><div className="user-edit-header"><div className="avatar avatar-large">{initials(draft.fullName || draft.email)}</div><div><strong>{draft.fullName || draft.email}</strong><span>{draft.email}</span>{current && <Badge tone="info">Aktuálne prihlásený účet</Badge>}</div></div><div className="form-grid">
     <Field label="Meno a priezvisko"><input value={draft.fullName} onChange={(event) => setDraft({ ...draft, fullName: event.target.value })}/></Field>
     <Field label="E-mail"><input value={draft.email} disabled/></Field>
-    <Field label="Útvar / oddelenie"><input value={draft.department} onChange={(event) => setDraft({ ...draft, department: event.target.value })}/></Field>
+    <Field label="Útvar / oddelenie"><input value={draft.department} onChange={(event) => { const department=event.target.value; setDraft({ ...draft, department, accessScopes: defaultAccessScopes(draft.role, department) }) }}/></Field>
     <Field label="Pracovná pozícia"><input value={draft.jobTitle} onChange={(event) => setDraft({ ...draft, jobTitle: event.target.value })}/></Field>
     <Field label="Telefón"><input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })}/></Field>
-    <Field label="Aplikačná rola" hint={roleInfo(draft.role).description}><select value={draft.role} disabled={current} onChange={(event) => setDraft({ ...draft, role: event.target.value as AppRole })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
+    <Field label="Aplikačná rola" hint={roleInfo(draft.role).description}><select value={draft.role} disabled={current} onChange={(event) => { const role=event.target.value as AppRole; setDraft({ ...draft, role, accessScopes: defaultAccessScopes(role, draft.department) }) }}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
     <Field label="Stav účtu" hint={current ? 'Vlastný účet nemožno deaktivovať.' : 'Deaktivovaný používateľ sa neprihlási.'}><label className="account-status-switch"><input type="checkbox" checked={draft.isActive} disabled={current} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })}/><span>{draft.isActive ? 'Prístup povolený' : 'Prístup zablokovaný'}</span></label></Field>
-  </div>{cloud&&<div className="password-guidance"><Icon name="lock" size={20}/><div><strong>{current?'Zmena vlastného hesla':'Správa hesla používateľa'}</strong><span>{current?'Heslo zmeníte priamo bez e-mailu a bez SMTP.':'Administrátor môže nastaviť nové heslo priamo v Supabase Auth. Používateľovi ho odovzdajte bezpečným kanálom.'}</span><button className="button button-secondary button-small" type="button" onClick={current?onOwnPassword:onSetPassword}><Icon name="lock" size={16}/> {current?'Zmeniť moje heslo':'Nastaviť nové heslo'}</button></div></div>}<div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !draft.fullName.trim()} onClick={() => void onSave(draft)}>{busy ? 'Ukladám…' : 'Uložiť zmeny'}</button></div></Modal>
+  </div><AccessMatrix value={draft.accessScopes} disabled={current || draft.role==='admin'} onChange={(accessScopes)=>setDraft({...draft,accessScopes})}/>{cloud&&<div className="password-guidance"><Icon name="lock" size={20}/><div><strong>{current?'Zmena vlastného hesla':'Správa hesla používateľa'}</strong><span>{current?'Heslo zmeníte priamo bez e-mailu a bez SMTP.':'Administrátor môže nastaviť nové heslo priamo v Supabase Auth. Používateľovi ho odovzdajte bezpečným kanálom.'}</span><button className="button button-secondary button-small" type="button" onClick={current?onOwnPassword:onSetPassword}><Icon name="lock" size={16}/> {current?'Zmeniť moje heslo':'Nastaviť nové heslo'}</button></div></div>}<div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !draft.fullName.trim()} onClick={() => void onSave(draft)}>{busy ? 'Ukladám…' : 'Uložiť zmeny'}</button></div></Modal>
 }
 
 function UserDetailModal({ profile, audit, current, cloud, busy, onClose, onEdit, onReset, onResend, onCancel, onOwnPassword, onSetPassword }: { profile: UserProfile; audit: UserAuditEntry[]; current: boolean; cloud: boolean; busy: boolean; onClose: () => void; onEdit: () => void; onReset: () => void; onResend: () => void; onCancel: () => void; onOwnPassword: () => void; onSetPassword: () => void }) {
@@ -425,6 +448,7 @@ function UserDetailModal({ profile, audit, current, cloud, busy, onClose, onEdit
   const pending = state === 'invited' || state === 'expired' || state === 'cancelled'
   return <Modal title="Detail používateľského účtu" onClose={onClose} wide><div className="user-detail-hero"><div className="avatar avatar-large">{initials(profile.fullName || profile.email)}</div><div><div className="user-detail-title"><h3>{profile.fullName || 'Meno nedoplnené'}</h3>{current && <Badge tone="info">Vy</Badge>}</div><p>{profile.email}</p><div className="user-detail-badges"><Badge tone={roleTone(profile.role)}>{roleInfo(profile.role).label}</Badge><Badge tone={info.tone}>{info.label}</Badge></div></div></div>
     <div className="user-detail-grid"><article><span>Útvar</span><strong>{profile.department || 'Neurčený'}</strong><small>{profile.jobTitle || 'Pozícia neurčená'}</small></article><article><span>Telefón</span><strong>{profile.phone || 'Nedoplnený'}</strong><small>Kontaktný údaj</small></article><article><span>Pozvaný</span><strong>{formatDate(profile.invitedAt)}</strong><small>{pending ? `Platnosť do ${formatDate(inviteExpiry(profile))}` : 'Prvotné vytvorenie účtu'}</small></article><article><span>Prijatie pozvánky</span><strong>{formatDate(profile.acceptedAt)}</strong><small>{profile.acceptedAt ? 'Prvé úspešné prihlásenie' : 'Zatiaľ nezaznamenané'}</small></article><article><span>Posledné prihlásenie</span><strong>{formatDate(profile.lastLoginAt)}</strong><small>Aktivita používateľa</small></article><article><span>Posledná zmena</span><strong>{formatDate(profile.updatedAt)}</strong><small>Profil alebo oprávnenia</small></article></div>
+    <section className="user-access-detail"><header><strong>Prístupy podľa pracoviska</strong><span>Efektívny rozsah po prihlásení</span></header><AccessBadges profile={profile}/><div className="user-access-detail-grid">{accessScopes.map(scope=><article key={scope}><span>{ACCESS_SCOPE_LABELS[scope]}</span><strong>{ACCESS_LEVEL_LABELS[normalizeAccessScopes(profile.accessScopes,profile.role,profile.department)[scope]]}</strong></article>)}</div></section>
     <section className="detail-status-explainer"><Icon name={state === 'active' ? 'check' : 'warning'} size={18}/><div><strong>{info.label}</strong><span>{info.description}</span></div></section>
     <section className="user-detail-audit"><header><div><span className="section-kicker">História účtu</span><h3>Posledné administrátorské zmeny</h3></div><Badge tone="neutral">{audit.length}</Badge></header>{audit.length ? <div>{audit.slice(0, 8).map((entry) => <article key={entry.id}><span>{formatDate(entry.createdAt)}</span><div><strong>{entry.action}</strong><small>{entry.detail}</small></div></article>)}</div> : <p className="muted-copy">Pre tento účet zatiaľ nie je evidovaná administrátorská zmena.</p>}</section>
     <div className="modal-actions modal-actions-between"><button className="button button-secondary" onClick={onClose}>Zavrieť</button><div><button className="button button-secondary" onClick={onEdit}><Icon name="edit"/> Upraviť profil</button>{current ? cloud ? <button className="button button-primary" disabled={busy} onClick={onOwnPassword}><Icon name="lock"/> Zmeniť moje heslo</button> : null : <><button className="button button-primary" disabled={busy} onClick={onSetPassword}><Icon name="lock"/> Nastaviť heslo</button>{pending&&<button className="button button-secondary" disabled={busy} onClick={onResend}><Icon name="refresh"/> {state === 'cancelled' ? 'Obnoviť pozvanie' : 'Odoslať nový odkaz'}</button>}{!pending&&<button className="button button-secondary" disabled={busy || !profile.isActive} onClick={onReset}>Odoslať obnovu e-mailom</button>}{pending&&state !== 'cancelled'&&<button className="button button-danger" disabled={busy} onClick={onCancel}>Zrušiť pozvánku</button>}</>}</div></div>
