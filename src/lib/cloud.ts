@@ -1,4 +1,5 @@
 import type { AppState, CloudSnapshot, UserAuditEntry, UserProfile } from '../types'
+import { accessSummary, normalizeAccessScopes } from './accessControl'
 import { getAppUrl, supabase } from './supabase'
 
 export async function loadCurrentSnapshot(): Promise<CloudSnapshot | null> {
@@ -46,6 +47,7 @@ function normalizeProfile(row: Record<string, unknown>): UserProfile {
     jobTitle: String(row.job_title ?? ''),
     phone: String(row.phone ?? ''),
     role: row.role === 'admin' || row.role === 'manager' || row.role === 'resolver' || row.role === 'employee' ? row.role : 'viewer',
+    accessScopes: normalizeAccessScopes(row.access_scopes, row.role === 'admin' || row.role === 'manager' || row.role === 'resolver' || row.role === 'employee' ? row.role : 'viewer', String(row.department ?? '')),
     isActive: Boolean(row.is_active),
     lastLoginAt: String(row.last_login_at ?? ''),
     acceptedAt: String(row.accepted_at ?? ''),
@@ -60,7 +62,7 @@ export async function listProfiles(): Promise<UserProfile[]> {
   if (!supabase) return []
   const detailed = await supabase
     .from('profiles')
-    .select('id, organization_id, full_name, email, department, job_title, phone, role, is_active, last_login_at, accepted_at, invited_at, invite_expires_at, created_at, updated_at')
+    .select('id, organization_id, full_name, email, department, job_title, phone, role, access_scopes, is_active, last_login_at, accepted_at, invited_at, invite_expires_at, created_at, updated_at')
     .order('full_name')
 
   if (!detailed.error) {
@@ -85,12 +87,13 @@ export async function updateProfile(profile: UserProfile): Promise<void> {
       job_title: profile.jobTitle,
       phone: profile.phone,
       role: profile.role,
+      access_scopes: profile.accessScopes,
       is_active: profile.isActive,
       updated_at: new Date().toISOString(),
     })
     .eq('id', profile.id)
   if (error) throw error
-  await writeUserAudit('Profil upravený', profile.id, profile.fullName || profile.email, `Rola: ${profile.role}; stav: ${profile.isActive ? 'aktívny' : 'deaktivovaný'}`)
+  await writeUserAudit('Profil upravený', profile.id, profile.fullName || profile.email, `Rola: ${profile.role}; prístupy: ${accessSummary(profile.accessScopes)}; stav: ${profile.isActive ? 'aktívny' : 'deaktivovaný'}`)
 }
 
 type ErrorRecord = Record<string, unknown>
@@ -240,6 +243,7 @@ export async function inviteUser(input: {
   jobTitle: string
   phone: string
   role: UserProfile['role']
+  accessScopes: UserProfile['accessScopes']
 }): Promise<string> {
   if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
 

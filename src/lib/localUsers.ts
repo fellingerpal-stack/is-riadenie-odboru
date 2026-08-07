@@ -1,4 +1,5 @@
 import type { AppRole, UserAuditEntry, UserProfile } from '../types'
+import { accessSummary, defaultAccessScopes, normalizeAccessScopes } from './accessControl'
 
 const USERS_KEY = 'cvti-is-riadenie-local-users-v010'
 const AUDIT_KEY = 'cvti-is-riadenie-local-user-audit-v010'
@@ -10,27 +11,27 @@ const seedUsers: UserProfile[] = [
   {
     id: 'local-admin', organizationId: 'local-cvti', fullName: 'Pavol Horváth',
     email: 'pavol.horvath@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Riaditeľ odboru',
-    phone: '', role: 'admin', isActive: true, lastLoginAt: now(), acceptedAt: now(), invitedAt: '', inviteExpiresAt: '', createdAt: now(), updatedAt: now(),
+    phone: '', role: 'admin', accessScopes: defaultAccessScopes('admin', 'Odbor 3.2'), isActive: true, lastLoginAt: now(), acceptedAt: now(), invitedAt: '', inviteExpiresAt: '', createdAt: now(), updatedAt: now(),
   },
   {
     id: 'local-manager', organizationId: 'local-cvti', fullName: 'Peter Modrák',
     email: 'peter.modrak@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Vedúci oddelenia',
-    phone: '', role: 'manager', isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
+    phone: '', role: 'manager', accessScopes: defaultAccessScopes('manager', 'Odbor 3.2'), isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
   },
   {
     id: 'local-resolver', organizationId: 'local-cvti', fullName: 'Ladislav Turányi',
     email: 'ladislav.turanyi@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Riešiteľ / projektová rola',
-    phone: '', role: 'resolver', isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
+    phone: '', role: 'resolver', accessScopes: defaultAccessScopes('resolver', 'Odbor 3.2'), isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
   },
   {
     id: 'local-employee', organizationId: 'local-cvti', fullName: 'Michelle Kožuchová Bajema',
     email: 'michelle.bajema@cvtisr.sk', department: 'Odbor 3.2', jobTitle: 'Zamestnanec',
-    phone: '', role: 'employee', isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
+    phone: '', role: 'employee', accessScopes: defaultAccessScopes('employee', 'Odbor 3.2'), isActive: true, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
   },
   {
     id: 'local-viewer', organizationId: 'local-cvti', fullName: 'Audítor – čítanie',
     email: 'auditor@cvtisr.sk', department: 'Kontrola', jobTitle: 'Čitateľ',
-    phone: '', role: 'viewer', isActive: false, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
+    phone: '', role: 'viewer', accessScopes: defaultAccessScopes('viewer', 'Kontrola'), isActive: false, lastLoginAt: '', acceptedAt: '', invitedAt: now(), inviteExpiresAt: inHours(24), createdAt: now(), updatedAt: now(),
   },
 ]
 
@@ -45,6 +46,7 @@ function safeUsers(value: unknown): UserProfile[] {
     jobTitle: String(row?.jobTitle ?? ''),
     phone: String(row?.phone ?? ''),
     role: normalizeRole(row?.role),
+    accessScopes: normalizeAccessScopes(row?.accessScopes, normalizeRole(row?.role), String(row?.department ?? '')),
     isActive: row?.isActive !== false,
     lastLoginAt: String(row?.lastLoginAt ?? ''),
     acceptedAt: String(row?.acceptedAt ?? row?.lastLoginAt ?? ''),
@@ -79,11 +81,11 @@ export function saveLocalUser(profile: UserProfile, actorName = 'Pavol Horváth'
     ? users.map((item) => item.id === profile.id ? updated : item)
     : [...users, updated]
   localStorage.setItem(USERS_KEY, JSON.stringify(next))
-  appendLocalAudit({ actorName, targetUserId: updated.id, targetUserName: updated.fullName || updated.email, action: 'Profil upravený', detail: `Rola: ${updated.role}; stav: ${updated.isActive ? 'aktívny' : 'deaktivovaný'}` })
+  appendLocalAudit({ actorName, targetUserId: updated.id, targetUserName: updated.fullName || updated.email, action: 'Profil upravený', detail: `Rola: ${updated.role}; prístupy: ${accessSummary(updated.accessScopes)}; stav: ${updated.isActive ? 'aktívny' : 'deaktivovaný'}` })
   return next
 }
 
-export function inviteLocalUser(input: { email: string; fullName: string; department: string; jobTitle: string; phone: string; role: AppRole }, actorName = 'Pavol Horváth'): UserProfile[] {
+export function inviteLocalUser(input: { email: string; fullName: string; department: string; jobTitle: string; phone: string; role: AppRole; accessScopes: UserProfile['accessScopes'] }, actorName = 'Pavol Horváth'): UserProfile[] {
   const users = loadLocalUsers()
   if (users.some((item) => item.email.toLowerCase() === input.email.toLowerCase())) throw new Error('Používateľ s týmto e-mailom už existuje.')
   const createdAt = now()
@@ -96,6 +98,7 @@ export function inviteLocalUser(input: { email: string; fullName: string; depart
     jobTitle: input.jobTitle.trim(),
     phone: input.phone.trim(),
     role: input.role,
+    accessScopes: normalizeAccessScopes(input.accessScopes, input.role, input.department),
     isActive: true,
     lastLoginAt: '',
     acceptedAt: '',
@@ -106,7 +109,7 @@ export function inviteLocalUser(input: { email: string; fullName: string; depart
   }
   const next = [...users, profile]
   localStorage.setItem(USERS_KEY, JSON.stringify(next))
-  appendLocalAudit({ actorName, targetUserId: profile.id, targetUserName: profile.fullName, action: 'Používateľ pozvaný', detail: `${profile.email}; rola: ${profile.role}` })
+  appendLocalAudit({ actorName, targetUserId: profile.id, targetUserName: profile.fullName, action: 'Používateľ pozvaný', detail: `${profile.email}; rola: ${profile.role}; prístupy: ${accessSummary(profile.accessScopes)}` })
   return next
 }
 
