@@ -459,10 +459,20 @@ export interface RecertificationCampaign {
 
 
 
+export interface AssetHistoryEntry {
+  id: string
+  action: string
+  actor: string
+  detail: string
+  createdAt: string
+}
+
 export interface CmdbItem {
   id: string
   name: string
   type: string
+  assetClass: string
+  scope: AccessScope
   category: string
   status: string
   criticality: string
@@ -470,9 +480,18 @@ export interface CmdbItem {
   businessOwner: string
   technicalOwner: string
   custodian: string
+  assignedTo: string
+  department: string
   environment: string
   location: string
+  room: string
+  costCenter: string
   supplier: string
+  supplierIco: string
+  contractRef: string
+  contractTask: string
+  manufacturer: string
+  model: string
   version: string
   hostname: string
   ipAddress: string
@@ -483,16 +502,31 @@ export interface CmdbItem {
   licenseEnd: string
   contractEnd: string
   supportEnd: string
+  plannedReplacementDate: string
+  retirementDate: string
+  acquisitionMethod: string
+  purchasePrice: number
+  annualOperatingCost: number
+  licenseCostAnnual: number
+  currency: string
   cost: number
   dataClassification: string
   monitoring: string
   backup: string
   documentation: string
   lifecycle: string
+  inventoryStatus: string
+  lastInventoryDate: string
+  inventoryNote: string
+  source: string
+  qrCode: string
   linkedTicketIds: string[]
   linkedChangeIds: string[]
+  history: AssetHistoryEntry[]
   note: string
+  createdAt: string
   updatedAt: string
+  updatedBy: string
 }
 
 export interface CmdbRelationship {
