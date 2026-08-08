@@ -49,6 +49,7 @@ export const ASSET_IMPORT_FIELDS: AssetImportField[] = [
   { key: 'serviceId', label: 'ID služby', aliases: ['service id', 'serviceid', 'sluzba id', 'služba id'] },
   { key: 'hostname', label: 'Hostname', aliases: ['hostname', 'host', 'dns'] },
   { key: 'ipAddress', label: 'IP adresa', aliases: ['ip', 'ip adresa', 'ip address'] },
+  { key: 'macAddress', label: 'MAC adresa', aliases: ['mac', 'mac adresa', 'mac address', 'ethernet address'] },
   { key: 'note', label: 'Poznámka', aliases: ['poznamka', 'poznámka', 'note', 'comment'] },
 ]
 
@@ -211,6 +212,11 @@ export function blankAsset(id = ''): CmdbItem {
     version: '',
     hostname: '',
     ipAddress: '',
+    macAddress: '',
+    discoveryDeviceId: '',
+    discoveryFirstSeenAt: '',
+    discoveryLastSeenAt: '',
+    discoveryCollector: '',
     serialNumber: '',
     assetTag: '',
     purchaseDate: '',
@@ -300,6 +306,7 @@ export function buildImportedAssets(
     asset.serviceId = pick('serviceId')
     asset.hostname = hostname
     asset.ipAddress = pick('ipAddress')
+    asset.macAddress = pick('macAddress')
     asset.note = pick('note')
     asset.source = `Hromadný import · ${table.fileName}`
     asset.createdAt = now
@@ -325,7 +332,7 @@ export function assetDuplicateKey(asset: CmdbItem) {
 
 export function csvTemplate() {
   const headers = ASSET_IMPORT_FIELDS.map((field) => field.label)
-  const example = ['AST-0001', 'Notebook Lenovo', 'Notebook', '3.2', 'INV-12345', 'SN123456', 'Lenovo', 'ThinkPad T14', 'Meno Priezvisko', 'Odbor 3.2', 'Lamačská cesta', '312', '345', '', '', 'Dodávateľ', '12345678', '123/2026', '25', '2026-01-15', '2029-01-15', '2029-12-31', '1250,00', 'V prevádzke', 'V prevádzke', 'Stredná', '', 'nb-user01', '', '']
+  const example = ['AST-0001', 'Notebook Lenovo', 'Notebook', '3.2', 'INV-12345', 'SN123456', 'Lenovo', 'ThinkPad T14', 'Meno Priezvisko', 'Odbor 3.2', 'Lamačská cesta', '312', '345', '', '', 'Dodávateľ', '12345678', '123/2026', '25', '2026-01-15', '2029-01-15', '2029-12-31', '1250,00', 'V prevádzke', 'V prevádzke', 'Stredná', '', 'nb-user01', '', 'aa:bb:cc:dd:ee:ff', '']
   const quote = (value: string) => `"${String(value).replace(/"/g, '""')}"`
   return `${headers.map(quote).join(';')}\n${example.map(quote).join(';')}\n`
 }

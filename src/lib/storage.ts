@@ -3,7 +3,7 @@ import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, Change
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.30.4'
+const CURRENT_VERSION = '0.31.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -331,6 +331,11 @@ function migrateCmdbItem(item: Partial<CmdbItem>): CmdbItem {
     version: typeof source.version === 'string' ? source.version : '',
     hostname: typeof source.hostname === 'string' ? source.hostname : '',
     ipAddress: typeof source.ipAddress === 'string' ? source.ipAddress : '',
+    macAddress: typeof source.macAddress === 'string' ? source.macAddress : '',
+    discoveryDeviceId: typeof source.discoveryDeviceId === 'string' ? source.discoveryDeviceId : '',
+    discoveryFirstSeenAt: typeof source.discoveryFirstSeenAt === 'string' ? source.discoveryFirstSeenAt : '',
+    discoveryLastSeenAt: typeof source.discoveryLastSeenAt === 'string' ? source.discoveryLastSeenAt : '',
+    discoveryCollector: typeof source.discoveryCollector === 'string' ? source.discoveryCollector : '',
     serialNumber: typeof source.serialNumber === 'string' ? source.serialNumber : '',
     assetTag: typeof source.assetTag === 'string' ? source.assetTag : '',
     purchaseDate: typeof source.purchaseDate === 'string' ? source.purchaseDate : '',
