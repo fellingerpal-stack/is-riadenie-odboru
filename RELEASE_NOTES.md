@@ -1,3 +1,12 @@
+# Release 0.30.0 – Contract & Renewal Control + Snapshot Sync v2
+
+- nový modul Zmluvy a SLA s renewal radarom a SLA kontrolou,
+- zmluvné referencie sú prepojené na dodávateľa, systém/modul a SIT čerpanie,
+- spravované contract master dáta sú admin-only,
+- Snapshot Sync v2 pridáva diagnostiku chýb a optimistic version kontrolu,
+- opravený item-level scope merge Asset Managementu/CMDB,
+- povinný SQL krok `IS_Riadenie_odboru_v0.30.0_SYNC_CONTRACTS.sql`.
+
 # Release 0.29.0 – Supplier Relationships & Vendor Dependency
 
 - Supplier 360 spravuje samostatné väzby dodávateľ → systém/modul/služba.

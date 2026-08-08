@@ -1,8 +1,14 @@
 # IS Riadenie odboru CVTI SR
 
-**Aktuálny release: v0.29.0 – Supplier Relationships & Vendor Dependency.**
+**Aktuálny release: v0.30.0 – Contract & Renewal Control + Snapshot Sync v2.**
 
 React + TypeScript + Vite aplikácia pre spoločné riadenie odborov 3.1 a 3.2. Prepája RACI, služby, technológie, ServiceDesk, Change/Problem/IAM, aktíva/CMDB, riziká, projekty, dodávateľov a IT náklady.
+
+## Verzia 0.30.0
+
+Nový spoločný modul **Zmluvy a SLA** spája zmluvné referencie, dodávateľov/IČO, systémy a moduly, SLA, čerpanie a renewal lead-time. Release zároveň zavádza **Snapshot Sync v2** s konkrétnou diagnostikou chýb, optimistic version kontrolou a item-level serverovým scope merge pre Asset Management.
+
+Podrobnosti: `RELEASE_NOTES_0.30.md`, `CONTRACT_RENEWAL_0.30.md`, `README_NASADENIE_0.30.txt`.
 
 ## Verzia 0.29.0
 
@@ -36,11 +42,10 @@ npm run check
 npm run build
 ```
 
-## Nasadenie v0.29 z v0.28
+## Nasadenie v0.30 z v0.29
 
-```bash
-node install-v0290-supplier-relationships.mjs
-npm run build
-```
+1. V Supabase SQL Editore spustite `IS_Riadenie_odboru_v0.30.0_SYNC_CONTRACTS.sql`.
+2. Nasaďte frontend / spustite installer.
+3. Spustite `npm run build`.
 
-Pre v0.29 sa nespúšťa nový Supabase SQL skript ani zmena RLS. Nová vrstva `supplierRelationships` sa ukladá v existujúcom synchronizovanom snapshot JSON. XLSX import používa dependency, ktorá už v projekte existuje.
+Podrobný postup je v `README_NASADENIE_0.30.txt`.
