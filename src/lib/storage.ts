@@ -3,7 +3,7 @@ import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, Change
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.30.3'
+const CURRENT_VERSION = '0.30.4'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -439,8 +439,8 @@ function migrateSupplierRecord(record: SupplierRecord): SupplierRecord {
 
 function migrateContractRecord(record: ContractRecord): ContractRecord {
   const source = (record ?? {}) as Partial<ContractRecord>
-  const status = source.status === 'Aktívna' || source.status === 'Príprava obnovy' || source.status === 'Ukončená' ? source.status : 'Na preverenie'
-  const renewalStatus = source.renewalStatus === 'Sledovať' || source.renewalStatus === 'Začať obstarávanie' || source.renewalStatus === 'Prebieha obnova' || source.renewalStatus === 'Obnovená' ? source.renewalStatus : 'Bez akcie'
+  const status = source.status === 'Príprava obnovy' || source.status === 'Na obstaranie' || source.status === 'Ukončená' || source.status === 'Pozastavená' ? source.status : 'Aktívna'
+  const renewalType = source.renewalType === 'Automatická obnova' || source.renewalType === 'Nové obstarávanie' || source.renewalType === 'Bez obnovy' ? source.renewalType : 'Manuálne rozhodnutie'
   return {
     id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
     contractNumber: typeof source.contractNumber === 'string' ? source.contractNumber : '',
@@ -448,24 +448,24 @@ function migrateContractRecord(record: ContractRecord): ContractRecord {
     supplierKey: typeof source.supplierKey === 'string' ? source.supplierKey : '',
     supplierIco: typeof source.supplierIco === 'string' ? source.supplierIco : '',
     supplierName: typeof source.supplierName === 'string' ? source.supplierName : '',
-    category: typeof source.category === 'string' ? source.category : '',
     status,
     validFrom: typeof source.validFrom === 'string' ? source.validFrom : '',
     validTo: typeof source.validTo === 'string' ? source.validTo : '',
-    contractValue: typeof source.contractValue === 'number' && Number.isFinite(source.contractValue) ? source.contractValue : null,
-    annualValue: typeof source.annualValue === 'number' && Number.isFinite(source.annualValue) ? source.annualValue : null,
-    currency: typeof source.currency === 'string' && source.currency ? source.currency : 'EUR',
-    noticePeriodDays: typeof source.noticePeriodDays === 'number' && Number.isFinite(source.noticePeriodDays) ? Math.max(0, Math.round(source.noticePeriodDays)) : 0,
-    renewalLeadDays: typeof source.renewalLeadDays === 'number' && Number.isFinite(source.renewalLeadDays) ? Math.max(0, Math.round(source.renewalLeadDays)) : 120,
-    renewalStatus,
+    noticePeriodDays: Number.isFinite(Number(source.noticePeriodDays)) ? Math.max(0, Number(source.noticePeriodDays)) : 60,
+    procurementLeadDays: Number.isFinite(Number(source.procurementLeadDays)) ? Math.max(0, Number(source.procurementLeadDays)) : 120,
+    renewalType,
     owner: typeof source.owner === 'string' ? source.owner : '',
-    serviceOwner: typeof source.serviceOwner === 'string' ? source.serviceOwner : '',
-    procurementOwner: typeof source.procurementOwner === 'string' ? source.procurementOwner : '',
-    slaSummary: typeof source.slaSummary === 'string' ? source.slaSummary : '',
-    autoRenewal: Boolean(source.autoRenewal),
+    serviceIds: Array.isArray(source.serviceIds) ? source.serviceIds.filter((value): value is string => typeof value === 'string') : [],
+    systemNames: Array.isArray(source.systemNames) ? source.systemNames.filter((value): value is string => typeof value === 'string') : [],
+    task: typeof source.task === 'string' ? source.task : '',
+    annualValue: Number.isFinite(Number(source.annualValue)) ? Number(source.annualValue) : 0,
+    totalValue: Number.isFinite(Number(source.totalValue)) ? Number(source.totalValue) : 0,
+    spentYtd: Number.isFinite(Number(source.spentYtd)) ? Number(source.spentYtd) : 0,
+    slaRequired: Boolean(source.slaRequired),
+    slaTarget: typeof source.slaTarget === 'string' ? source.slaTarget : '',
+    slaStatus: typeof source.slaStatus === 'string' ? source.slaStatus : '',
     crzUrl: typeof source.crzUrl === 'string' ? source.crzUrl : '',
     dmsUrl: typeof source.dmsUrl === 'string' ? source.dmsUrl : '',
-    source: typeof source.source === 'string' && source.source ? source.source : 'Manuálna evidencia',
     note: typeof source.note === 'string' ? source.note : '',
     updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : '',
     updatedBy: typeof source.updatedBy === 'string' ? source.updatedBy : '',
