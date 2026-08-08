@@ -1,9 +1,9 @@
 import seed from '../data/seed.json'
-import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, SlaPolicy, SupplierRecord, Task, Ticket } from '../types'
+import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, SlaPolicy, SupplierRecord, SupplierRelationship, Task, Ticket } from '../types'
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.28.0'
+const CURRENT_VERSION = '0.29.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -436,6 +436,34 @@ function migrateSupplierRecord(record: SupplierRecord): SupplierRecord {
   }
 }
 
+
+function migrateSupplierRelationship(relationship: SupplierRelationship): SupplierRelationship {
+  const source = (relationship ?? {}) as Partial<SupplierRelationship>
+  const status = source.status === 'Potvrdené' || source.status === 'Zamietnuté' ? source.status : 'Na preverenie'
+  const confidence = source.confidence === 'Zdrojové' || source.confidence === 'Odvodené' ? source.confidence : 'Manuálne'
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
+    supplierKey: typeof source.supplierKey === 'string' ? source.supplierKey : '',
+    supplierIco: typeof source.supplierIco === 'string' ? source.supplierIco : '',
+    supplierName: typeof source.supplierName === 'string' ? source.supplierName : '',
+    targetType: typeof source.targetType === 'string' && source.targetType ? source.targetType : 'Informačný systém',
+    targetId: typeof source.targetId === 'string' ? source.targetId : '',
+    targetName: typeof source.targetName === 'string' ? source.targetName : '',
+    parentSystem: typeof source.parentSystem === 'string' ? source.parentSystem : '',
+    role: typeof source.role === 'string' && source.role ? source.role : 'Dodávateľ / partner',
+    contractNumber: typeof source.contractNumber === 'string' ? source.contractNumber : '',
+    validFrom: typeof source.validFrom === 'string' ? source.validFrom : '',
+    validTo: typeof source.validTo === 'string' ? source.validTo : '',
+    source: typeof source.source === 'string' && source.source ? source.source : 'Manuálna evidencia',
+    evidence: typeof source.evidence === 'string' ? source.evidence : '',
+    confidence,
+    status,
+    note: typeof source.note === 'string' ? source.note : '',
+    updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : '',
+    updatedBy: typeof source.updatedBy === 'string' ? source.updatedBy : '',
+  }
+}
+
 export function migrateState(input: AppState): AppState {
   const defaults = cloneSeed()
   const source = (input && typeof input === 'object' ? input : {}) as Partial<AppState>
@@ -472,6 +500,7 @@ export function migrateState(input: AppState): AppState {
     cmdbRelationships: Array.isArray(source.cmdbRelationships) ? source.cmdbRelationships.map(migrateCmdbRelationship) : defaults.cmdbRelationships,
     architectureOverrides: Array.isArray(source.architectureOverrides) ? source.architectureOverrides.map(migrateArchitectureRecord) : [],
     supplierRecords: Array.isArray(source.supplierRecords) ? source.supplierRecords.map(migrateSupplierRecord) : [],
+    supplierRelationships: Array.isArray(source.supplierRelationships) ? source.supplierRelationships.map(migrateSupplierRelationship) : [],
   }
 }
 

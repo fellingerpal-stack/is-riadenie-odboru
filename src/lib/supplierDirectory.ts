@@ -1,15 +1,24 @@
-import type { AppState, SupplierRecord } from '../types'
+import type { AppState, SupplierRecord, SupplierRelationship } from '../types'
 import informationSystems from '../data/informationSystems.seed.json'
+import { supplierRelationshipCandidates } from '../data/supplierRelationshipCandidates'
 import { sitPayments } from './managementIntelligence'
 import { knownSupplierByIco, normalizeSupplierIco } from '../data/supplierRegistry'
 
 interface InformationSystemSupplierRow {
+  sourceKey?: string
   name?: string
   supplier?: string
   contractNumber?: string
   criticality?: string
   slaStatus?: string
   contractValidTo?: string
+  notes?: string
+}
+
+export interface SupplierRelationshipView extends SupplierRelationship {
+  origin: 'source' | 'candidate' | 'managed'
+  criticality: string
+  locked: boolean
 }
 
 export interface SupplierDirectoryItem {
@@ -26,6 +35,7 @@ export interface SupplierDirectoryItem {
   centers: string[]
   topNotes: string[]
   systems: { name: string; criticality: string; contractNumber: string; slaStatus: string; contractValidTo: string }[]
+  relationships: SupplierRelationshipView[]
   record: SupplierRecord | null
 }
 
@@ -70,6 +80,32 @@ function mergeUnique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))]
 }
 
+function relationshipFingerprint(relationship: Pick<SupplierRelationship, 'targetType' | 'targetName' | 'parentSystem'>): string {
+  return [relationship.targetType, relationship.targetName, relationship.parentSystem]
+    .map(normalizeSupplierText)
+    .join('|')
+}
+
+function parentSystemForSource(system: InformationSystemSupplierRow): string {
+  const name = normalizeSupplierText(system.name)
+  const notes = normalizeSupplierText(system.notes)
+  const contract = normalizeSupplierText(system.contractNumber)
+  if (name.includes('crepc') || name.includes('creuc') || notes.includes('komis') || contract.includes('komis')) return 'IS KOMIS'
+  return ''
+}
+
+function sourceRole(supplier: string): string {
+  const normalized = normalizeSupplierText(supplier)
+  if (normalized.includes('subdodavatel')) return 'Subdodávateľ / technická podpora'
+  return 'Dodávateľ IS'
+}
+
+function relationshipPriority(origin: SupplierRelationshipView['origin']): number {
+  if (origin === 'managed') return 3
+  if (origin === 'source') return 2
+  return 1
+}
+
 export function resolveSupplierName(state: AppState, icoOrKey: string, fallback = ''): string {
   const normalizedIco = normalizeSupplierIco(icoOrKey)
   const record = state.supplierRecords.find(item => (normalizedIco && normalizeSupplierIco(item.ico) === normalizedIco) || item.id === icoOrKey)
@@ -81,6 +117,7 @@ export function resolveSupplierName(state: AppState, icoOrKey: string, fallback 
 
 export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[] {
   const map = new Map<string, SupplierDirectoryItem>()
+  const serviceCriticality = new Map((state.services || []).map(service => [service.id, service.criticality || '']))
 
   function ensure(key: string, ico: string, name: string, source: string, verifiedName: boolean): SupplierDirectoryItem {
     if (!map.has(key)) {
@@ -98,6 +135,7 @@ export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[]
         centers: [],
         topNotes: [],
         systems: [],
+        relationships: [],
         record: null,
       })
     }
@@ -107,6 +145,17 @@ export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[]
     if (verifiedName) item.verifiedName = true
     if (source && !item.source.includes(source)) item.source = [item.source, source].filter(Boolean).join(' · ')
     return item
+  }
+
+  function findSupplier(ico: string, name: string, key = ''): SupplierDirectoryItem | undefined {
+    const normalizedIco = normalizeSupplierIco(ico)
+    if (normalizedIco) {
+      const byIco = [...map.values()].find(item => normalizeSupplierIco(item.ico) === normalizedIco)
+      if (byIco) return byIco
+    }
+    if (key && map.has(key)) return map.get(key)
+    if (name) return [...map.values()].find(item => supplierNameMatches(name, item.name))
+    return undefined
   }
 
   sitPayments.vendors.forEach(vendor => {
@@ -130,22 +179,46 @@ export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[]
     const key = existing?.key || keyFromName(supplier)
     const item = existing || ensure(key, '', supplier, 'Register informačných systémov', false)
     if (!item.source.includes('Register informačných systémov')) item.source = `${item.source} · Register informačných systémov`
-    if (!item.systems.some(value => value.name === system.name)) {
+    const systemName = String(system.name || 'IS bez názvu')
+    if (!item.systems.some(value => value.name === systemName)) {
       item.systems.push({
-        name: String(system.name || 'IS bez názvu'),
+        name: systemName,
         criticality: String(system.criticality || ''),
         contractNumber: String(system.contractNumber || ''),
         slaStatus: String(system.slaStatus || ''),
         contractValidTo: String(system.contractValidTo || ''),
       })
     }
+    item.relationships.push({
+      id: `source-${String(system.sourceKey || systemName).replace(/[^a-zA-Z0-9_-]+/g, '-').toLowerCase()}`,
+      supplierKey: item.key,
+      supplierIco: item.ico,
+      supplierName: item.name,
+      targetType: 'Informačný systém',
+      targetId: String(system.sourceKey || ''),
+      targetName: systemName,
+      parentSystem: parentSystemForSource(system),
+      role: sourceRole(supplier),
+      contractNumber: String(system.contractNumber || ''),
+      validFrom: '',
+      validTo: String(system.contractValidTo || ''),
+      source: 'Register informačných systémov',
+      evidence: `Dodávateľ je explicitne uvedený pri informačnom systéme ako „${supplier}“.`,
+      confidence: 'Zdrojové',
+      status: 'Potvrdené',
+      note: '',
+      updatedAt: '',
+      updatedBy: '',
+      origin: 'source',
+      criticality: String(system.criticality || ''),
+      locked: true,
+    })
   })
 
   state.supplierRecords.forEach(record => {
     const ico = normalizeSupplierIco(record.ico)
     const key = record.id || supplierKey(ico, record.name)
-    let item = ico ? [...map.values()].find(value => normalizeSupplierIco(value.ico) === ico) : map.get(key)
-    if (!item && record.name) item = [...map.values()].find(value => supplierNameMatches(record.name, value.name))
+    let item = findSupplier(ico, record.name, key)
     if (!item) item = ensure(key, ico, record.name, record.source || 'Manuálna evidencia', Boolean(ico && knownSupplierByIco(ico)))
     item.record = record
     if (record.name) item.name = record.name
@@ -153,13 +226,58 @@ export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[]
     if (record.source && !item.source.includes(record.source)) item.source = `${item.source} · ${record.source}`
   })
 
+  supplierRelationshipCandidates.forEach(candidate => {
+    const ico = normalizeSupplierIco(candidate.supplierIco)
+    const known = knownSupplierByIco(ico)
+    const key = candidate.supplierKey || supplierKey(ico, candidate.supplierName)
+    const item = findSupplier(ico, candidate.supplierName, key) || ensure(key, ico, candidate.supplierName, candidate.source, Boolean(known))
+    item.relationships.push({
+      ...candidate,
+      supplierKey: item.key,
+      supplierIco: item.ico || ico,
+      supplierName: item.name || candidate.supplierName,
+      origin: 'candidate',
+      criticality: candidate.targetId ? serviceCriticality.get(candidate.targetId) || '' : '',
+      locked: false,
+    })
+  })
+
+  ;(state.supplierRelationships || []).forEach(relationship => {
+    const ico = normalizeSupplierIco(relationship.supplierIco)
+    const key = relationship.supplierKey || supplierKey(ico, relationship.supplierName)
+    const known = knownSupplierByIco(ico)
+    const item = findSupplier(ico, relationship.supplierName, key) || ensure(key, ico, relationship.supplierName || known?.name || '', relationship.source || 'Manuálna evidencia', Boolean(known))
+    item.relationships.push({
+      ...relationship,
+      supplierKey: item.key,
+      supplierIco: item.ico || ico,
+      supplierName: item.name || relationship.supplierName,
+      origin: 'managed',
+      criticality: relationship.targetId ? serviceCriticality.get(relationship.targetId) || '' : '',
+      locked: false,
+    })
+  })
+
   return [...map.values()]
-    .map(item => ({
-      ...item,
-      tasks: item.tasks.sort(),
-      contracts: item.contracts.sort((a, b) => a.localeCompare(b, 'sk')),
-      centers: item.centers.sort(),
-      systems: item.systems.sort((a, b) => a.name.localeCompare(b.name, 'sk')),
-    }))
-    .sort((a, b) => b.amount - a.amount || b.systems.length - a.systems.length || a.name.localeCompare(b.name, 'sk'))
+    .map(item => {
+      const relationshipMap = new Map<string, SupplierRelationshipView>()
+      item.relationships.forEach(relationship => {
+        const fingerprint = relationshipFingerprint(relationship)
+        const existing = relationshipMap.get(fingerprint)
+        if (!existing || relationshipPriority(relationship.origin) > relationshipPriority(existing.origin)) relationshipMap.set(fingerprint, relationship)
+      })
+      return {
+        ...item,
+        tasks: item.tasks.sort(),
+        contracts: item.contracts.sort((a, b) => a.localeCompare(b, 'sk')),
+        centers: item.centers.sort(),
+        systems: item.systems.sort((a, b) => a.name.localeCompare(b.name, 'sk')),
+        relationships: [...relationshipMap.values()].sort((a, b) => {
+          if (a.status !== b.status) return a.status === 'Potvrdené' ? -1 : b.status === 'Potvrdené' ? 1 : a.status === 'Na preverenie' ? -1 : 1
+          const parent = a.parentSystem.localeCompare(b.parentSystem, 'sk')
+          return parent || a.targetName.localeCompare(b.targetName, 'sk')
+        }),
+      }
+    })
+    .sort((a, b) => b.amount - a.amount || b.relationships.filter(item => item.status !== 'Zamietnuté').length - a.relationships.filter(item => item.status !== 'Zamietnuté').length || a.name.localeCompare(b.name, 'sk'))
 }
