@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { AccessScope, AppRole, ChangeRequest, CmdbItem, CmdbRelationship, Employee, Service, SupplierRecord, Ticket } from '../types'
 import { Badge, Field, Icon, Modal, PageHeader } from '../components/UI'
 import { ASSET_IMPORT_FIELDS, assetDuplicateKey, autoMapAssetHeaders, blankAsset, buildImportedAssets, csvTemplate, inferAssetClass, readAssetImportFile, type AssetImportTable } from '../lib/assetImport'
+import AssetDiscovery from './AssetDiscovery'
 import './Cmdb.css'
 
 const itemTypes = [
@@ -16,7 +17,7 @@ const lifecycleStates = ['Plánované', 'Objednané', 'Na sklade', 'Pridelené',
 const inventoryStates = ['Neoverené', 'Nájdené', 'Presunuté', 'Nezhoda', 'Nenájdené']
 const scopeLabels: Record<AccessScope, string> = { oit: '3.1 OIT', oris: '3.2 ORIS', shared: 'Spoločné' }
 
-type AssetTab = 'overview' | 'register' | 'inventory' | 'import' | 'relations' | 'lifecycle'
+type AssetTab = 'overview' | 'register' | 'inventory' | 'discovery' | 'import' | 'relations' | 'lifecycle'
 type DuplicateMode = 'skip' | 'update' | 'create'
 type SavedAssetView = { id:string; name:string; search:string; type:string; status:string; criticality:string; scope:'Všetky'|AccessScope; inventoryOnly:string }
 
@@ -176,7 +177,7 @@ export default function Cmdb({
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return items.filter((item) => {
-      const haystack = `${item.id} ${item.name} ${item.type} ${item.assetClass} ${item.assetTag} ${item.serialNumber} ${item.hostname} ${item.ipAddress} ${item.manufacturer} ${item.model} ${item.assignedTo} ${item.department} ${item.location} ${item.room} ${item.businessOwner} ${item.technicalOwner} ${item.supplier} ${item.supplierIco} ${item.contractRef} ${item.contractTask}`.toLowerCase()
+      const haystack = `${item.id} ${item.name} ${item.type} ${item.assetClass} ${item.assetTag} ${item.serialNumber} ${item.hostname} ${item.ipAddress} ${item.macAddress} ${item.manufacturer} ${item.model} ${item.assignedTo} ${item.department} ${item.location} ${item.room} ${item.businessOwner} ${item.technicalOwner} ${item.supplier} ${item.supplierIco} ${item.contractRef} ${item.contractTask}`.toLowerCase()
       return (!needle || haystack.includes(needle))
         && (type === 'Všetky' || item.type === type)
         && (status === 'Všetky' || item.status === status)
@@ -299,8 +300,8 @@ ${savedViews.map(view=>`• ${view.name}`).join('\n')}`)?.trim()
   }
 
   const exportCsv = () => {
-    const headers = ['ID','Názov','Typ','Trieda','Scope','Inventárne číslo','Sériové číslo','Výrobca','Model','Pridelené osobe','Oddelenie','Lokalita','Miestnosť','Stav','Lifecycle','Inventúra','Kritickosť','Vecný vlastník','Technický vlastník','Dodávateľ','IČO','Zmluva','Úloha','Obstarávacia cena','Dátum nákupu','Záruka do','Plán obnovy','Hostname','IP','Služba','Zdroj','Aktualizoval','Aktualizované']
-    const rows = filtered.map((item) => [item.id,item.name,item.type,item.assetClass,scopeLabels[item.scope],item.assetTag,item.serialNumber,item.manufacturer,item.model,item.assignedTo,item.department,item.location,item.room,item.status,item.lifecycle,item.inventoryStatus,item.criticality,item.businessOwner,item.technicalOwner,item.supplier,item.supplierIco,item.contractRef,item.contractTask,item.purchasePrice,item.purchaseDate,item.warrantyEnd,item.plannedReplacementDate,item.hostname,item.ipAddress,item.serviceId,item.source,item.updatedBy,item.updatedAt])
+    const headers = ['ID','Názov','Typ','Trieda','Scope','Inventárne číslo','Sériové číslo','Výrobca','Model','Pridelené osobe','Oddelenie','Lokalita','Miestnosť','Stav','Lifecycle','Inventúra','Kritickosť','Vecný vlastník','Technický vlastník','Dodávateľ','IČO','Zmluva','Úloha','Obstarávacia cena','Dátum nákupu','Záruka do','Plán obnovy','Hostname','IP','MAC','Discovery ID','Discovery last seen','Služba','Zdroj','Aktualizoval','Aktualizované']
+    const rows = filtered.map((item) => [item.id,item.name,item.type,item.assetClass,scopeLabels[item.scope],item.assetTag,item.serialNumber,item.manufacturer,item.model,item.assignedTo,item.department,item.location,item.room,item.status,item.lifecycle,item.inventoryStatus,item.criticality,item.businessOwner,item.technicalOwner,item.supplier,item.supplierIco,item.contractRef,item.contractTask,item.purchasePrice,item.purchaseDate,item.warrantyEnd,item.plannedReplacementDate,item.hostname,item.ipAddress,item.macAddress,item.discoveryDeviceId,item.discoveryLastSeenAt,item.serviceId,item.source,item.updatedBy,item.updatedAt])
     downloadText(`asset-register-${new Date().toISOString().slice(0,10)}.csv`, [headers, ...rows].map((row) => row.map(safeCsv).join(';')).join('\n'), 'text/csv;charset=utf-8')
   }
 
@@ -390,7 +391,7 @@ ${savedViews.map(view=>`• ${view.name}`).join('\n')}`)?.trim()
     </div>
 
     <div className="tabs asset-tabs">
-      {([['overview','Prehľad'],['register','Register aktív'],['inventory','Inventarizácia'],['import','Hromadný import'],['relations','Väzby / CMDB'],['lifecycle','Lifecycle radar']] as [AssetTab,string][]).map(([key,label]) => <button key={key} className={tab===key?'active':''} onClick={() => setTab(key)}>{label}</button>)}
+      {([['overview','Prehľad'],['register','Register aktív'],['inventory','Inventarizácia'],['discovery','Network Discovery'],['import','Hromadný import'],['relations','Väzby / CMDB'],['lifecycle','Lifecycle radar']] as [AssetTab,string][]).map(([key,label]) => <button key={key} className={tab===key?'active':''} onClick={() => setTab(key)}>{label}</button>)}
     </div>
 
     {tab === 'overview' && <div className="asset-overview-grid">
@@ -400,6 +401,7 @@ ${savedViews.map(view=>`• ${view.name}`).join('\n')}`)?.trim()
       <section className="panel"><div className="panel-heading"><div><span className="eyebrow">Kvalita registra</span><h3>Asset Intelligence</h3></div></div>
         <div className="asset-intelligence-list">
           <button onClick={() => setTab('inventory')}><Icon name="check"/><div><strong>Inventarizácia</strong><small>{inventoryGapCount} položiek čaká na kontrolu</small></div></button>
+          <button onClick={() => setTab('discovery')}><Icon name="web"/><div><strong>Network Discovery</strong><small>nájdi a spáruj zariadenia z internej siete</small></div></button>
           <button onClick={() => setTab('lifecycle')}><Icon name="calendar"/><div><strong>Lifecycle debt</strong><small>{lifecycleRiskCount} položiek na obnovu alebo s termínom</small></div></button>
           <button onClick={() => setTab('register')}><Icon name="user"/><div><strong>Ownership gaps</strong><small>{ownerGapCount} aktív bez ownera alebo pridelenej osoby</small></div></button>
           <button onClick={() => setTab('register')}><Icon name="warning"/><div><strong>Možné duplicity</strong><small>{duplicates.length} skupín podľa inventárneho čísla, S/N alebo hostname</small></div></button>
@@ -437,6 +439,8 @@ ${savedViews.map(view=>`• ${view.name}`).join('\n')}`)?.trim()
       <div className="asset-table-footer"><span>{filtered.length} z {items.length} aktív</span><span>Červené inventúrne stavy a termíny sú prioritizované.</span></div>
     </>}
 
+    {tab === 'discovery' && <AssetDiscovery items={items} role={role} currentUser={currentUser} canWriteOit={canWriteOit} canWriteOris={canWriteOris} canWriteShared={canWriteShared} onItemsChange={onItemsChange} onOpenAsset={(asset)=>{setDetail(asset);setTab('register')}}/>}
+
     {tab === 'import' && <div className="asset-import-layout">
       <section className="panel asset-import-start"><div className="panel-heading"><div><span className="eyebrow">CSV / XLSX / XLS</span><h3>Hromadný import aktív</h3></div></div>
         <p>Importuj existujúci inventár zariadení. Aplikácia automaticky skúsi spárovať názvy stĺpcov, potom ich môžeš ručne upraviť. Duplicity sa kontrolujú podľa inventárneho čísla, sériového čísla a hostname.</p>
@@ -466,7 +470,7 @@ ${savedViews.map(view=>`• ${view.name}`).join('\n')}`)?.trim()
       <div className="asset-360-kpis"><article><span>Asset Health</span><strong>{assetHealth(detail).score}/100</strong><small>kvalita a pripravenosť evidencie</small></article><article><span>Inventúra</span><strong>{detail.inventoryStatus}</strong><small>{detail.lastInventoryDate || 'neoverené'}</small></article><article><span>Hodnota</span><strong>{formatMoney(detail.purchasePrice || detail.cost)}</strong><small>ročná prevádzka {formatMoney(detail.annualOperatingCost + detail.licenseCostAnnual)}</small></article><article><span>Lifecycle</span><strong>{detail.lifecycle}</strong><small>{nearestExpiry(detail)?.label || 'bez blízkeho termínu'}</small></article></div>
       <div className="asset-360-grid">
         <section><h3>Identita a vlastníctvo</h3><dl><dt>Inventárne číslo</dt><dd>{detail.assetTag||'—'}</dd><dt>Sériové číslo</dt><dd>{detail.serialNumber||'—'}</dd><dt>Pridelené osobe</dt><dd>{detail.assignedTo||'—'}</dd><dt>Oddelenie</dt><dd>{detail.department||'—'}</dd><dt>Vecný owner</dt><dd>{detail.businessOwner||'—'}</dd><dt>Technický owner</dt><dd>{detail.technicalOwner||'—'}</dd></dl></section>
-        <section><h3>Lokalita a technika</h3><dl><dt>Lokalita</dt><dd>{detail.location||'—'}{detail.room?` · ${detail.room}`:''}</dd><dt>Hostname</dt><dd>{detail.hostname||'—'}</dd><dt>IP adresa</dt><dd>{detail.ipAddress||'—'}</dd><dt>Výrobca / model</dt><dd>{`${detail.manufacturer} ${detail.model}`.trim()||'—'}</dd><dt>Monitoring</dt><dd>{detail.monitoring||'—'}</dd><dt>Backup</dt><dd>{detail.backup||'—'}</dd></dl></section>
+        <section><h3>Lokalita a technika</h3><dl><dt>Lokalita</dt><dd>{detail.location||'—'}{detail.room?` · ${detail.room}`:''}</dd><dt>Hostname</dt><dd>{detail.hostname||'—'}</dd><dt>IP adresa</dt><dd>{detail.ipAddress||'—'}</dd><dt>MAC adresa</dt><dd>{detail.macAddress||'—'}</dd><dt>Discovery</dt><dd>{detail.discoveryLastSeenAt?`last seen ${new Date(detail.discoveryLastSeenAt).toLocaleString('sk-SK')}${detail.discoveryCollector?` · ${detail.discoveryCollector}`:''}`:'—'}</dd><dt>Výrobca / model</dt><dd>{`${detail.manufacturer} ${detail.model}`.trim()||'—'}</dd><dt>Monitoring</dt><dd>{detail.monitoring||'—'}</dd><dt>Backup</dt><dd>{detail.backup||'—'}</dd></dl></section>
         <section><h3>Financie a dodávateľ</h3><dl><dt>Dodávateľ</dt><dd>{detail.supplier||'—'}{detail.supplierIco?` · IČO ${detail.supplierIco}`:''}</dd><dt>Zmluva</dt><dd>{detail.contractRef||'—'}</dd><dt>Úloha</dt><dd>{detail.contractTask||'—'}</dd><dt>Obstarávacia cena</dt><dd>{formatMoney(detail.purchasePrice)}</dd><dt>Ročný RUN</dt><dd>{formatMoney(detail.annualOperatingCost)}</dd><dt>Ročné licencie</dt><dd>{formatMoney(detail.licenseCostAnnual)}</dd></dl></section>
         <section><h3>Služba a lifecycle</h3><dl><dt>Služba</dt><dd>{serviceName(detail.serviceId)}</dd><dt>Dátum nákupu</dt><dd>{detail.purchaseDate||'—'}</dd><dt>Záruka do</dt><dd>{detail.warrantyEnd||'—'}</dd><dt>Podpora do</dt><dd>{detail.supportEnd||'—'}</dd><dt>Plán obnovy</dt><dd>{detail.plannedReplacementDate||'—'}</dd><dt>Zdroj evidencie</dt><dd>{detail.source||'—'}</dd></dl></section>
       </div>
@@ -509,6 +513,7 @@ ${savedViews.map(view=>`• ${view.name}`).join('\n')}`)?.trim()
       <Field label="Plán obnovy"><input type="date" value={editing.plannedReplacementDate} onChange={(e)=>setEditing({...editing,plannedReplacementDate:e.target.value})}/></Field>
       <Field label="Hostname"><input value={editing.hostname} onChange={(e)=>setEditing({...editing,hostname:e.target.value})}/></Field>
       <Field label="IP adresa"><input value={editing.ipAddress} onChange={(e)=>setEditing({...editing,ipAddress:e.target.value})}/></Field>
+      <Field label="MAC adresa"><input value={editing.macAddress} onChange={(e)=>setEditing({...editing,macAddress:e.target.value})} placeholder="aa:bb:cc:dd:ee:ff"/></Field>
       <Field label="Monitoring"><input value={editing.monitoring} onChange={(e)=>setEditing({...editing,monitoring:e.target.value})}/></Field>
       <Field label="Backup"><input value={editing.backup} onChange={(e)=>setEditing({...editing,backup:e.target.value})}/></Field>
       <Field label="Dokumentácia"><input value={editing.documentation} onChange={(e)=>setEditing({...editing,documentation:e.target.value})}/></Field>
