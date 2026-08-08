@@ -1,3 +1,13 @@
+# Release 0.31.0 – Network Discovery & Asset Inventory
+
+- Network Discovery staging v Asset Managemente,
+- Print Fleet pre tlačiarne/MFP,
+- lokálny CVTI Asset Collector iba pre RFC1918 rozsahy,
+- first/last seen, zmeny identity a história skenov,
+- párovanie na Asset 360 podľa S/N, MAC, hostname, IP a modelu,
+- samostatné discovery tabuľky v Supabase,
+- povinný SQL `IS_Riadenie_odboru_v0.31.0_NETWORK_DISCOVERY.sql`.
+
 # Release 0.30.0 – Contract & Renewal Control + Snapshot Sync v2
 
 - nový modul Zmluvy a SLA s renewal radarom a SLA kontrolou,

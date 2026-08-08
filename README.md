@@ -1,8 +1,14 @@
 # IS Riadenie odboru CVTI SR
 
-**Aktuálny release: v0.30.0 – Contract & Renewal Control + Snapshot Sync v2.**
+**Aktuálny release: v0.31.0 – Network Discovery & Asset Inventory.**
 
 React + TypeScript + Vite aplikácia pre spoločné riadenie odborov 3.1 a 3.2. Prepája RACI, služby, technológie, ServiceDesk, Change/Problem/IAM, aktíva/CMDB, riziká, projekty, dodávateľov a IT náklady.
+
+## Verzia 0.31.0
+
+Asset Management dostáva Network Discovery staging, Print Fleet, lokálne CVTI Asset Collectory, first/last seen, históriu skenov a bezpečné párovanie objavených zariadení na Asset 360. Discovery observations sa ukladajú do samostatných Supabase tabuliek, nie do snapshotu.
+
+Podrobnosti: `RELEASE_NOTES_0.31.md`, `NETWORK_DISCOVERY_0.31.md`, `README_NASADENIE_0.31.txt`.
 
 ## Verzia 0.30.0
 
