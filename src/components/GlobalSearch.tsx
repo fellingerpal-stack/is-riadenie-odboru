@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import type { AccessScope, AppState } from '../types'
 import { Icon, type IconName } from './UI'
 import { buildSupplierDirectory } from '../lib/supplierDirectory'
+import { buildContractDirectory } from '../lib/contractDirectory'
 import './GlobalSearch.css'
 
-type ViewKey = 'portals'|'technology'|'intelligence'|'itCosts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'|'myWorkspace'|'dataQuality'
+type ViewKey = 'portals'|'technology'|'intelligence'|'itCosts'|'contracts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'|'myWorkspace'|'dataQuality'
 
 type SearchResult = {
   id: string
@@ -22,6 +23,7 @@ const shortcuts: SearchResult[] = [
   { id:'shortcut-tech', title:'Technologický katalóg', subtitle:'Technológie, služby a infraštruktúra', kind:'Navigácia', icon:'systems', view:'technology' },
   { id:'shortcut-assets', title:'Asset management', subtitle:'Register aktív a inventarizácia', kind:'Navigácia', icon:'cmdb', view:'cmdb' },
   { id:'shortcut-costs', title:'IT náklady', subtitle:'RUN / CHANGE, úlohy a finančné opatrenia', kind:'Navigácia', icon:'capacity', view:'itCosts' },
+  { id:'shortcut-contracts', title:'Zmluvy a SLA', subtitle:'Platnosť, čerpanie, SLA a obnova', kind:'Navigácia', icon:'calendar', view:'contracts' },
   { id:'shortcut-quality', title:'Kvalita dát', subtitle:'Chýbajúce väzby, vlastníctvo a duplicity', kind:'Navigácia', icon:'check', view:'dataQuality' },
 ]
 
@@ -54,7 +56,7 @@ export default function GlobalSearch({
   const results = useMemo<SearchResult[]>(() => {
     if (!normalized) {
       return shortcuts.filter(item => {
-        if (['technology','intelligence','itCosts','suppliers','cmdb','dataQuality'].includes(item.view)) return canReadShared || item.view === 'dataQuality'
+        if (['technology','intelligence','itCosts','contracts','suppliers','cmdb','dataQuality'].includes(item.view)) return canReadShared || item.view === 'dataQuality'
         return true
       })
     }
@@ -66,6 +68,9 @@ export default function GlobalSearch({
       }))
       buildSupplierDirectory(state).filter(item => matches(normalized, item.name, item.ico, item.record?.category, item.record?.salesContact, item.relationships.map(relation => `${relation.targetName} ${relation.parentSystem} ${relation.role}`).join(' '))).slice(0,8).forEach(item => found.push({
         id:`supplier-${item.key}`, title:item.name || `IČO ${item.ico}`, subtitle:`Dodávateľ · IČO ${item.ico || '—'} · ${item.relationships.filter(relation => relation.status !== 'Zamietnuté').length} väzieb`, kind:'Dodávateľ', icon:'database', view:'suppliers',
+      }))
+      buildContractDirectory(state).filter(item => matches(normalized, item.contractNumber, item.aliases.join(' '), item.title, item.supplierName, item.supplierIco, item.owner, item.systemNames.join(' '), item.tasks.join(' '))).slice(0,8).forEach(item => found.push({
+        id:`contract-${item.canonicalKey}`, title:item.contractNumber || item.title || 'Zmluva', subtitle:`Zmluva · ${item.supplierName || 'bez dodávateľa'} · ${item.validTo || 'bez termínu'}`, kind:'Zmluva', icon:'calendar', view:'contracts',
       }))
     }
     if (canReadOris) {
