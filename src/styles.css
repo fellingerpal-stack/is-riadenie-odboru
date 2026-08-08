@@ -706,3 +706,10 @@
 
 /* Release 0.28 – Smart Workspace */
 .top-search-trigger{height:38px;min-width:128px;display:flex;align-items:center;gap:8px;border:1px solid #dbe4ec;border-radius:10px;background:#f8fafc;color:#607386;padding:0 9px 0 11px;font-size:10px;font-weight:750}.top-search-trigger:hover{background:#f1f6fa;border-color:#c8d8e5;color:#2e668e}.top-search-trigger span{flex:1;text-align:left}.top-search-trigger kbd{border:1px solid #d7e0e8;border-bottom-width:2px;border-radius:6px;background:#fff;color:#83919d;padding:2px 5px;font:800 8px/1.3 inherit;white-space:nowrap}.nav-group button{min-height:43px}.nav-group button svg{flex:0 0 auto}@media(max-width:900px){.top-search-trigger{min-width:38px;width:38px;padding:0;justify-content:center}.top-search-trigger span,.top-search-trigger kbd{display:none}}
+
+/* v0.30 – actionable snapshot sync diagnostics */
+.sync-alert-actionable{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.sync-alert-actionable>span{display:flex;flex:1 1 520px;flex-direction:column;gap:2px;line-height:1.45}
+.sync-alert-actionable>span strong{font-size:11px}
+.sync-alert-actionable>div{display:flex;gap:7px;margin-left:auto}
+.sync-alert-actionable .button{white-space:nowrap}
