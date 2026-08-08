@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 import type { AccessScope, AppRole, AppState } from '../types'
 import { Badge, Icon, PageHeader } from '../components/UI'
+import { buildContractDirectory } from '../lib/contractDirectory'
 import './MyWorkspace.css'
 
-type WorkItem = { id:string; title:string; meta:string; due?:string; priority:'critical'|'high'|'normal'; view:string; icon:'tasks'|'helpdesk'|'iam'|'cmdb'|'risk'|'decision'|'projects'|'capacity' }
+type WorkItem = { id:string; title:string; meta:string; due?:string; priority:'critical'|'high'|'normal'; view:string; icon:'tasks'|'helpdesk'|'iam'|'cmdb'|'risk'|'decision'|'projects'|'capacity'|'calendar' }
 
 function norm(value: unknown) { return String(value ?? '').trim().toLocaleLowerCase('sk') }
 function samePerson(value: unknown, currentUser: string) {
@@ -27,6 +28,7 @@ export default function MyWorkspace({ state, currentUser, role, canReadOit, canR
     }
     if (canReadShared) {
       state.cmdbItems.filter(item => scopeAllowed(item.scope,canReadOit,canReadOris,canReadShared) && (samePerson(item.assignedTo,currentUser)||samePerson(item.businessOwner,currentUser)||samePerson(item.technicalOwner,currentUser))).filter(item => item.lifecycle==='Na obnovu'||['Neoverené','Nenájdené','Nezhoda'].includes(item.inventoryStatus)||Boolean(item.warrantyEnd && (daysTo(item.warrantyEnd) ?? 999) <= 90)).forEach(item => rows.push({ id:`asset-${item.id}`, title:item.name, meta:`Aktívum · ${item.type} · ${item.inventoryStatus}`, due:item.plannedReplacementDate||item.warrantyEnd, priority:['Nenájdené','Nezhoda'].includes(item.inventoryStatus)?'critical':item.lifecycle==='Na obnovu'?'high':'normal', view:'cmdb', icon:'cmdb' }))
+      buildContractDirectory(state).filter(item=>samePerson(item.owner,currentUser)&&(item.renewalState==='Po termíne'||item.renewalState==='Začať teraz'||item.renewalState==='Do 90 dní')).forEach(item=>rows.push({id:`contract-${item.id}`,title:`${item.contractNumber} · ${item.supplierName}`,meta:`Zmluva · ${item.renewalState} · ${item.renewalType||'obnova neurčená'}`,due:item.validTo,priority:item.renewalState==='Po termíne'?'critical':item.renewalState==='Začať teraz'?'high':'normal',view:'contracts',icon:'calendar'}))
     }
     return rows.sort((a,b) => ({critical:0,high:1,normal:2}[a.priority] - {critical:0,high:1,normal:2}[b.priority]) || dateKey(a.due)-dateKey(b.due)).slice(0,24)
   },[state,currentUser,canReadOit,canReadOris,canReadShared])
@@ -39,6 +41,8 @@ export default function MyWorkspace({ state, currentUser, role, canReadOit, canR
       if(ownerGaps) rows.push({id:'signal-owner',title:`${ownerGaps} aktív bez jasného vlastníctva`,meta:'Asset Management · ownership gap',priority:'high',view:'cmdb',icon:'cmdb'})
       const lifecycle=state.cmdbItems.filter(item=>scopeAllowed(item.scope,canReadOit,canReadOris,canReadShared)&&(item.lifecycle==='Na obnovu'||Boolean(item.warrantyEnd && (daysTo(item.warrantyEnd) ?? 999) <= 90))).length
       if(lifecycle) rows.push({id:'signal-life',title:`${lifecycle} lifecycle / záručných rizík`,meta:'Asset Management · termín do 90 dní alebo obnova',priority:'high',view:'cmdb',icon:'cmdb'})
+      const contractRenewals=buildContractDirectory(state).filter(item=>item.renewalState==='Po termíne'||item.renewalState==='Začať teraz').length
+      if(contractRenewals) rows.push({id:'signal-contracts',title:`${contractRenewals} zmlúv potrebuje renewal rozhodnutie`,meta:'Zmluvy a SLA · po termíne alebo v lead-time',priority:'critical',view:'contracts',icon:'calendar'})
     }
     if(canReadOris){
       const criticalRisks=state.risks.filter(item=>isOpen(item.status,['Ukončené'])&&(item.priority==='Kritická'||item.priority==='Vysoká')).length

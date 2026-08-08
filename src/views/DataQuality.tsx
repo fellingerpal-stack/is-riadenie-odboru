@@ -2,9 +2,10 @@ import { useMemo } from 'react'
 import type { AccessScope, AppState } from '../types'
 import { Badge, Icon, PageHeader } from '../components/UI'
 import { buildSupplierDirectory } from '../lib/supplierDirectory'
+import { buildContractDirectory } from '../lib/contractDirectory'
 import './DataQuality.css'
 
-type QualitySignal = { id:string; title:string; detail:string; count:number; severity:'danger'|'warning'|'info'; view:string; icon:'cmdb'|'services'|'database'|'matrix'|'iam'|'tasks'|'risk' }
+type QualitySignal = { id:string; title:string; detail:string; count:number; severity:'danger'|'warning'|'info'; view:string; icon:'cmdb'|'services'|'database'|'matrix'|'iam'|'tasks'|'risk'|'calendar' }
 function scopeAllowed(scope:AccessScope, oit:boolean, oris:boolean, shared:boolean){return scope==='oit'?oit:scope==='oris'?oris:shared}
 function dateDays(value:string){if(!value)return null;const d=new Date(`${value.slice(0,10)}T23:59:59`);if(Number.isNaN(d.getTime()))return null;return Math.ceil((d.getTime()-Date.now())/86_400_000)}
 
@@ -43,6 +44,13 @@ export default function DataQuality({state,canReadOit,canReadOris,canReadShared,
       const supplierCandidates=suppliers.reduce((sum,item)=>sum+item.relationships.filter(relation=>relation.status==='Na preverenie').length,0)
       if(supplierNames)result.push({id:'suppliers',title:'Dodávatelia na doplnenie',detail:'IČO je známe, ale karta nemá spoľahlivý názov alebo profil.',count:supplierNames,severity:'info',view:'suppliers',icon:'database'})
       if(supplierCandidates)result.push({id:'supplier-links',title:'Dodávateľské väzby na potvrdenie',detail:'Odvodené väzby na systém alebo modul čakajú na potvrdenie administrátorom.',count:supplierCandidates,severity:'warning',view:'suppliers',icon:'database'})
+      const contracts=buildContractDirectory(state)
+      const contractValidity=contracts.filter(item=>item.renewalState==='Chýba termín').length
+      const renewals=contracts.filter(item=>item.renewalState==='Po termíne'||item.renewalState==='Začať teraz').length
+      const slaGaps=contracts.filter(item=>item.slaRequired&&!item.slaStatus.trim()).length
+      if(renewals)result.push({id:'contract-renewal',title:'Zmluvy vyžadujú renewal rozhodnutie',detail:'Zmluva je po termíne alebo už vstúpila do lead-time obnovy/obstarávania.',count:renewals,severity:'danger',view:'contracts',icon:'calendar'})
+      if(contractValidity)result.push({id:'contract-validity',title:'Zmluvy bez termínu platnosti',detail:'Bez dátumu platnosti nie je možné spoľahlivo riadiť obnovu.',count:contractValidity,severity:'warning',view:'contracts',icon:'calendar'})
+      if(slaGaps)result.push({id:'contract-sla',title:'SLA na doplnenie',detail:'Pri spravovanej zmluve sa SLA vyžaduje, ale chýba jeho stav.',count:slaGaps,severity:'warning',view:'contracts',icon:'calendar'})
     }
     return result.sort((a,b)=>({danger:0,warning:1,info:2}[a.severity] - {danger:0,warning:1,info:2}[b.severity]) || b.count-a.count)
   },[state,canReadOit,canReadOris,canReadShared])
