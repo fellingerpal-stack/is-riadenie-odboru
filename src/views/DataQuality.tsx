@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { AccessScope, AppState } from '../types'
 import { Badge, Icon, PageHeader } from '../components/UI'
+import { buildSupplierDirectory } from '../lib/supplierDirectory'
 import './DataQuality.css'
 
 type QualitySignal = { id:string; title:string; detail:string; count:number; severity:'danger'|'warning'|'info'; view:string; icon:'cmdb'|'services'|'database'|'matrix'|'iam'|'tasks'|'risk' }
@@ -37,8 +38,11 @@ export default function DataQuality({state,canReadOit,canReadOris,canReadShared,
       if(openWithoutOwner)result.push({id:'task-owner',title:'Otvorené úlohy bez ownera',detail:'Úloha je otvorená, ale nemá priradeného vlastníka.',count:openWithoutOwner,severity:'warning',view:'work',icon:'tasks'})
     }
     if(canReadShared){
-      const supplierNames=state.supplierRecords.filter(item=>!item.name||item.name.toLowerCase().includes('firma / ičo')||item.name.toLowerCase().includes('doplniť')).length
+      const suppliers=buildSupplierDirectory(state)
+      const supplierNames=suppliers.filter(item=>!item.verifiedName&&!item.record?.name&&item.ico).length
+      const supplierCandidates=suppliers.reduce((sum,item)=>sum+item.relationships.filter(relation=>relation.status==='Na preverenie').length,0)
       if(supplierNames)result.push({id:'suppliers',title:'Dodávatelia na doplnenie',detail:'IČO je známe, ale karta nemá spoľahlivý názov alebo profil.',count:supplierNames,severity:'info',view:'suppliers',icon:'database'})
+      if(supplierCandidates)result.push({id:'supplier-links',title:'Dodávateľské väzby na potvrdenie',detail:'Odvodené väzby na systém alebo modul čakajú na potvrdenie administrátorom.',count:supplierCandidates,severity:'warning',view:'suppliers',icon:'database'})
     }
     return result.sort((a,b)=>({danger:0,warning:1,info:2}[a.severity] - {danger:0,warning:1,info:2}[b.severity]) || b.count-a.count)
   },[state,canReadOit,canReadOris,canReadShared])
