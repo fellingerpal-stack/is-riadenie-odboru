@@ -1,3 +1,19 @@
+# Release 0.29.0 – Supplier Relationships & Vendor Dependency
+
+- Supplier 360 spravuje samostatné väzby dodávateľ → systém/modul/služba.
+- Zdrojové, odvodené a manuálne väzby sú oddelené podľa dôvery a stavu.
+- InterWay má pripravené kandidáty ISS, SKCRIS, SCIDAP, SVD, CRZP a APS/Antiplag na administrátorské potvrdenie.
+- Admin môže väzbu potvrdiť, upraviť, zamietnuť alebo hromadne importovať z CSV/XLSX.
+- Ctrl+K a Data Quality Center pracujú aj s dodávateľskými väzbami.
+- Bez nového SQL a bez zmeny RLS.
+
+# Release 0.28.0 – Smart Workspace & UX Simplification
+
+- Moje centrum, globálne hľadanie Ctrl+K a Data Quality Center.
+- Uložené pohľady a hromadné operácie v Asset Managemente.
+- Zjednodušená pracovná navigácia.
+- Bez nového SQL a bez zmeny RLS.
+
 # Release 0.26.0 – Scoped IAM + finančné obdobie
 
 - IAM matica 3.1 / 3.2 / spoločné s úrovňami none/read/write.
