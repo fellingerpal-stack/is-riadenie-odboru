@@ -1,9 +1,9 @@
 import seed from '../data/seed.json'
-import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, SlaPolicy, SupplierRecord, SupplierRelationship, Task, Ticket } from '../types'
+import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, CmdbItem, CmdbRelationship, ChangeRequest, ContractRecord, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, SlaPolicy, SupplierRecord, SupplierRelationship, Task, Ticket } from '../types'
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.29.0'
+const CURRENT_VERSION = '0.30.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -464,6 +464,41 @@ function migrateSupplierRelationship(relationship: SupplierRelationship): Suppli
   }
 }
 
+function migrateContractRecord(record: ContractRecord): ContractRecord {
+  const source = (record ?? {}) as Partial<ContractRecord>
+  const status = source.status === 'Príprava obnovy' || source.status === 'Na obstaranie' || source.status === 'Ukončená' || source.status === 'Pozastavená' ? source.status : 'Aktívna'
+  const renewalType = source.renewalType === 'Automatická obnova' || source.renewalType === 'Nové obstarávanie' || source.renewalType === 'Bez obnovy' ? source.renewalType : 'Manuálne rozhodnutie'
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : crypto.randomUUID(),
+    contractNumber: typeof source.contractNumber === 'string' ? source.contractNumber : '',
+    title: typeof source.title === 'string' ? source.title : '',
+    supplierKey: typeof source.supplierKey === 'string' ? source.supplierKey : '',
+    supplierIco: typeof source.supplierIco === 'string' ? source.supplierIco : '',
+    supplierName: typeof source.supplierName === 'string' ? source.supplierName : '',
+    status,
+    validFrom: typeof source.validFrom === 'string' ? source.validFrom : '',
+    validTo: typeof source.validTo === 'string' ? source.validTo : '',
+    noticePeriodDays: Number.isFinite(Number(source.noticePeriodDays)) ? Math.max(0, Number(source.noticePeriodDays)) : 60,
+    procurementLeadDays: Number.isFinite(Number(source.procurementLeadDays)) ? Math.max(0, Number(source.procurementLeadDays)) : 120,
+    renewalType,
+    owner: typeof source.owner === 'string' ? source.owner : '',
+    serviceIds: Array.isArray(source.serviceIds) ? source.serviceIds.filter((value): value is string => typeof value === 'string') : [],
+    systemNames: Array.isArray(source.systemNames) ? source.systemNames.filter((value): value is string => typeof value === 'string') : [],
+    task: typeof source.task === 'string' ? source.task : '',
+    annualValue: Number.isFinite(Number(source.annualValue)) ? Number(source.annualValue) : 0,
+    totalValue: Number.isFinite(Number(source.totalValue)) ? Number(source.totalValue) : 0,
+    spentYtd: Number.isFinite(Number(source.spentYtd)) ? Number(source.spentYtd) : 0,
+    slaRequired: Boolean(source.slaRequired),
+    slaTarget: typeof source.slaTarget === 'string' ? source.slaTarget : '',
+    slaStatus: typeof source.slaStatus === 'string' ? source.slaStatus : '',
+    crzUrl: typeof source.crzUrl === 'string' ? source.crzUrl : '',
+    dmsUrl: typeof source.dmsUrl === 'string' ? source.dmsUrl : '',
+    note: typeof source.note === 'string' ? source.note : '',
+    updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : '',
+    updatedBy: typeof source.updatedBy === 'string' ? source.updatedBy : '',
+  }
+}
+
 export function migrateState(input: AppState): AppState {
   const defaults = cloneSeed()
   const source = (input && typeof input === 'object' ? input : {}) as Partial<AppState>
@@ -501,6 +536,7 @@ export function migrateState(input: AppState): AppState {
     architectureOverrides: Array.isArray(source.architectureOverrides) ? source.architectureOverrides.map(migrateArchitectureRecord) : [],
     supplierRecords: Array.isArray(source.supplierRecords) ? source.supplierRecords.map(migrateSupplierRecord) : [],
     supplierRelationships: Array.isArray(source.supplierRelationships) ? source.supplierRelationships.map(migrateSupplierRelationship) : [],
+    contractRecords: Array.isArray(source.contractRecords) ? source.contractRecords.map(migrateContractRecord) : [],
   }
 }
 

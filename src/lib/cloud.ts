@@ -22,12 +22,51 @@ export async function loadCurrentSnapshot(): Promise<CloudSnapshot | null> {
   }
 }
 
-export async function saveCurrentSnapshot(payload: AppState): Promise<CloudSnapshot> {
+const SNAPSHOT_SEPARATE_TABLE_KEYS = [
+  'projects','tasks','tickets','supportQueues','slaPolicies','accessRequests','accessCatalog','recertificationCampaigns',
+] as const
+
+function snapshotTransportPayload(payload: AppState): AppState {
+  const transport = structuredClone(payload)
+  // Tieto agendy už majú vlastné DB tabuľky. V RPC v0.30 sa ich posledná snapshotová
+  // kópia serverovo zachová, takže ich nemusíme posielať v každom autosave.
+  SNAPSHOT_SEPARATE_TABLE_KEYS.forEach(key => {
+    ;(transport[key] as unknown[]) = []
+  })
+  return transport
+}
+
+function snapshotBytes(payload: unknown): number {
+  try { return new TextEncoder().encode(JSON.stringify(payload)).byteLength } catch { return 0 }
+}
+
+function snapshotErrorMessage(error: unknown, bytes: number): string {
+  const detail = extractErrorDetails(error)
+  const joined = `${detail.message} ${detail.code}`.toLowerCase()
+  const size = bytes ? ` · payload ${Math.max(1, Math.round(bytes / 1024))} kB` : ''
+  const code = detail.code ? ` [${detail.code}]` : ''
+  if (joined.includes('snapshot_conflict')) return `Zápis bol zastavený, pretože medzitým vznikla novšia verzia dát v DB. Najprv načítajte aktuálnu verziu ikonou ↓ a zopakujte zmenu.${size}`
+  if (detail.code === '42501' || joined.includes('permission denied') || joined.includes('opravnenie') || joined.includes('write pristup')) return `Databáza odmietla zápis pre IAM/RLS oprávnenie${code}. Skontrolujte rolu a WRITE scope používateľa.${size}`
+  if (detail.status === 413 || joined.includes('payload too large') || joined.includes('request entity too large')) return `Snapshot je príliš veľký na jeden databázový zápis${code}.${size}`
+  if (joined.includes('statement timeout') || joined.includes('canceling statement')) return `Databázový zápis prekročil časový limit${code}.${size}`
+  if (joined.includes('failed to fetch') || joined.includes('networkerror') || joined.includes('load failed')) return `Nepodarilo sa spojiť so Supabase. Skontrolujte sieť a skúste zápis znova.${size}`
+  if (joined.includes('save_app_snapshot_v2') && (detail.code === 'PGRST202' || detail.code === 'PGRST204' || joined.includes('could not find the function'))) return `V Supabase chýba RPC pre synchronizáciu v0.30. Spustite SQL migráciu IS_Riadenie_odboru_v0.30.0_SYNC_CONTRACTS.sql.${size}`
+  if (detail.message) return `Zápis do DB zlyhal${code}: ${detail.message}${detail.message.endsWith('.') ? '' : '.'}${size}`
+  return `Dáta sa nepodarilo uložiť do DB${code}.${size} Skontrolujte Supabase Database/Postgres Logs.`
+}
+
+export async function saveCurrentSnapshot(payload: AppState, expectedVersion: number | null = null): Promise<CloudSnapshot> {
   if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
-  const { data, error } = await supabase.rpc('save_app_snapshot', { p_payload: payload })
-  if (error) throw error
+  const transport = snapshotTransportPayload(payload)
+  const bytes = snapshotBytes(transport)
+
+  // v0.30 vyžaduje serverový RPC v2. Zámerne nepadáme späť na starý RPC, pretože
+  // ten nepozná item-level Asset scope ani nové admin-only dodávateľské/zmluvné registre.
+  const { data, error } = await supabase.rpc('save_app_snapshot_v2', { p_payload: transport, p_expected_version: expectedVersion })
+  if (error) throw new Error(snapshotErrorMessage(error, bytes))
+
   const row = Array.isArray(data) ? data[0] : data
-  if (!row) throw new Error('Supabase nevrátil uloženú verziu.')
+  if (!row) throw new Error(`Supabase nevrátil uloženú verziu snapshotu.${bytes ? ` Payload ${Math.round(bytes / 1024)} kB.` : ''}`)
   return {
     id: row.id,
     version: row.version,
