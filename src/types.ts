@@ -495,6 +495,11 @@ export interface CmdbItem {
   version: string
   hostname: string
   ipAddress: string
+  macAddress: string
+  discoveryDeviceId: string
+  discoveryFirstSeenAt: string
+  discoveryLastSeenAt: string
+  discoveryCollector: string
   serialNumber: string
   assetTag: string
   purchaseDate: string
@@ -707,6 +712,65 @@ export interface UserAuditEntry {
   targetUserName: string
   action: string
   detail: string
+  createdAt: string
+}
+
+
+export interface DiscoveryCollector {
+  id: string
+  name: string
+  scope: AccessScope
+  location: string
+  enabled: boolean
+  lastSeenAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DiscoveryCollectorSecret {
+  collector: DiscoveryCollector
+  token: string
+}
+
+export interface DiscoveryDevice {
+  id: string
+  scope: AccessScope
+  fingerprint: string
+  ipAddress: string
+  macAddress: string
+  hostname: string
+  deviceType: string
+  manufacturer: string
+  model: string
+  serialNumber: string
+  firmware: string
+  firstSeenAt: string
+  lastSeenAt: string
+  seenCount: number
+  lastCollectorId: string
+  lastRunId: string
+  changedFields: string[]
+  lastChangedAt: string
+  openPorts: number[]
+  snmp: Record<string, unknown>
+  details: Record<string, unknown>
+  matchedCmdbId: string
+  ignored: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DiscoveryRun {
+  id: string
+  collectorId: string
+  startedAt: string
+  completedAt: string
+  status: string
+  cidrs: string[]
+  hostsScanned: number
+  hostsFound: number
+  acceptedDevices: number
+  error: string
   createdAt: string
 }
 
