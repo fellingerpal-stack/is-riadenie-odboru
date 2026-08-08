@@ -591,6 +591,7 @@ export interface AppState {
   architectureOverrides: ServiceArchitectureRecord[]
   supplierRecords: SupplierRecord[]
   supplierRelationships: SupplierRelationship[]
+  contractRecords: ContractRecord[]
 }
 
 
@@ -639,6 +640,41 @@ export interface SupplierRelationship {
   evidence: string
   confidence: SupplierRelationshipConfidence
   status: SupplierRelationshipStatus
+  note: string
+  updatedAt: string
+  updatedBy: string
+}
+
+
+
+export type ContractStatus = 'Aktívna' | 'Príprava obnovy' | 'Na obstaranie' | 'Ukončená' | 'Pozastavená'
+export type ContractRenewalType = 'Manuálne rozhodnutie' | 'Automatická obnova' | 'Nové obstarávanie' | 'Bez obnovy'
+
+export interface ContractRecord {
+  id: string
+  contractNumber: string
+  title: string
+  supplierKey: string
+  supplierIco: string
+  supplierName: string
+  status: ContractStatus
+  validFrom: string
+  validTo: string
+  noticePeriodDays: number
+  procurementLeadDays: number
+  renewalType: ContractRenewalType
+  owner: string
+  serviceIds: string[]
+  systemNames: string[]
+  task: string
+  annualValue: number
+  totalValue: number
+  spentYtd: number
+  slaRequired: boolean
+  slaTarget: string
+  slaStatus: string
+  crzUrl: string
+  dmsUrl: string
   note: string
   updatedAt: string
   updatedBy: string
