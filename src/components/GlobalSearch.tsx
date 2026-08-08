@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { AccessScope, AppState } from '../types'
 import { Icon, type IconName } from './UI'
+import { buildSupplierDirectory } from '../lib/supplierDirectory'
 import './GlobalSearch.css'
 
 type ViewKey = 'portals'|'technology'|'intelligence'|'itCosts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'|'myWorkspace'|'dataQuality'
@@ -63,8 +64,8 @@ export default function GlobalSearch({
       state.cmdbItems.filter(item => scopeAllowed(item.scope, canReadOit, canReadOris, canReadShared) && matches(normalized, item.name, item.id, item.assetTag, item.serialNumber, item.hostname, item.supplier, item.location, item.assignedTo)).slice(0,12).forEach(item => found.push({
         id:`asset-${item.id}`, title:item.name, subtitle:`${item.type} · ${item.assetTag || item.id} · ${item.location || 'bez lokality'}`, kind:'Aktívum', icon:'cmdb', view:'cmdb', assetId:item.id,
       }))
-      state.supplierRecords.filter(item => matches(normalized, item.name, item.ico, item.category, item.salesContact)).slice(0,8).forEach(item => found.push({
-        id:`supplier-${item.id}`, title:item.name || `IČO ${item.ico}`, subtitle:`Dodávateľ · IČO ${item.ico}${item.category ? ` · ${item.category}` : ''}`, kind:'Dodávateľ', icon:'database', view:'suppliers',
+      buildSupplierDirectory(state).filter(item => matches(normalized, item.name, item.ico, item.record?.category, item.record?.salesContact, item.relationships.map(relation => `${relation.targetName} ${relation.parentSystem} ${relation.role}`).join(' '))).slice(0,8).forEach(item => found.push({
+        id:`supplier-${item.key}`, title:item.name || `IČO ${item.ico}`, subtitle:`Dodávateľ · IČO ${item.ico || '—'} · ${item.relationships.filter(relation => relation.status !== 'Zamietnuté').length} väzieb`, kind:'Dodávateľ', icon:'database', view:'suppliers',
       }))
     }
     if (canReadOris) {
