@@ -590,6 +590,7 @@ export interface AppState {
   cmdbRelationships: CmdbRelationship[]
   architectureOverrides: ServiceArchitectureRecord[]
   supplierRecords: SupplierRecord[]
+  supplierRelationships: SupplierRelationship[]
 }
 
 
@@ -612,6 +613,32 @@ export interface SupplierRecord {
   contractManager: string
   serviceOwner: string
   escalationContact: string
+  note: string
+  updatedAt: string
+  updatedBy: string
+}
+
+
+export type SupplierRelationshipStatus = 'Potvrdené' | 'Na preverenie' | 'Zamietnuté'
+export type SupplierRelationshipConfidence = 'Zdrojové' | 'Odvodené' | 'Manuálne'
+
+export interface SupplierRelationship {
+  id: string
+  supplierKey: string
+  supplierIco: string
+  supplierName: string
+  targetType: string
+  targetId: string
+  targetName: string
+  parentSystem: string
+  role: string
+  contractNumber: string
+  validFrom: string
+  validTo: string
+  source: string
+  evidence: string
+  confidence: SupplierRelationshipConfidence
+  status: SupplierRelationshipStatus
   note: string
   updatedAt: string
   updatedBy: string
