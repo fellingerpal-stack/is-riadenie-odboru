@@ -1,0 +1,20 @@
+{
+  "supabase_url": "https://YOUR-PROJECT.supabase.co",
+  "supabase_anon_key_env": "CVTI_SUPABASE_ANON_KEY",
+  "collector_id": "PASTE-COLLECTOR-UUID-HERE",
+  "collector_token_env": "CVTI_DISCOVERY_TOKEN",
+  "cidrs": [
+    "10.20.30.0/24"
+  ],
+  "tcp_ports": [22, 80, 443, 445, 515, 631, 9100, 3389],
+  "workers": 48,
+  "timeout_ms": 350,
+  "max_hosts_per_cidr": 4096,
+  "snmp": {
+    "enabled": false,
+    "probe_all": false,
+    "collect_supplies": true,
+    "community_env": "CVTI_SNMP_COMMUNITY",
+    "binary": "snmpget"
+  }
+}
