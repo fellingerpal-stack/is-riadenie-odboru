@@ -37,10 +37,11 @@ import TechnologyCatalog from './views/TechnologyCatalog'
 import ItCosts from './views/ItCosts'
 import OperationsIntelligence from './views/OperationsIntelligence'
 import Suppliers from './views/Suppliers'
+import Contracts from './views/Contracts'
 import MyWorkspace from './views/MyWorkspace'
 import DataQuality from './views/DataQuality'
 
-type ViewKey='portals'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'contracts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -54,6 +55,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
     {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
+    {key:'contracts',label:'Zmluvy a SLA',icon:'calendar',roles:allRoles},
     {key:'cmdb',label:'Asset management',icon:'cmdb',roles:allRoles,badge:s=>(Array.isArray(s.cmdbItems)?s.cmdbItems:[]).filter(i=>!i.businessOwner&&!i.technicalOwner&&!i.assignedTo||i.lifecycle==='Na obnovu'||i.inventoryStatus==='Nenájdené'||i.inventoryStatus==='Nezhoda').length},
   ]},
   {label:'Prehľad ORIS',items:[{key:'dashboard',label:'Dashboard ORIS',icon:'dashboard',roles:allRoles}]},
@@ -90,6 +92,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
     {key:'suppliers',label:'Dodávatelia',icon:'database',roles:allRoles},
+    {key:'contracts',label:'Zmluvy a SLA',icon:'calendar',roles:allRoles},
     {key:'cmdb',label:'Asset management',icon:'cmdb',roles:allRoles,badge:s=>(Array.isArray(s.cmdbItems)?s.cmdbItems:[]).filter(i=>!i.businessOwner&&!i.technicalOwner&&!i.assignedTo||i.lifecycle==='Na obnovu'||i.inventoryStatus==='Nenájdené'||i.inventoryStatus==='Nezhoda').length},
   ]},
   {label:'OIT',items:[
@@ -121,6 +124,7 @@ const portalNavGroups:{label:string;items:NavItem[]}[]=[
   ]},
   {label:'Financie',items:[
     {key:'itCosts',label:'IT náklady',icon:'capacity',roles:['admin','manager','resolver','viewer']},
+    {key:'contracts',label:'Zmluvy a SLA',icon:'calendar',roles:allRoles},
   ]},
   {label:'Správa',items:[
     {key:'users',label:'Používatelia a IAM',icon:'user',roles:['admin']},
@@ -270,7 +274,7 @@ export default function App(){
   function viewScope(key:ViewKey):AccessScope|'admin'|'portal'{
     if(key==='users'||key==='roadmap')return 'admin'
     if(key==='portals'||key==='myWorkspace'||key==='dataQuality')return 'portal'
-    if(key==='technology'||key==='intelligence'||key==='itCosts'||key==='suppliers'||key==='cmdb')return 'shared'
+    if(key==='technology'||key==='intelligence'||key==='itCosts'||key==='contracts'||key==='suppliers'||key==='cmdb')return 'shared'
     if(key.startsWith('oit'))return 'oit'
     return 'oris'
   }
@@ -373,7 +377,7 @@ export default function App(){
     return()=>window.removeEventListener('keydown',handler)
   },[])
 
-  const workspace=view==='portals'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='cmdb'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='contracts'||view==='suppliers'||view==='cmdb'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
@@ -609,7 +613,7 @@ export default function App(){
     setSync('saving');setSyncError('')
     try{
       const payload=stateRef.current
-      const saved=await saveCurrentSnapshot(payload)
+      const saved=await saveCurrentSnapshot(payload,snapshot?.version??null)
       setSnapshot(saved)
       lastCloudPayload.current=serializeSnapshotScope(payload)
       cloudHasSnapshot.current=true
@@ -640,7 +644,7 @@ export default function App(){
         <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{roleLabel(role)} · {workspace==='oit'?'3.1':workspace==='oris'?'3.2':'Spoločné'} {profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='write'?'W':profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='read'?'R':'—'}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
       </div></header>
       <main className="content">
-        {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span>{syncError}</span></div>}
+        {syncError&&<div className="inline-alert inline-alert-error sync-alert sync-alert-actionable"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong>{syncError}</span><div><button className="button button-secondary button-small" disabled={sync==='saving'||sync==='loading'} onClick={()=>void saveCloud()}><Icon name="refresh" size={14}/> Skúsiť uložiť</button><button className="button button-ghost button-small" disabled={sync==='saving'||sync==='loading'} onClick={()=>{if(confirm('Načítať aktuálny snapshot z DB? Neuložené snapshotové zmeny sa môžu prepísať.'))void loadCloud()}} title="Načíta aktuálny snapshot z DB; neuložené snapshotové zmeny sa môžu prepísať."><Icon name="download" size={14}/> Načítať DB</button></div></div>}
         {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared}/>}
         {view==='myWorkspace'&&<MyWorkspace state={state} currentUser={displayName} role={role} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
         {view==='dataQuality'&&<DataQuality state={state} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
@@ -648,6 +652,7 @@ export default function App(){
         {view==='intelligence'&&<OperationsIntelligence state={state} go={go}/>}
         {view==='itCosts'&&<ItCosts state={state} go={go} canEdit={canManageShared} currentUser={displayName} onActionsChange={actions=>setState(current=>({...current,actions}))}/>}
         {view==='suppliers'&&<Suppliers state={state} canEdit={role==='admin'} currentUser={displayName} role={role} onChange={supplierRecords=>setState(current=>({...current,supplierRecords}))} onRelationshipsChange={supplierRelationships=>setState(current=>({...current,supplierRelationships}))} go={go}/>}
+        {view==='contracts'&&<Contracts state={state} canEdit={role==='admin'&&canWriteShared} currentUser={displayName} onChange={contractRecords=>setState(current=>({...current,contractRecords}))} go={go}/>}
         {view==='oit'&&<OitDashboard go={go}/>}
         {view==='oitRaci'&&<OitRaci orisItems={state.raci} orisEmployees={state.employees} substitutions={state.substitutions}/>}
         {view==='oitDc'&&<OitDataCenter/>}
