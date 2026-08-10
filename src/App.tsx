@@ -40,8 +40,9 @@ import Suppliers from './views/Suppliers'
 import Contracts from './views/Contracts'
 import MyWorkspace from './views/MyWorkspace'
 import DataQuality from './views/DataQuality'
+import LogManagement from './views/LogManagement'
 
-type ViewKey='portals'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'logs'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -82,6 +83,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
   ]},
   {label:'Systém',items:[
     {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
+    {key:'logs',label:'Log management',icon:'shield',roles:['admin']},
     {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:['admin']},
   ]},
 ]
@@ -107,6 +109,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
   ]},
   {label:'Systém',items:[
     {key:'users',label:'Používatelia',icon:'user',roles:['admin']},
+    {key:'logs',label:'Log management',icon:'shield',roles:['admin']},
     {key:'roadmap',label:'Roadmap a nastavenia',icon:'roadmap',roles:['admin']},
   ]},
 ]
@@ -128,6 +131,7 @@ const portalNavGroups:{label:string;items:NavItem[]}[]=[
   ]},
   {label:'Správa',items:[
     {key:'users',label:'Používatelia a IAM',icon:'user',roles:['admin']},
+    {key:'logs',label:'Log management',icon:'shield',roles:['admin']},
     {key:'roadmap',label:'Nastavenia a roadmap',icon:'roadmap',roles:['admin']},
   ]},
 ]
@@ -272,7 +276,7 @@ export default function App(){
   const resetMode=auth.recoveryMode||new URLSearchParams(location.search).get('reset')==='1'||location.hash.startsWith('#/reset-password')
 
   function viewScope(key:ViewKey):AccessScope|'admin'|'portal'{
-    if(key==='users'||key==='roadmap')return 'admin'
+    if(key==='users'||key==='roadmap'||key==='logs')return 'admin'
     if(key==='portals'||key==='myWorkspace'||key==='dataQuality')return 'portal'
     if(key==='technology'||key==='intelligence'||key==='itCosts'||key==='suppliers'||key==='contracts'||key==='cmdb')return 'shared'
     if(key.startsWith('oit'))return 'oit'
@@ -377,7 +381,7 @@ export default function App(){
     return()=>window.removeEventListener('keydown',handler)
   },[])
 
-  const workspace=view==='portals'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'||view==='logs'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
@@ -679,6 +683,7 @@ export default function App(){
         {view==='risks'&&<Risks risks={state.risks} canEdit={canManageOris} onChange={risks=>setState(current=>({...current,risks}))}/>} 
         {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManageOris} onChange={decisions=>setState(current=>({...current,decisions}))}/>} 
         {view==='users'&&role==='admin'&&<Users currentUserId={auth.profile?.id??'local-admin'} currentUserName={displayName} configured={auth.configured}/>} 
+        {view==='logs'&&role==='admin'&&<LogManagement configured={auth.configured}/>} 
         {view==='roadmap'&&role==='admin'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
       </main>
     </div>
