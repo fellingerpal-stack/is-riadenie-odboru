@@ -592,13 +592,13 @@ export default function Suppliers({ state, canEdit, currentUser, role, onChange,
       <small>{financeScope === 'ledger' ? supplierLedgerData.meta.coverageNote : 'SIT pohľad zachováva existujúci auditovaný snapshot úloh 10 / 22 / 25. Účtovný XLSX pohľad je samostatná širšia vrstva a neprepisuje kontraktový dataset.'}</small>
     </section>
 
-    <section className="supplier-kpis supplier-kpis-temporal supplier-kpis-ledger">
-      <article><span>Dodávateľské identity</span><strong>{filtered.length}</strong><small>{namedCount} s pomenovaním · {relationshipCount} aktívnych väzieb</small></article>
-      <article><span>{financeScope === 'ledger' ? 'Čistý finančný tok' : 'SIT platby'}</span><strong>{paymentDataAvailable ? money.format(totalAmount) : '—'}</strong><small>{paymentDataAvailable ? `${paymentCoverageLabel} · podpísané sumy` : 'pre obdobie nie je dodávateľská atribúcia'}</small></article>
-      <article><span>Finančné pohyby</span><strong>{paymentDataAvailable ? movementCount : '—'}</strong><small>{paymentDataAvailable ? `${correctionCount} záporných korekcií / storien` : 'bez IČO atribúcie'}</small></article>
-      <article><span>Zmluvy v období</span><strong>{contractCount}</strong><small>unikátne referencie v aktuálnom výbere</small></article>
-      <article><span>SLA evidované</span><strong>{slaSupplierCount}</strong><small>dodávatelia s aspoň jedným SLA „Áno“</small></article>
-      <article className={candidateCount ? 'is-warning' : ''}><span>Na preverenie</span><strong>{candidateCount}</strong><small>{candidateCount ? 'kandidátske väzby' : 'bez otvorených kandidátov'}</small></article>
+    <section className="supplier-kpis supplier-kpis-temporal supplier-kpis-ledger supplier-kpis-clickable">
+      <button type="button" onClick={()=>{setFilter('all');setSlaFilter('all')}}><span>Dodávateľské identity</span><strong>{filtered.length}</strong><small>{namedCount} s pomenovaním · {relationshipCount} aktívnych väzieb · klikni</small></button>
+      <button type="button" onClick={()=>setFilter('payments')}><span>{financeScope === 'ledger' ? 'Čistý finančný tok' : 'SIT platby'}</span><strong>{paymentDataAvailable ? money.format(totalAmount) : '—'}</strong><small>{paymentDataAvailable ? `${paymentCoverageLabel} · klikni na dodávateľov s tokom` : 'pre obdobie nie je dodávateľská atribúcia'}</small></button>
+      <button type="button" onClick={()=>setFilter('payments')}><span>Finančné pohyby</span><strong>{paymentDataAvailable ? movementCount : '—'}</strong><small>{paymentDataAvailable ? `${correctionCount} záporných korekcií / storien · klikni` : 'bez IČO atribúcie'}</small></button>
+      <button type="button" onClick={()=>setFilter('contracts')}><span>Zmluvy v období</span><strong>{contractCount}</strong><small>unikátne referencie · klikni na dodávateľov so zmluvou</small></button>
+      <button type="button" onClick={()=>{setFilter('all');setSlaFilter('yes')}}><span>SLA evidované</span><strong>{slaSupplierCount}</strong><small>dodávatelia s aspoň jedným SLA „Áno“ · klikni</small></button>
+      <button type="button" className={candidateCount ? 'is-warning' : ''} onClick={()=>setFilter('candidates')}><span>Na preverenie</span><strong>{candidateCount}</strong><small>{candidateCount ? 'kandidátske väzby · klikni' : 'bez otvorených kandidátov'}</small></button>
     </section>
 
     <section className="panel supplier-toolbar supplier-toolbar-temporal supplier-toolbar-ledger">

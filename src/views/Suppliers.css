@@ -57,3 +57,10 @@
   .supplier-movement-row{grid-template-columns:1fr;gap:5px}
   .supplier-movement-amount{text-align:left}
 }
+
+/* v0.35 - click-through KPI */
+.supplier-kpis-clickable button{min-width:0;padding:14px;border:1px solid #d9e4ea;border-radius:14px;color:inherit;background:#fff;text-align:left;cursor:pointer;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+.supplier-kpis-clickable button:hover{transform:translateY(-2px);border-color:#8fbdd3;box-shadow:0 10px 24px rgba(18,73,105,.08)}
+.supplier-kpis-clickable button:focus-visible{outline:3px solid rgba(25,118,210,.18);outline-offset:2px}
+.supplier-kpis-clickable button span,.supplier-kpis-clickable button strong,.supplier-kpis-clickable button small{display:block}
+.supplier-kpis-clickable button.is-warning{border-color:#e6c88f;background:#fffaf0}

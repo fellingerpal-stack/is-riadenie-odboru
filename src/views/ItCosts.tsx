@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { AppState } from '../types'
-import { Badge, Icon, PageHeader } from '../components/UI'
+import { Badge, Icon, Modal, PageHeader } from '../components/UI'
 import { oitData } from '../data/oitData'
 import { splitRaciRoles } from '../lib/raciAnalytics'
 import { resolveSupplierName } from '../lib/supplierDirectory'
@@ -15,6 +15,7 @@ import './ItCosts.css'
 type Go = (view:string)=>void
 type Confidence = 'vysoká'|'stredná'
 type CostMode = 'Prevádzka'|'Rozvoj'
+type YearSelection = number|'all'
 
 interface CostValue { year:number; amount:number; rowCount:number }
 interface CostEvidenceYear { year:number; topDocument:string; documentCount:number; supplierIds:string[]; zakCount:number }
@@ -46,6 +47,12 @@ interface PaymentRow {
 }
 interface PaymentDataset { payments:PaymentRow[] }
 interface EvidenceSupplier { key:string; name:string; ico:string; match:'doklad'|'položka'|'none'; multiple:number }
+interface EntitySummary { name:string; category:string; amount:number; modeRun:number; modeChange:number; activeYears:Set<number> }
+type DrilldownState =
+  | {kind:'rows';title:string;description:string;items:CostItem[]}
+  | {kind:'entities';title:string;description:string;entities:EntitySummary[]}
+  | {kind:'trend';title:string;description:string}
+  | {kind:'item';title:string;description?:string;item:CostItem}
 
 interface CostDataset {
   meta:{
@@ -77,6 +84,17 @@ const number=new Intl.NumberFormat('sk-SK',{maximumFractionDigits:1})
 function amountFor(item:CostItem,year:number){return item.values.find(value=>value.year===year)?.amount??0}
 function evidenceForYear(item:CostItem,year:number){return item.evidenceByYear?.find(entry=>entry.year===year)}
 function documentForYear(item:CostItem,year:number){return evidenceForYear(item,year)?.topDocument||item.topDocument||'—'}
+function selectedYearsFor(year:YearSelection,years:number[]){return year==='all'?years:[year]}
+function amountForSelection(item:CostItem,year:YearSelection,years:number[]){return selectedYearsFor(year,years).reduce((sum,value)=>sum+amountFor(item,value),0)}
+function selectionLabel(year:YearSelection,years:number[]){return year==='all'?`${years[0]}–${years.at(-1)}`:String(year)}
+function documentForSelection(item:CostItem,year:YearSelection,years:number[]){
+  if(year!=='all')return documentForYear(item,year)
+  const docs=selectedYearsFor(year,years).map(value=>documentForYear(item,value)).filter(value=>value&&value!=='—')
+  const unique=[...new Set(docs)]
+  if(!unique.length)return '—'
+  if(unique.length===1)return unique[0]
+  return `${unique.at(-1)} +${unique.length-1}`
+}
 function percent(value:number,total:number){return total?value/total*100:0}
 function norm(value:string){return value.toLocaleLowerCase('sk-SK').normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
 function normalizedCode(value:string){return String(value||'').replace(/^0+/,'')||'0'}
@@ -129,6 +147,17 @@ function evidenceSupplierFor(item:CostItem,year:number,state:AppState):EvidenceS
     match,
     multiple:Math.max(0,suppliers.length-1),
   }
+}
+
+function evidenceSupplierForSelection(item:CostItem,year:YearSelection,years:number[],state:AppState):EvidenceSupplier{
+  if(year!=='all')return evidenceSupplierFor(item,year,state)
+  const matches=years.map(value=>({year:value,amount:Math.abs(amountFor(item,value)),supplier:evidenceSupplierFor(item,value,state)})).filter(value=>value.amount>0.004&&value.supplier.key)
+  if(!matches.length)return {key:'',name:'',ico:'',match:'none',multiple:0}
+  const totals=new Map<string,{amount:number;supplier:EvidenceSupplier}>()
+  matches.forEach(entry=>{const current=totals.get(entry.supplier.key)??{amount:0,supplier:entry.supplier};current.amount+=entry.amount;totals.set(entry.supplier.key,current)})
+  const ordered=[...totals.values()].sort((a,b)=>b.amount-a.amount)
+  const primary=ordered[0].supplier
+  return {...primary,multiple:Math.max(primary.multiple,ordered.length-1)}
 }
 
 function signedPct(value:number){return `${value>0?'+':''}${number.format(value)} %`}
@@ -186,7 +215,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
   const [period,setPeriod]=useState<'h1'|'fullYear'>('h1')
   const dataset=period==='fullYear'?fullYearDataset:h1Dataset
   const years=dataset.meta.years
-  const [year,setYear]=useState(h1Dataset.meta.years.at(-1)??2026)
+  const [year,setYear]=useState<YearSelection>(h1Dataset.meta.years.at(-1)??2026)
   const [mode,setMode]=useState('Všetko')
   const [category,setCategory]=useState('Všetko')
   const [confidence,setConfidence]=useState('Všetko')
@@ -198,40 +227,43 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
   const [evidenceSort,setEvidenceSort]=useState<'amount'|'name'|'code'|'supplier'>('amount')
   const [evidenceLimit,setEvidenceLimit]=useState(100)
   const [evidenceDense,setEvidenceDense]=useState(true)
-  useEffect(()=>{if(!years.includes(year))setYear(years.at(-1)??2026)},[period,year,years])
+  const [drilldown,setDrilldown]=useState<DrilldownState|null>(null)
+  useEffect(()=>{if(year!=='all'&&!years.includes(year))setYear(years.at(-1)??2026)},[period,year,years])
+  const selectedYears=useMemo(()=>selectedYearsFor(year,years),[year,years])
+  const yearLabel=selectionLabel(year,years)
   const categories=useMemo(()=>Array.from(new Set(dataset.items.map(item=>item.category))).sort((a,b)=>a.localeCompare(b,'sk')),[period])
 
   const baseFiltered=useMemo(()=>dataset.items.filter(item=>{
     if(mode!=='Všetko'&&item.mode!==mode)return false
     if(category!=='Všetko'&&item.category!==category)return false
     if(confidence!=='Všetko'&&item.confidence!==confidence)return false
-    if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForYear(item,year)}`).includes(norm(search)))return false
+    if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForSelection(item,year,years)}`).includes(norm(search)))return false
     return true
-  }),[mode,category,confidence,search,period])
+  }),[mode,category,confidence,search,period,year,years])
 
-  const rows=useMemo(()=>baseFiltered.filter(item=>Math.abs(amountFor(item,year))>0.004).sort((a,b)=>Math.abs(amountFor(b,year))-Math.abs(amountFor(a,year))),[baseFiltered,year])
-  const selectedTotal=rows.reduce((sum,item)=>sum+amountFor(item,year),0)
-  const runTotal=rows.filter(item=>item.mode==='Prevádzka').reduce((sum,item)=>sum+amountFor(item,year),0)
-  const changeTotal=rows.filter(item=>item.mode==='Rozvoj').reduce((sum,item)=>sum+amountFor(item,year),0)
-  const highConfidence=rows.filter(item=>item.confidence==='vysoká').reduce((sum,item)=>sum+amountFor(item,year),0)
-  const sourceTotal=dataset.sourceTotals.find(item=>item.year===year)?.amount??0
+  const rows=useMemo(()=>baseFiltered.filter(item=>Math.abs(amountForSelection(item,year,years))>0.004).sort((a,b)=>Math.abs(amountForSelection(b,year,years))-Math.abs(amountForSelection(a,year,years))),[baseFiltered,year,years])
+  const selectedTotal=rows.reduce((sum,item)=>sum+amountForSelection(item,year,years),0)
+  const runTotal=rows.filter(item=>item.mode==='Prevádzka').reduce((sum,item)=>sum+amountForSelection(item,year,years),0)
+  const changeTotal=rows.filter(item=>item.mode==='Rozvoj').reduce((sum,item)=>sum+amountForSelection(item,year,years),0)
+  const highConfidence=rows.filter(item=>item.confidence==='vysoká').reduce((sum,item)=>sum+amountForSelection(item,year,years),0)
+  const sourceTotal=year==='all'?dataset.sourceTotals.filter(item=>years.includes(item.year)).reduce((sum,item)=>sum+item.amount,0):(dataset.sourceTotals.find(item=>item.year===year)?.amount??0)
 
   const trend=years.map(trendYear=>({year:trendYear,amount:baseFiltered.reduce((sum,item)=>sum+amountFor(item,trendYear),0)}))
   const maxTrend=Math.max(...trend.map(item=>Math.abs(item.amount)),1)
-  const previous=trend.find(item=>item.year===year-1)?.amount??0
-  const yearChange=previous?((selectedTotal/previous)-1)*100:null
+  const previous=year==='all'?0:(trend.find(item=>item.year===year-1)?.amount??0)
+  const yearChange=year==='all'?null:(previous?((selectedTotal/previous)-1)*100:null)
 
   const categoryTotals=Array.from(rows.reduce((map,item)=>{
-    const current=map.get(item.category)??0;map.set(item.category,current+amountFor(item,year));return map
+    const current=map.get(item.category)??0;map.set(item.category,current+amountForSelection(item,year,years));return map
   },new Map<string,number>())).map(([name,amount])=>({name,amount})).sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount))
   const maxCategory=Math.max(...categoryTotals.map(item=>Math.abs(item.amount)),1)
 
   const entityTotals=Array.from(rows.reduce((map,item)=>{
     const current=map.get(item.entity)??{amount:0,category:item.category,modeRun:0,modeChange:0,activeYears:new Set<number>()}
-    const amount=amountFor(item,year)
+    const amount=amountForSelection(item,year,years)
     current.amount+=amount
     if(item.mode==='Prevádzka')current.modeRun+=amount;else current.modeChange+=amount
-    item.values.filter(value=>Math.abs(value.amount)>0.004).forEach(value=>current.activeYears.add(value.year))
+    item.values.filter(value=>years.includes(value.year)&&Math.abs(value.amount)>0.004).forEach(value=>current.activeYears.add(value.year))
     map.set(item.entity,current);return map
   },new Map<string,{amount:number;category:string;modeRun:number;modeChange:number;activeYears:Set<number>}>())).map(([name,value])=>({name,...value})).sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount))
 
@@ -247,7 +279,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
   const singleRExposure=entityTotals.reduce((sum,item)=>sum+((entityContexts.get(item.name)?.singleR??0)>0?item.amount:0),0)
   const singleRExposureShare=percent(singleRExposure,selectedTotal)
   const evidenceEntities=useMemo(()=>Array.from(new Set(rows.map(item=>item.entity))).sort((a,b)=>a.localeCompare(b,'sk')),[rows])
-  const evidenceSupplierMeta=useMemo(()=>new Map(rows.map(item=>[item.id,evidenceSupplierFor(item,year,state)])),[rows,year,state])
+  const evidenceSupplierMeta=useMemo(()=>new Map(rows.map(item=>[item.id,evidenceSupplierForSelection(item,year,years,state)])),[rows,year,years,state])
   const evidenceSuppliers=useMemo(()=>{
     const unique=new Map<string,string>()
     evidenceSupplierMeta.forEach(value=>{if(value.key)unique.set(value.key,value.name)})
@@ -258,16 +290,16 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
       const supplier=evidenceSupplierMeta.get(item.id)??{key:'',name:'',ico:'',match:'none',multiple:0}
       if(evidenceEntity!=='Všetko'&&item.entity!==evidenceEntity)return false
       if(evidenceSupplier!=='Všetko'&&supplier.key!==evidenceSupplier)return false
-      if(evidenceSearch&&!norm(`${item.label} ${item.reason} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForYear(item,year)} ${supplier.name} ${supplier.ico}`).includes(norm(evidenceSearch)))return false
+      if(evidenceSearch&&!norm(`${item.label} ${item.reason} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForSelection(item,year,years)} ${supplier.name} ${supplier.ico}`).includes(norm(evidenceSearch)))return false
       return true
     })
     return [...result].sort((a,b)=>{
       if(evidenceSort==='name')return a.label.localeCompare(b.label,'sk')
       if(evidenceSort==='code')return `${a.kpd}/${a.ppd}`.localeCompare(`${b.kpd}/${b.ppd}`,'sk')
       if(evidenceSort==='supplier')return (evidenceSupplierMeta.get(a.id)?.name||'ZZZ').localeCompare(evidenceSupplierMeta.get(b.id)?.name||'ZZZ','sk')
-      return Math.abs(amountFor(b,year))-Math.abs(amountFor(a,year))
+      return Math.abs(amountForSelection(b,year,years))-Math.abs(amountForSelection(a,year,years))
     })
-  },[rows,evidenceEntity,evidenceSupplier,evidenceSearch,evidenceSort,year,evidenceSupplierMeta])
+  },[rows,evidenceEntity,evidenceSupplier,evidenceSearch,evidenceSort,year,years,evidenceSupplierMeta])
 
   const managementSignals=[
     {
@@ -275,36 +307,42 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
       value:`${number.format(runShare)} %`,
       text:`Prevádzka tvorí ${money.format(runTotal)} z klasifikovaného IT objemu. Rozvoj/obnova predstavuje ${money.format(changeTotal)}.`,
       tone:runShare>=85?'warning':'info',
+      action:'run',
     },
     {
       title:'Koncentrácia nákladov',
       value:`${number.format(topTwoShare)} %`,
       text:topEntities.length>=2?`Dve najväčšie oblasti – ${topEntities[0].name} a ${topEntities[1].name} – tvoria väčšinu nákladov vo vybranom roku.`:'Nedostatok dát pre porovnanie.',
       tone:topTwoShare>=70?'danger':'info',
+      action:'concentration',
     },
     {
       title:'Najväčší nákladový blok',
       value:largestCategory?compactMoney.format(largestCategory.amount):'—',
       text:largestCategory?`${largestCategory.name} tvorí ${number.format(percent(largestCategory.amount,selectedTotal))} % vybraného IT objemu.`:'Bez dát.',
       tone:'info',
+      action:'largest',
     },
     {
       title:'Dôvera klasifikácie',
       value:`${number.format(highShare)} %`,
       text:`Podiel nákladov s explicitnou IT/DC väzbou. Zvyšok vychádza z jednoznačných ekonomických podpoložiek (stredná dôvera).`,
       tone:highShare>=75?'success':'warning',
+      action:'confidence',
     },
     {
       title:'Pokrytie COST × RACI',
       value:`${number.format(raciMappedShare)} %`,
       text:`${money.format(raciMappedAmount)} z vybraného objemu je možné priamo spojiť s existujúcimi procesmi RACI 3.1/3.2 podľa názvov systémov a služieb.`,
       tone:raciMappedShare>=70?'success':'warning',
+      action:'raci',
     },
     {
       title:'Náklad v single-R riziku',
       value:`${number.format(singleRExposureShare)} %`,
       text:`${money.format(singleRExposure)} je naviazaných na oblasti, kde aspoň jedna nájdená RACI väzba stojí na jedinom vykonávateľovi R.`,
       tone:singleRExposureShare>=50?'danger':singleRExposureShare>=25?'warning':'success',
+      action:'singleR',
     },
   ] as const
 
@@ -314,7 +352,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
       if(item.mode!=='Prevádzka')return false
       if(category!=='Všetko'&&item.category!==category)return false
       if(confidence!=='Všetko'&&item.confidence!==confidence)return false
-      if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForYear(item,year)}`).includes(norm(search)))return false
+      if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForSelection(item,year,years)}`).includes(norm(search)))return false
       return true
     }).reduce((sum,item)=>sum+amountFor(item,trendYear),0),
   }))
@@ -333,10 +371,27 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
   })
 
   function exportCurrent(){
-    downloadCsv(`it-naklady-${year}-${period==='fullYear'?'jan-dec':'jan-jun'}.csv`,[
+    const exportRows=rows.flatMap(item=>selectedYears.flatMap(exportYear=>{
+      const amount=amountFor(item,exportYear)
+      if(Math.abs(amount)<=0.004)return []
+      const supplier=evidenceSupplierFor(item,exportYear,state)
+      return [[String(exportYear),item.mode,item.category,item.entity,supplier.name,supplier.ico,item.kpd,item.ppd,item.label,String(amount),item.confidence,documentForYear(item,exportYear),item.reason]]
+    }))
+    downloadCsv(`it-naklady-${year==='all'?'vsetky-roky':year}-${period==='fullYear'?'jan-dec':'jan-jun'}.csv`,[
       ['Rok','Režim','Kategória','Entita','Dodávateľ','IČO','KPD','PPD','Položka','Suma','Dôvera','TOP doklad','Dôvod klasifikácie'],
-      ...rows.map(item=>{const supplier=evidenceSupplierFor(item,year,state);return [String(year),item.mode,item.category,item.entity,supplier.name,supplier.ico,item.kpd,item.ppd,item.label,String(amountFor(item,year)),item.confidence,documentForYear(item,year),item.reason]}),
+      ...exportRows,
     ])
+  }
+
+  function openRows(title:string,description:string,items:CostItem[]){setDrilldown({kind:'rows',title,description,items})}
+  function openEntities(title:string,description:string,entities:EntitySummary[]){setDrilldown({kind:'entities',title,description,entities})}
+  function handleSignal(action:string){
+    if(action==='run')openRows(`RUN · prevádzka · ${yearLabel}`,`Položky, z ktorých vzniká prevádzkový náklad ${money.format(runTotal)}.`,rows.filter(item=>item.mode==='Prevádzka'))
+    if(action==='concentration')openEntities(`Koncentrácia nákladov · ${yearLabel}`,`Najväčšie finančné entity vo vybranom období. TOP 2 tvoria ${number.format(topTwoShare)} % výberu.`,entityTotals.filter(item=>Math.abs(item.amount)>0.004).slice(0,12))
+    if(action==='largest'&&largestCategory)openRows(`${largestCategory.name} · ${yearLabel}`,`Detail najväčšieho nákladového bloku ${money.format(largestCategory.amount)}.`,rows.filter(item=>item.category===largestCategory.name))
+    if(action==='confidence')openRows(`Vysoká dôvera · ${yearLabel}`,`Položky s explicitnou IT/DC väzbou v objeme ${money.format(highConfidence)}.`,rows.filter(item=>item.confidence==='vysoká'))
+    if(action==='raci')openEntities(`COST × RACI · ${yearLabel}`,`Entity s nájdenou väzbou na existujúce procesy RACI 3.1/3.2.`,entityTotals.filter(item=>{const context=entityContexts.get(item.name);return ((context?.oris??0)+(context?.oit??0))>0}))
+    if(action==='singleR')openEntities(`Single-R finančná expozícia · ${yearLabel}`,`Entity, pri ktorých aspoň jedna nájdená RACI väzba stojí na jedinom vykonávateľovi R.`,entityTotals.filter(item=>(entityContexts.get(item.name)?.singleR??0)>0))
   }
 
   return <div className="itc-page">
@@ -349,7 +404,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
 
     <section className="itc-filters panel">
       <label><span>Obdobie</span><select value={period} onChange={event=>setPeriod(event.target.value as 'h1'|'fullYear')}><option value="h1">Jan–Jún · porovnateľné H1</option><option value="fullYear">Jan–Dec · celý rok</option></select></label>
-      <label><span>Rok</span><select value={year} onChange={event=>setYear(Number(event.target.value))}>{years.map(value=><option key={value}>{value}</option>)}</select></label>
+      <label><span>Rok</span><select value={year} onChange={event=>setYear(event.target.value==='all'?'all':Number(event.target.value))}><option value="all">Všetko · {years[0]}–{years.at(-1)}</option>{years.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
       <label><span>RUN / CHANGE</span><select value={mode} onChange={event=>setMode(event.target.value)}><option>Všetko</option><option>Prevádzka</option><option>Rozvoj</option></select></label>
       <label><span>Kategória</span><select value={category} onChange={event=>setCategory(event.target.value)}><option>Všetko</option>{categories.map(value=><option key={value}>{value}</option>)}</select></label>
       <label><span>Dôvera</span><select value={confidence} onChange={event=>setConfidence(event.target.value)}><option>Všetko</option><option>vysoká</option><option>stredná</option></select></label>
@@ -358,11 +413,11 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
     </section>
 
     <section className="itc-kpis">
-      <article className="itc-kpi itc-kpi-primary"><span>IT náklady {year}</span><strong>{money.format(selectedTotal)}</strong><small>{number.format(sourceShare)} % zo zdrojového objemu</small></article>
-      <article className="itc-kpi"><span>RUN · prevádzka</span><strong>{money.format(runTotal)}</strong><small>{number.format(runShare)} % IT nákladov</small></article>
-      <article className="itc-kpi"><span>CHANGE · rozvoj / obnova</span><strong>{money.format(changeTotal)}</strong><small>{number.format(percent(changeTotal,selectedTotal))} % IT nákladov</small></article>
-      <article className="itc-kpi"><span>Medziročná zmena</span><strong className={yearChange!==null&&yearChange>0?'itc-up':'itc-down'}>{yearChange===null?'—':signedPct(yearChange)}</strong><small>{previous?`${money.format(previous)} → ${money.format(selectedTotal)}`:'bez predchádzajúceho roku'}</small></article>
-      <article className="itc-kpi"><span>Vysoká dôvera</span><strong>{number.format(highShare)} %</strong><small>{money.format(highConfidence)} explicitne priradených</small></article>
+      <button type="button" className="itc-kpi itc-kpi-primary itc-clickable" onClick={()=>openRows(`IT náklady · ${yearLabel}`,`Všetky položky, z ktorých vzniká suma ${money.format(selectedTotal)} vo výbere ${dataset.meta.periodLabel}.`,rows)}><span>IT náklady {yearLabel}</span><strong>{money.format(selectedTotal)}</strong><small>{number.format(sourceShare)} % zo zdrojového objemu · klikni pre detail</small></button>
+      <button type="button" className="itc-kpi itc-clickable" onClick={()=>openRows(`RUN · prevádzka · ${yearLabel}`,`Prevádzkové položky v objeme ${money.format(runTotal)}.`,rows.filter(item=>item.mode==='Prevádzka'))}><span>RUN · prevádzka</span><strong>{money.format(runTotal)}</strong><small>{number.format(runShare)} % IT nákladov · detail</small></button>
+      <button type="button" className="itc-kpi itc-clickable" onClick={()=>openRows(`CHANGE · rozvoj / obnova · ${yearLabel}`,`Rozvojové a obnovovacie položky v objeme ${money.format(changeTotal)}.`,rows.filter(item=>item.mode==='Rozvoj'))}><span>CHANGE · rozvoj / obnova</span><strong>{money.format(changeTotal)}</strong><small>{number.format(percent(changeTotal,selectedTotal))} % IT nákladov · detail</small></button>
+      <button type="button" className="itc-kpi itc-clickable" onClick={()=>setDrilldown({kind:'trend',title:`Vývoj IT nákladov · ${dataset.meta.periodLabel}`,description:'Ročný rozpad aktuálneho filtra. Kliknutím na konkrétny rok v detaile sa prepne hlavný pohľad.'})}><span>Medziročná zmena</span><strong className={yearChange!==null&&yearChange>0?'itc-up':'itc-down'}>{year==='all'?'Všetky roky':yearChange===null?'—':signedPct(yearChange)}</strong><small>{year==='all'?`${years[0]}–${years.at(-1)} · klikni na trend`:previous?`${money.format(previous)} → ${money.format(selectedTotal)}`:'bez predchádzajúceho roku'}</small></button>
+      <button type="button" className="itc-kpi itc-clickable" onClick={()=>openRows(`Vysoká dôvera · ${yearLabel}`,`Explicitne priradené IT/DC položky v objeme ${money.format(highConfidence)}.`,rows.filter(item=>item.confidence==='vysoká'))}><span>Vysoká dôvera</span><strong>{number.format(highShare)} %</strong><small>{money.format(highConfidence)} explicitne priradených · detail</small></button>
     </section>
 
     <section className="itc-grid-main">
@@ -379,23 +434,23 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
 
     <section className="panel">
       <div className="panel-heading"><div><span className="eyebrow">NÁKLADOVÉ DOMÉNY</span><h3>Za čo reálne platíme</h3><p>Členenie kombinuje ekonomickú klasifikáciu s explicitnými názvami služieb, systémov a infraštruktúry.</p></div></div>
-      <div className="itc-category-list">{categoryTotals.map(item=><button key={item.name} onClick={()=>setCategory(item.name)}><div><strong>{item.name}</strong><small>{number.format(percent(item.amount,selectedTotal))} % z výberu</small></div><span><i style={{width:`${Math.max(2,Math.abs(item.amount)/maxCategory*100)}%`}}/></span><em>{money.format(item.amount)}</em></button>)}</div>
+      <div className="itc-category-list">{categoryTotals.map(item=><button key={item.name} onClick={()=>openRows(`${item.name} · ${yearLabel}`,`Položky kategórie v objeme ${money.format(item.amount)}.`,rows.filter(row=>row.category===item.name))}><div><strong>{item.name}</strong><small>{number.format(percent(item.amount,selectedTotal))} % z výberu</small></div><span><i style={{width:`${Math.max(2,Math.abs(item.amount)/maxCategory*100)}%`}}/></span><em>{money.format(item.amount)}</em></button>)}</div>
     </section>
 
     <section className="panel">
       <div className="panel-heading"><div><span className="eyebrow">COST × SERVICE × RACI</span><h3>Najväčšie finančné väzby</h3><p>Nákladová entita je doplnená o nájdené RACI procesy v 3.2 a 3.1. Preklik smeruje na najbližší existujúci register v aplikácii.</p></div></div>
-      <div className="itc-entity-grid">{topEntities.map(entity=>{const context=entityContexts.get(entity.name)??raciContext(entity.name,state);const route=relatedRoute(entity.name,entity.category);return <article key={entity.name} className="itc-entity-card"><div className="itc-entity-head"><div><span>{entity.category}</span><h4>{entity.name}</h4></div><strong>{money.format(entity.amount)}</strong></div><div className="itc-entity-meta"><span><b>{number.format(percent(entity.amount,selectedTotal))} %</b> podiel</span><span><b>{entity.activeYears.size}/{years.length}</b> aktívne roky</span><span><b>{context.oris+context.oit}</b> RACI väzieb</span><span className={context.singleR>0?'warn':''}><b>{context.singleR}</b> jediný R</span></div>{route&&<button className="text-button" onClick={()=>go(route)}>Otvoriť súvisiaci pohľad <Icon name="arrow" size={15}/></button>}</article>})}</div>
+      <div className="itc-entity-grid">{topEntities.map(entity=>{const context=entityContexts.get(entity.name)??raciContext(entity.name,state);const route=relatedRoute(entity.name,entity.category);return <article key={entity.name} className="itc-entity-card itc-clickable" role="button" tabIndex={0} onClick={()=>openRows(`${entity.name} · ${yearLabel}`,`Nákladové položky entity v objeme ${money.format(entity.amount)}.`,rows.filter(item=>item.entity===entity.name))} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openRows(`${entity.name} · ${yearLabel}`,`Nákladové položky entity v objeme ${money.format(entity.amount)}.`,rows.filter(item=>item.entity===entity.name))}}}><div className="itc-entity-head"><div><span>{entity.category}</span><h4>{entity.name}</h4></div><strong>{money.format(entity.amount)}</strong></div><div className="itc-entity-meta"><span><b>{number.format(percent(entity.amount,selectedTotal))} %</b> podiel</span><span><b>{entity.activeYears.size}/{years.length}</b> aktívne roky</span><span><b>{context.oris+context.oit}</b> RACI väzieb</span><span className={context.singleR>0?'warn':''}><b>{context.singleR}</b> jediný R</span></div>{route&&<button className="text-button" onClick={event=>{event.stopPropagation();go(route)}}>Otvoriť súvisiaci pohľad <Icon name="arrow" size={15}/></button>}<small className="itc-click-hint">Klikni na kartu pre finančný detail</small></article>})}</div>
     </section>
 
     <section className="panel itc-intelligence">
       <div className="panel-heading"><div><span className="eyebrow">FINANČNÁ INTELIGENCIA</span><h3>Riadiace signály nad nákladmi</h3><p>Vysvetliteľné pravidlá nad aktuálnym výberom – bez externého AI API a bez odosielania ekonomických údajov mimo aplikácie.</p></div></div>
-      <div className="itc-signal-grid">{managementSignals.map(signal=><article key={signal.title} className={`itc-signal ${signal.tone}`}><span>{signal.title}</span><strong>{signal.value}</strong><p>{signal.text}</p></article>)}</div>
+      <div className="itc-signal-grid">{managementSignals.map(signal=><button type="button" key={signal.title} className={`itc-signal ${signal.tone} itc-clickable`} onClick={()=>handleSignal(signal.action)}><span>{signal.title}</span><strong>{signal.value}</strong><p>{signal.text}</p><small className="itc-click-hint">Otvoriť podklad k ukazovateľu</small></button>)}</div>
     </section>
 
-    <FinancialOptimization state={state} year={year} periodLabel={dataset.meta.periodLabel} periodMode={period} runTrend={runTrend} selectedTotal={selectedTotal} runTotal={runTotal} changeTotal={changeTotal} entities={optimizationEntities} canEdit={canEdit} currentUser={currentUser} onActionsChange={onActionsChange} go={go}/>
+    {year==='all'?<section className="panel itc-all-years-actions"><Icon name="capacity" size={22}/><div><span className="eyebrow">FINANCIAL ACTIONS</span><h3>Opatrenia zostávajú viazané na konkrétny rok</h3><p>Pohľad Všetko agreguje roky {years[0]}–{years.at(-1)}. Pre vytvorenie alebo riadenie finančného opatrenia vyber konkrétny rok, aby baseline a KPI mali jednoznačné obdobie.</p><div className="itc-year-shortcuts">{years.map(value=><button key={value} className="button button-secondary button-small" onClick={()=>setYear(value)}>{value}</button>)}</div></div></section>:<FinancialOptimization state={state} year={year} periodLabel={dataset.meta.periodLabel} periodMode={period} runTrend={runTrend} selectedTotal={selectedTotal} runTotal={runTotal} changeTotal={changeTotal} entities={optimizationEntities} canEdit={canEdit} currentUser={currentUser} onActionsChange={onActionsChange} go={go}/>}
 
     {period==='h1'?<section className="panel itc-evidence-panel">
-      <div className="panel-heading"><div><span className="eyebrow">DÔKAZNÁ VRSTVA</span><h3>Položky zahrnuté do IT nákladov · {year}</h3><p>Kompaktný auditovateľný detail s vlastným filtrovaním. Suma je čistá vrátane mínusových korekcií.</p></div><Badge tone="info">{evidenceRows.length} / {rows.length}</Badge></div>
+      <div className="panel-heading"><div><span className="eyebrow">DÔKAZNÁ VRSTVA</span><h3>Položky zahrnuté do IT nákladov · {yearLabel}</h3><p>Kompaktný auditovateľný detail s vlastným filtrovaním. Suma je čistá vrátane mínusových korekcií.</p></div><Badge tone="info">{evidenceRows.length} / {rows.length}</Badge></div>
       <div className="itc-evidence-toolbar">
         <label className="itc-evidence-search"><span>Hľadať v tabuľke</span><div><Icon name="search" size={15}/><input value={evidenceSearch} onChange={event=>setEvidenceSearch(event.target.value)} placeholder="položka, doklad, KPD, entita…"/></div></label>
         <label><span>Entita</span><select value={evidenceEntity} onChange={event=>setEvidenceEntity(event.target.value)}><option>Všetko</option>{evidenceEntities.map(value=><option key={value}>{value}</option>)}</select></label>
@@ -406,10 +461,20 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
         <button className="itc-density-button" onClick={()=>{setEvidenceSearch('');setEvidenceEntity('Všetko');setEvidenceSupplier('Všetko');setEvidenceSort('amount')}}>Reset</button>
       </div>
       <div className={`itc-evidence-shell ${evidenceDense?'dense':''}`}>
-        <table className="itc-table"><colgroup><col className="itc-col-item"/><col className="itc-col-code"/><col className="itc-col-mode"/><col className="itc-col-category"/><col className="itc-col-supplier"/><col className="itc-col-confidence"/><col className="itc-col-document"/><col className="itc-col-amount"/></colgroup><thead><tr><th>Položka</th><th>KPD / PPD</th><th>RUN/CHANGE</th><th>Kategória / entita</th><th>Dodávateľ</th><th>Dôvera</th><th>TOP doklad</th><th className="number">{year}</th></tr></thead><tbody>{evidenceRows.slice(0,evidenceLimit).map(item=>{const supplier=evidenceSupplierMeta.get(item.id)??{key:'',name:'',ico:'',match:'none',multiple:0};return <tr key={item.id}><td><strong>{item.label}</strong><small>{item.reason}</small></td><td className="itc-code-cell"><strong>{item.kpd} / {item.ppd||'—'}</strong></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td className="itc-supplier-cell">{supplier.key?<><strong>{supplier.name}{supplier.multiple?` +${supplier.multiple}`:''}</strong><small>{supplier.ico?`IČO ${supplier.ico}`:'bez IČO'} · {supplier.match==='doklad'?'zhoda dokladu':'zhoda položky'}</small></>:<><strong>—</strong><small>bez spoľahlivej zhody</small></>}</td><td><Badge tone={item.confidence==='vysoká'?'success':'warning'}>{item.confidence}</Badge></td><td className="itc-document-cell"><strong>{documentForYear(item,year)}</strong></td><td className={`number ${amountFor(item,year)<0?'itc-negative':''}`}><strong>{money.format(amountFor(item,year))}</strong></td></tr>})}</tbody></table>
+        <table className="itc-table"><colgroup><col className="itc-col-item"/><col className="itc-col-code"/><col className="itc-col-mode"/><col className="itc-col-category"/><col className="itc-col-supplier"/><col className="itc-col-confidence"/><col className="itc-col-document"/><col className="itc-col-amount"/></colgroup><thead><tr><th>Položka</th><th>KPD / PPD</th><th>RUN/CHANGE</th><th>Kategória / entita</th><th>Dodávateľ</th><th>Dôvera</th><th>TOP doklad</th><th className="number">{yearLabel}</th></tr></thead><tbody>{evidenceRows.slice(0,evidenceLimit).map(item=>{const supplier=evidenceSupplierMeta.get(item.id)??{key:'',name:'',ico:'',match:'none',multiple:0};const selectedAmount=amountForSelection(item,year,years);return <tr key={item.id} className="itc-table-clickable" tabIndex={0} onClick={()=>setDrilldown({kind:'item',title:item.label,item})} onKeyDown={event=>{if(event.key==='Enter'){setDrilldown({kind:'item',title:item.label,item})}}}><td><strong>{item.label}</strong><small>{item.reason}</small></td><td className="itc-code-cell"><strong>{item.kpd} / {item.ppd||'—'}</strong></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td className="itc-supplier-cell">{supplier.key?<><strong>{supplier.name}{supplier.multiple?` +${supplier.multiple}`:''}</strong><small>{supplier.ico?`IČO ${supplier.ico}`:'bez IČO'} · {year==='all'?'dominantná zhoda v období':supplier.match==='doklad'?'zhoda dokladu':'zhoda položky'}</small></>:<><strong>—</strong><small>bez spoľahlivej zhody</small></>}</td><td><Badge tone={item.confidence==='vysoká'?'success':'warning'}>{item.confidence}</Badge></td><td className="itc-document-cell"><strong>{documentForSelection(item,year,years)}</strong></td><td className={`number ${selectedAmount<0?'itc-negative':''}`}><strong>{money.format(selectedAmount)}</strong></td></tr>})}</tbody></table>
       </div>
       <div className="itc-table-note">Zobrazených {Math.min(evidenceRows.length,evidenceLimit)} z {evidenceRows.length} položiek. Hlavička aj pravý stĺpec so sumou zostávajú pri rolovaní viditeľné; na menších obrazovkách sa tabuľka roluje iba vo vlastnom paneli.</div>
     </section>:<section className="panel itc-full-year-evidence-note"><Icon name="shield" size={22}/><div><span className="eyebrow">CELÝ ROK · DÔKAZNOSŤ</span><h3>Celoročný pohľad je manažérsky agregát</h3><p>Pre roky 2023–2025 sú v zdrojovej dátovej bráne potvrdené mesiace január až december. Full-year IT výrez je konzervatívny: explicitné IT/DC VaV položky a priame IT KPD/PPD sú zahrnuté, generické položky bez bezpečnej IT väzby nie. Detailná dokladová tabuľka ostáva dostupná v režime Jan–Jún, kde máme auditovateľné položky po dokladoch.</p></div></section>}
+
+    {drilldown&&<Modal wide title={drilldown.title} onClose={()=>setDrilldown(null)}>
+      <div className="itc-drilldown">
+        <div className="itc-drilldown-intro"><Icon name="eye" size={20}/><div><strong>{drilldown.description||'Detail podkladových dát k vybranému ukazovateľu.'}</strong><span>Obdobie: {dataset.meta.periodLabel} · výber rokov: {yearLabel}</span></div></div>
+        {drilldown.kind==='rows'&&<><div className="itc-drill-summary"><article><span>Suma</span><strong>{money.format(drilldown.items.reduce((sum,item)=>sum+amountForSelection(item,year,years),0))}</strong></article><article><span>Položky</span><strong>{drilldown.items.length}</strong></article><article><span>RUN</span><strong>{money.format(drilldown.items.filter(item=>item.mode==='Prevádzka').reduce((sum,item)=>sum+amountForSelection(item,year,years),0))}</strong></article><article><span>CHANGE</span><strong>{money.format(drilldown.items.filter(item=>item.mode==='Rozvoj').reduce((sum,item)=>sum+amountForSelection(item,year,years),0))}</strong></article></div><div className="itc-drill-table-shell"><table className="itc-drill-table"><thead><tr><th>Položka</th><th>Kategória / entita</th><th>Režim</th><th>Doklad</th><th className="number">Suma</th></tr></thead><tbody>{[...drilldown.items].sort((a,b)=>Math.abs(amountForSelection(b,year,years))-Math.abs(amountForSelection(a,year,years))).map(item=><tr key={item.id} tabIndex={0} onClick={()=>setDrilldown({kind:'item',title:item.label,item})} onKeyDown={event=>{if(event.key==='Enter')setDrilldown({kind:'item',title:item.label,item})}}><td><strong>{item.label}</strong><small>{item.kpd} / {item.ppd||'—'} · {item.confidence}</small></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td>{documentForSelection(item,year,years)}</td><td className="number"><strong>{money.format(amountForSelection(item,year,years))}</strong></td></tr>)}</tbody></table></div></>}
+        {drilldown.kind==='entities'&&<div className="itc-drill-entities">{drilldown.entities.map(entity=>{const context=entityContexts.get(entity.name)??raciContext(entity.name,state);const route=relatedRoute(entity.name,entity.category);return <article key={entity.name}><div><span>{entity.category}</span><h4>{entity.name}</h4><p>{context.oris+context.oit} RACI väzieb · {context.singleR} single-R · {entity.activeYears.size}/{years.length} aktívnych rokov</p></div><strong>{money.format(entity.amount)}</strong><div className="itc-drill-actions"><button className="button button-secondary button-small" onClick={()=>openRows(`${entity.name} · ${yearLabel}`,`Položky nákladovej entity ${entity.name}.`,rows.filter(item=>item.entity===entity.name))}>Položky</button>{route&&<button className="button button-ghost button-small" onClick={()=>go(route)}>Súvisiaci register</button>}</div></article>})}</div>}
+        {drilldown.kind==='trend'&&<div className="itc-drill-trend">{trend.map(point=>{const run=dataset.items.filter(item=>item.mode==='Prevádzka'&&baseFiltered.includes(item)).reduce((sum,item)=>sum+amountFor(item,point.year),0);const change=dataset.items.filter(item=>item.mode==='Rozvoj'&&baseFiltered.includes(item)).reduce((sum,item)=>sum+amountFor(item,point.year),0);return <button key={point.year} onClick={()=>{setYear(point.year);setDrilldown(null);window.scrollTo({top:0,behavior:'smooth'})}}><span><strong>{point.year}</strong><small>RUN {money.format(run)} · CHANGE {money.format(change)}</small></span><b>{money.format(point.amount)}</b><Icon name="chevron" size={16}/></button>})}</div>}
+        {drilldown.kind==='item'&&(()=>{const item=drilldown.item;const route=relatedRoute(item.entity,item.category);return <div className="itc-item-drill"><div className="itc-item-facts"><article><span>KPD / PPD</span><strong>{item.kpd} / {item.ppd||'—'}</strong></article><article><span>RUN / CHANGE</span><strong>{item.mode}</strong></article><article><span>Kategória</span><strong>{item.category}</strong></article><article><span>Entita</span><strong>{item.entity}</strong></article><article><span>Dôvera</span><strong>{item.confidence}</strong></article><article><span>Výber spolu</span><strong>{money.format(amountForSelection(item,year,years))}</strong></article></div><div className="itc-item-reason"><span className="eyebrow">PREČO JE POLOŽKA V IT VÝREZE</span><p>{item.reason}</p></div><div className="itc-item-years"><div className="itc-item-years-head"><span>Rok</span><span>Dodávateľ</span><span>TOP doklad</span><span className="number">Suma</span></div>{years.map(itemYear=>{const value=amountFor(item,itemYear);if(Math.abs(value)<=0.004)return null;const supplier=evidenceSupplierFor(item,itemYear,state);return <button key={itemYear} onClick={()=>setYear(itemYear)}><span><strong>{itemYear}</strong></span><span><strong>{supplier.name||'—'}</strong><small>{supplier.ico?`IČO ${supplier.ico}`:'bez spoľahlivej zhody'}</small></span><span>{documentForYear(item,itemYear)}</span><span className="number"><strong>{money.format(value)}</strong></span></button>})}</div><div className="itc-drill-actions"><button className="button button-secondary" onClick={()=>setDrilldown({kind:'rows',title:`${item.category} · ${yearLabel}`,description:`Všetky položky kategórie ${item.category}.`,items:rows.filter(row=>row.category===item.category)})}>Celá kategória</button>{route&&<button className="button button-primary" onClick={()=>go(route)}>Otvoriť súvisiaci register <Icon name="arrow" size={15}/></button>}</div></div>})()}
+      </div>
+    </Modal>}
 
     <section className="itc-method panel"><Icon name="shield" size={22}/><div><h3>Metodika a hranice pohľadu</h3><p>{dataset.meta.method} Nejde o účtovnú preklasifikáciu ani o náhradu hlavnej knihy; ide o manažérsky IT výrez z dodaných dát.</p>{dataset.meta.coverageNote&&<p><strong>Pokrytie:</strong> {dataset.meta.coverageNote}</p>}<ul>{dataset.meta.exclusions.map(item=><li key={item}>{item}</li>)}</ul></div></section>
     </>}
