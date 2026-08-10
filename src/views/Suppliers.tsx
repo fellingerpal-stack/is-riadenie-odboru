@@ -10,7 +10,13 @@ const money = new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR
 const money2 = new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Máj']
 
-type SupplierFilter = 'all' | 'payments' | 'systems' | 'candidates' | 'unresolved'
+type SupplierFilter = 'active' | 'all' | 'payments' | 'contracts' | 'systems' | 'candidates' | 'inactive' | 'unresolved'
+type SupplierSlaFilter = 'all' | 'yes' | 'no' | 'unknown' | 'missing'
+type SupplierPeriodMode = 'year' | 'all'
+
+const PAYMENT_YEAR = 2026
+const PAYMENT_PERIOD_LABEL = 'Jan–Máj 2026'
+const PERIOD_YEARS = [2023, 2024, 2025, 2026, 2027, 2028]
 
 interface Props {
   state: AppState
@@ -97,6 +103,75 @@ function confidenceTone(confidence: SupplierRelationshipConfidence) {
 }
 
 function valueOrDash(value?: string) { return value?.trim() || '—' }
+
+function yearFromText(value?: string): number | null {
+  const match = String(value || '').match(/\b(20\d{2})\b/)
+  return match ? Number(match[1]) : null
+}
+
+function relationshipInPeriod(relation: SupplierRelationshipView, mode: SupplierPeriodMode, year: number): boolean {
+  if (relation.status === 'Zamietnuté') return false
+  if (mode === 'all') return true
+  const from = yearFromText(relation.validFrom)
+  const to = yearFromText(relation.validTo)
+  if (from && from > year) return false
+  if (to && to < year) return false
+  return true
+}
+
+function systemInPeriod(system: SupplierDirectoryItem['systems'][number], mode: SupplierPeriodMode, year: number): boolean {
+  if (mode === 'all') return true
+  const to = yearFromText(system.contractValidTo)
+  return !to || to >= year
+}
+
+function normalizedSla(value?: string): 'yes' | 'no' | 'unknown' | 'missing' {
+  const text = normalizeSupplierText(value || '')
+  if (!text) return 'missing'
+  if (text === 'ano' || text.startsWith('ano ')) return 'yes'
+  if (text === 'nie') return 'no'
+  if (text.includes('neviem') || text.includes('prever')) return 'unknown'
+  if (text.includes('nerelevant')) return 'missing'
+  if (text.startsWith('nie ')) return 'unknown'
+  return 'unknown'
+}
+
+function meaningfulContract(value: string): boolean {
+  const text = normalizeSupplierText(value)
+  if (!text || text === 'n a' || text === 'na' || text.includes('neuveden') || text.includes('udaj nie je') || text.includes('bez zmluv')) return false
+  return true
+}
+
+function supplierPeriodContext(item: SupplierDirectoryItem, mode: SupplierPeriodMode, year: number) {
+  const paymentAvailable = mode === 'all' || year === PAYMENT_YEAR
+  const hasPayment = paymentAvailable && item.paymentCount > 0
+  const paymentAmount = hasPayment ? item.amount : 0
+  const paymentCount = hasPayment ? item.paymentCount : 0
+  const relationships = item.relationships.filter(relation => relationshipInPeriod(relation, mode, year))
+  const candidates = relationships.filter(relation => relation.status === 'Na preverenie')
+  const systems = item.systems.filter(system => systemInPeriod(system, mode, year))
+  const paymentContracts = paymentAvailable ? item.contracts : []
+  const contracts = [...new Set([
+    ...paymentContracts,
+    ...relationships.map(relation => relation.contractNumber),
+    ...systems.map(system => system.contractNumber),
+  ].filter(value => Boolean(value) && meaningfulContract(String(value))))]
+  const slaStates = systems.map(system => normalizedSla(system.slaStatus))
+  const slaYes = slaStates.filter(value => value === 'yes').length
+  const slaNo = slaStates.filter(value => value === 'no').length
+  const slaUnknown = slaStates.filter(value => value === 'unknown').length
+  const slaMissing = slaStates.filter(value => value === 'missing').length
+  const hasActivity = hasPayment || contracts.length > 0 || relationships.length > 0
+  return { paymentAvailable, hasPayment, paymentAmount, paymentCount, relationships, candidates, systems, contracts, slaYes, slaNo, slaUnknown, slaMissing, hasActivity }
+}
+
+function slaLabel(context: ReturnType<typeof supplierPeriodContext>): string {
+  if (context.slaYes && !context.slaNo && !context.slaUnknown) return 'Áno'
+  if (context.slaNo && !context.slaYes && !context.slaUnknown) return 'Nie'
+  if (context.slaUnknown) return 'Preveriť'
+  if (context.slaYes || context.slaNo) return 'Zmiešané'
+  return 'Bez evidencie'
+}
 
 function downloadText(filename: string, text: string, type = 'text/csv;charset=utf-8') {
   const blob = new Blob([text], { type })
@@ -201,7 +276,10 @@ export default function Suppliers({ state, canEdit, currentUser, role, onChange,
   const canOpenAdvanced = role !== 'employee'
   const [query, setQuery] = useState('')
   const [task, setTask] = useState('all')
-  const [filter, setFilter] = useState<SupplierFilter>('all')
+  const [periodMode, setPeriodMode] = useState<SupplierPeriodMode>('year')
+  const [selectedYear, setSelectedYear] = useState(PAYMENT_YEAR)
+  const [filter, setFilter] = useState<SupplierFilter>('active')
+  const [slaFilter, setSlaFilter] = useState<SupplierSlaFilter>('all')
   const [selectedKey, setSelectedKey] = useState(directory[0]?.key || '')
   const [editingSupplier, setEditingSupplier] = useState<SupplierDirectoryItem | null | undefined>(undefined)
   const [newSupplierMode, setNewSupplierMode] = useState(false)
@@ -211,24 +289,37 @@ export default function Suppliers({ state, canEdit, currentUser, role, onChange,
   const [importFileName, setImportFileName] = useState('')
   const [importError, setImportError] = useState('')
 
+  const contexts = useMemo(() => new Map(directory.map(item => [item.key, supplierPeriodContext(item, periodMode, selectedYear)])), [directory, periodMode, selectedYear])
   const filtered = directory.filter(item => {
+    const context = contexts.get(item.key) || supplierPeriodContext(item, periodMode, selectedYear)
     const relationshipText = item.relationships.map(relation => `${relation.targetName} ${relation.parentSystem} ${relation.role} ${relation.contractNumber}`).join(' ')
-    const haystack = normalizeSupplierText(`${item.name} ${item.ico} ${item.contracts.join(' ')} ${item.topNotes.join(' ')} ${item.systems.map(system => system.name).join(' ')} ${relationshipText}`)
+    const haystack = normalizeSupplierText(`${item.name} ${item.ico} ${item.contracts.join(' ')} ${item.topNotes.join(' ')} ${item.systems.map(system => `${system.name} ${system.slaStatus}`).join(' ')} ${relationshipText}`)
     if (query && !haystack.includes(normalizeSupplierText(query))) return false
-    if (task !== 'all' && !item.tasks.includes(task)) return false
-    if (filter === 'payments' && item.paymentCount === 0) return false
-    if (filter === 'systems' && item.relationships.filter(relation => relation.status !== 'Zamietnuté').length === 0) return false
-    if (filter === 'candidates' && item.relationships.filter(relation => relation.status === 'Na preverenie').length === 0) return false
+    if (task !== 'all' && context.paymentAvailable && !item.tasks.includes(task)) return false
+    if (filter === 'active' && !context.hasActivity) return false
+    if (filter === 'payments' && !context.hasPayment) return false
+    if (filter === 'contracts' && context.contracts.length === 0) return false
+    if (filter === 'systems' && context.relationships.length === 0) return false
+    if (filter === 'candidates' && context.candidates.length === 0) return false
+    if (filter === 'inactive' && context.hasActivity) return false
     if (filter === 'unresolved' && (item.verifiedName || item.record?.name)) return false
+    if (slaFilter === 'yes' && context.slaYes === 0) return false
+    if (slaFilter === 'no' && context.slaNo === 0) return false
+    if (slaFilter === 'unknown' && context.slaUnknown === 0) return false
+    if (slaFilter === 'missing' && (context.systems.length > 0 && context.slaMissing < context.systems.length)) return false
     return true
   })
-  const selected = filtered.find(item => item.key === selectedKey) || directory.find(item => item.key === selectedKey) || filtered[0] || directory[0]
-  const totalAmount = directory.reduce((total, item) => total + item.amount, 0)
-  const namedCount = directory.filter(item => item.verifiedName || item.record?.name).length
-  const unresolvedCount = directory.filter(item => !item.verifiedName && !item.record?.name && item.ico).length
-  const contractCount = new Set(directory.flatMap(item => item.contracts)).size
-  const relationshipCount = directory.reduce((total, item) => total + item.relationships.filter(relation => relation.status !== 'Zamietnuté').length, 0)
-  const candidateCount = directory.reduce((total, item) => total + item.relationships.filter(relation => relation.status === 'Na preverenie').length, 0)
+  const selected = filtered.find(item => item.key === selectedKey) || filtered[0] || (filtered.length ? undefined : directory.find(item => item.key === selectedKey) || directory[0])
+  const selectedContext = selected ? contexts.get(selected.key) || supplierPeriodContext(selected, periodMode, selectedYear) : null
+  const kpiItems = filtered
+  const paymentDataAvailable = periodMode === 'all' || selectedYear === PAYMENT_YEAR
+  const totalAmount = kpiItems.reduce((total, item) => total + (contexts.get(item.key)?.paymentAmount || 0), 0)
+  const namedCount = kpiItems.filter(item => item.verifiedName || item.record?.name).length
+  const contractCount = new Set(kpiItems.flatMap(item => contexts.get(item.key)?.contracts || [])).size
+  const relationshipCount = kpiItems.reduce((total, item) => total + (contexts.get(item.key)?.relationships.length || 0), 0)
+  const candidateCount = kpiItems.reduce((total, item) => total + (contexts.get(item.key)?.candidates.length || 0), 0)
+  const slaSupplierCount = kpiItems.filter(item => (contexts.get(item.key)?.slaYes || 0) > 0).length
+  const periodLabel = periodMode === 'all' ? 'Všetky dostupné obdobia' : String(selectedYear)
 
   function openSupplierEdit(item: SupplierDirectoryItem) {
     if (!canEdit) return
@@ -393,18 +484,27 @@ export default function Suppliers({ state, canEdit, currentUser, role, onChange,
       <div><strong>{canEdit ? 'Admin režim · správa dodávateľov a väzieb povolená' : 'Read-only Supplier 360'}</strong><span>{canEdit ? 'Môžete potvrdiť kandidátov, vytvárať väzby, importovať CSV/XLSX a dopĺňať profil dodávateľa. Zdrojové platby sa nemenia.' : 'Každý prihlásený používateľ vidí zdroj, dôveru a stav väzby. Zápis a import sú dostupné iba administrátorovi.'}</span></div>
     </section>
 
-    <section className="supplier-kpis">
-      <article><span>Dodávateľské identity</span><strong>{directory.length}</strong><small>{namedCount} s pomenovaním</small></article>
-      <article><span>SIT platby 2026</span><strong>{money.format(totalAmount)}</strong><small>úlohy 10 / 22 / 25</small></article>
-      <article><span>Zmluvné referencie</span><strong>{contractCount}</strong><small>unikátne čísla v platbách</small></article>
-      <article><span>Väzby na IS / služby</span><strong>{relationshipCount}</strong><small>zdrojové + spravované</small></article>
+    <section className="supplier-period-strip">
+      <div><Icon name="calendar" size={17}/><span><strong>Časový pohľad: {periodLabel}</strong>{paymentDataAvailable ? ` · finančné dáta ${PAYMENT_PERIOD_LABEL}` : ` · finančné dáta pre ${selectedYear} nie sú v Supplier datasete`}</span></div>
+      <small>Zmluvy, SLA a servisné väzby rešpektujú zvolené obdobie podľa dostupnej platnosti; chýbajúce dátumy sa neodhadujú.</small>
+    </section>
+
+    <section className="supplier-kpis supplier-kpis-temporal">
+      <article><span>Dodávateľské identity</span><strong>{filtered.length}</strong><small>{namedCount} s pomenovaním vo výbere</small></article>
+      <article><span>{periodMode === 'all' ? 'SIT platby 2026' : `Platby ${selectedYear}`}</span><strong>{paymentDataAvailable ? money.format(totalAmount) : '—'}</strong><small>{paymentDataAvailable ? `${PAYMENT_PERIOD_LABEL} · úlohy 10 / 22 / 25` : 'finančný supplier dataset nie je dostupný'}</small></article>
+      <article><span>Zmluvy v období</span><strong>{contractCount}</strong><small>unikátne referencie v aktuálnom výbere</small></article>
+      <article><span>Väzby na IS / služby</span><strong>{relationshipCount}</strong><small>platné / nedatované väzby v období</small></article>
+      <article><span>SLA evidované</span><strong>{slaSupplierCount}</strong><small>dodávatelia s aspoň jedným SLA „Áno“</small></article>
       <article className={candidateCount ? 'is-warning' : ''}><span>Na preverenie</span><strong>{candidateCount}</strong><small>{candidateCount ? 'kandidátske väzby' : 'bez otvorených kandidátov'}</small></article>
     </section>
 
-    <section className="panel supplier-toolbar">
-      <label className="supplier-search"><Icon name="search" size={16}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Názov, IČO, zmluva, systém, modul, rola…"/></label>
-      <label><span>Úloha</span><select value={task} onChange={event => setTask(event.target.value)}><option value="all">10 + 22 + 25</option><option value="10">Úloha 10</option><option value="22">Úloha 22</option><option value="25">Úloha 25</option></select></label>
-      <label><span>Pohľad</span><select value={filter} onChange={event => setFilter(event.target.value as SupplierFilter)}><option value="all">Všetci</option><option value="payments">S platbami</option><option value="systems">S väzbou na IS/službu</option><option value="candidates">Na preverenie</option><option value="unresolved">IČO bez názvu</option></select></label>
+    <section className="panel supplier-toolbar supplier-toolbar-temporal">
+      <label className="supplier-search"><span>Hľadať</span><div><Icon name="search" size={16}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Názov, IČO, zmluva, systém, modul, rola…"/></div></label>
+      <label><span>Obdobie</span><select value={periodMode} onChange={event => setPeriodMode(event.target.value as SupplierPeriodMode)}><option value="year">Konkrétny rok</option><option value="all">Všetky dostupné</option></select></label>
+      <label><span>Rok</span><select value={selectedYear} disabled={periodMode === 'all'} onChange={event => setSelectedYear(Number(event.target.value))}>{PERIOD_YEARS.map(year => <option key={year} value={year}>{year}{year === PAYMENT_YEAR ? ' · platby' : ' · zmluvy/SLA'}</option>)}</select></label>
+      <label><span>Aktivita</span><select value={filter} onChange={event => setFilter(event.target.value as SupplierFilter)}><option value="active">Aktivita v období</option><option value="all">Všetci dodávatelia</option><option value="payments">S platbou</option><option value="contracts">So zmluvou</option><option value="systems">S väzbou na IS/službu</option><option value="candidates">Na preverenie</option><option value="inactive">Bez aktivity v období</option><option value="unresolved">IČO bez názvu</option></select></label>
+      <label><span>SLA</span><select value={slaFilter} onChange={event => setSlaFilter(event.target.value as SupplierSlaFilter)}><option value="all">Všetko</option><option value="yes">SLA áno</option><option value="no">SLA nie</option><option value="unknown">SLA preveriť</option><option value="missing">Bez SLA evidencie</option></select></label>
+      <label><span>Úloha</span><select value={task} disabled={!paymentDataAvailable} onChange={event => setTask(event.target.value)}><option value="all">10 + 22 + 25</option><option value="10">Úloha 10</option><option value="22">Úloha 22</option><option value="25">Úloha 25</option></select></label>
       <div className="supplier-toolbar-result"><strong>{filtered.length}</strong><span>vo výbere</span></div>
     </section>
 
@@ -413,17 +513,18 @@ export default function Suppliers({ state, canEdit, currentUser, role, onChange,
         <div className="supplier-list-head"><div><span className="eyebrow">REGISTER</span><h3>Dodávatelia</h3></div><small>{directory.length} celkom</small></div>
         <div className="supplier-list-scroll">
           {filtered.length ? filtered.map(item => {
-            const openCandidates = item.relationships.filter(relation => relation.status === 'Na preverenie').length
-            const activeLinks = item.relationships.filter(relation => relation.status !== 'Zamietnuté').length
+            const context = contexts.get(item.key) || supplierPeriodContext(item, periodMode, selectedYear)
+            const openCandidates = context.candidates.length
+            const activeLinks = context.relationships.length
             return <button key={item.key} className={selected?.key === item.key ? 'active' : ''} onClick={() => setSelectedKey(item.key)}>
-              <div className="supplier-list-main"><strong>{item.name}</strong><small>{item.ico ? `IČO ${item.ico}` : 'bez IČO'} · {item.paymentCount} platieb · {activeLinks} väzieb</small></div>
-              <div className="supplier-list-side"><b>{item.amount ? money.format(item.amount) : '—'}</b>{openCandidates ? <Badge tone="warning">{openCandidates} preveriť</Badge> : <Badge tone={identityTone(item)}>{identityLabel(item)}</Badge>}</div>
+              <div className="supplier-list-main"><strong>{item.name}</strong><small>{item.ico ? `IČO ${item.ico}` : 'bez IČO'} · {context.paymentCount} platieb · {context.contracts.length} zmlúv · {activeLinks} väzieb</small></div>
+              <div className="supplier-list-side"><b>{context.paymentAvailable && context.paymentAmount ? money.format(context.paymentAmount) : '—'}</b>{openCandidates ? <Badge tone="warning">{openCandidates} preveriť</Badge> : <Badge tone={identityTone(item)}>{identityLabel(item)}</Badge>}</div>
             </button>
           }) : <Empty title="Bez výsledkov" text="Zmeňte vyhľadávanie alebo filter."/>}
         </div>
       </aside>
 
-      {selected ? <SupplierDetail item={selected} canEdit={canEdit} canOpenAdvanced={canOpenAdvanced} onEditSupplier={() => openSupplierEdit(selected)} onDeleteSupplier={() => deleteSupplierOverride(selected)} onNewRelationship={openNewRelationship} onEditRelationship={setEditingRelationship} onConfirmRelationship={confirmRelationship} onRejectRelationship={rejectRelationship} onDeleteRelationship={deleteRelationship} go={go}/> : <div className="panel supplier-detail-empty"><Empty title="Dodávateľ nebol vybraný" text="Vyberte dodávateľa v ľavom registri."/></div>}
+      {selected ? <SupplierDetail item={selected} periodMode={periodMode} selectedYear={selectedYear} periodContext={selectedContext || supplierPeriodContext(selected, periodMode, selectedYear)} canEdit={canEdit} canOpenAdvanced={canOpenAdvanced} onEditSupplier={() => openSupplierEdit(selected)} onDeleteSupplier={() => deleteSupplierOverride(selected)} onNewRelationship={openNewRelationship} onEditRelationship={setEditingRelationship} onConfirmRelationship={confirmRelationship} onRejectRelationship={rejectRelationship} onDeleteRelationship={deleteRelationship} go={go}/> : <div className="panel supplier-detail-empty"><Empty title="Dodávateľ nebol vybraný" text="Vyberte dodávateľa v ľavom registri."/></div>}
     </section>
 
     {editingSupplier !== undefined && canEdit && <SupplierEditModal item={editingSupplier} newMode={newSupplierMode} onClose={() => { setEditingSupplier(undefined); setNewSupplierMode(false) }} onSave={saveSupplier}/>} 
@@ -432,8 +533,11 @@ export default function Suppliers({ state, canEdit, currentUser, role, onChange,
   </div>
 }
 
-function SupplierDetail({ item, canEdit, canOpenAdvanced, onEditSupplier, onDeleteSupplier, onNewRelationship, onEditRelationship, onConfirmRelationship, onRejectRelationship, onDeleteRelationship, go }: {
+function SupplierDetail({ item, periodMode, selectedYear, periodContext, canEdit, canOpenAdvanced, onEditSupplier, onDeleteSupplier, onNewRelationship, onEditRelationship, onConfirmRelationship, onRejectRelationship, onDeleteRelationship, go }: {
   item: SupplierDirectoryItem
+  periodMode: SupplierPeriodMode
+  selectedYear: number
+  periodContext: ReturnType<typeof supplierPeriodContext>
   canEdit: boolean
   canOpenAdvanced: boolean
   onEditSupplier: () => void
@@ -448,12 +552,14 @@ function SupplierDetail({ item, canEdit, canOpenAdvanced, onEditSupplier, onDele
   const record = item.record
   const maxMonth = Math.max(...item.monthly.map(value => Math.abs(value)), 1)
   const known = knownSupplierByIco(item.ico)
-  const activeRelationships = item.relationships.filter(relation => relation.status !== 'Zamietnuté')
+  const activeRelationships = periodContext.relationships
   const rejectedRelationships = item.relationships.filter(relation => relation.status === 'Zamietnuté')
   const confirmed = activeRelationships.filter(relation => relation.status === 'Potvrdené').length
   const candidates = activeRelationships.filter(relation => relation.status === 'Na preverenie').length
   const highCritical = activeRelationships.filter(relation => /krit|vysok/i.test(relation.criticality)).length
   const groups = [...new Set(activeRelationships.map(relation => relation.parentSystem || relation.targetType || 'Ostatné'))]
+  const detailPeriodLabel = periodMode === 'all' ? 'Všetky dostupné obdobia' : String(selectedYear)
+  const detailSlaLabel = slaLabel(periodContext)
 
   function exportRelationships() {
     const header = ['IČO', 'Dodávateľ', 'Typ', 'Nadradený systém', 'Systém / modul', 'Rola', 'Zmluva', 'Platnosť od', 'Platnosť do', 'Stav', 'Dôvera', 'Zdroj', 'Poznámka']
@@ -463,16 +569,16 @@ function SupplierDetail({ item, canEdit, canOpenAdvanced, onEditSupplier, onDele
 
   return <article className="panel supplier-detail">
     <header className="supplier-detail-head">
-      <div><span className="eyebrow">DODÁVATEĽ 360</span><h2>{item.name}</h2><div className="supplier-detail-tags"><Badge tone={identityTone(item)}>{identityLabel(item)}</Badge>{item.ico && <Badge tone="neutral">IČO {item.ico}</Badge>}{record?.status && <Badge tone={record.status === 'Aktívny' ? 'success' : 'neutral'}>{record.status}</Badge>}{candidates > 0 && <Badge tone="warning">{candidates} na preverenie</Badge>}</div><p>{record?.category || 'Dodávateľ / partner identifikovaný zo zdrojových dát aplikácie.'}</p></div>
+      <div><span className="eyebrow">DODÁVATEĽ 360</span><h2>{item.name}</h2><div className="supplier-detail-tags"><Badge tone={identityTone(item)}>{identityLabel(item)}</Badge>{item.ico && <Badge tone="neutral">IČO {item.ico}</Badge>}<Badge tone="info">Obdobie: {detailPeriodLabel}</Badge>{record?.status && <Badge tone={record.status === 'Aktívny' ? 'success' : 'neutral'}>{record.status}</Badge>}{candidates > 0 && <Badge tone="warning">{candidates} na preverenie</Badge>}</div><p>{record?.category || 'Dodávateľ / partner identifikovaný zo zdrojových dát aplikácie.'}</p></div>
       <div className="supplier-detail-actions">{go&&<button className="button button-secondary button-small" onClick={()=>go('contracts')}><Icon name="calendar" size={15}/> Zmluvy / SLA</button>}<button className="button button-secondary button-small" onClick={exportRelationships}><Icon name="download" size={15}/> CSV väzby</button>{canEdit && <><button className="button button-secondary button-small" onClick={onNewRelationship}><Icon name="plus" size={15}/> Väzba</button><button className="button button-secondary button-small" onClick={onEditSupplier}><Icon name="edit" size={15}/> Karta</button>{record && <button className="icon-button supplier-delete" onClick={onDeleteSupplier} title="Odstrániť manuálnu kartu"><Icon name="trash" size={17}/></button>}</>}</div>
     </header>
 
-    <section className="supplier-detail-metrics supplier-detail-metrics-extended">
-      <div><span>Platby 2026</span><strong>{item.amount ? money2.format(item.amount) : '—'}</strong><small>v SIT zdroji</small></div>
-      <div><span>Zmluvné referencie</span><strong>{item.contracts.length}</strong><small>{item.contracts.slice(0, 2).join(', ') || 'bez referencie'}</small></div>
+    <section className="supplier-detail-metrics supplier-detail-metrics-extended supplier-detail-metrics-temporal">
+      <div><span>{periodMode === 'all' ? 'Platby 2026' : `Platby ${selectedYear}`}</span><strong>{periodContext.paymentAvailable ? (periodContext.paymentAmount ? money2.format(periodContext.paymentAmount) : '—') : '—'}</strong><small>{periodContext.paymentAvailable ? PAYMENT_PERIOD_LABEL : 'bez finančného datasetu'}</small></div>
+      <div><span>Zmluvy v období</span><strong>{periodContext.contracts.length}</strong><small>{periodContext.contracts.slice(0, 2).join(', ') || 'bez referencie'}</small></div>
       <div><span>Aktívne väzby</span><strong>{activeRelationships.length}</strong><small>{confirmed} potvrdených</small></div>
-      <div className={candidates ? 'metric-warning' : ''}><span>Na preverenie</span><strong>{candidates}</strong><small>odvodené kandidáty</small></div>
-      <div><span>Vysoká / kritická</span><strong>{highCritical}</strong><small>servisná expozícia</small></div>
+      <div><span>SLA</span><strong>{detailSlaLabel}</strong><small>{periodContext.slaYes} áno · {periodContext.slaNo} nie · {periodContext.slaUnknown} preveriť</small></div>
+      <div className={candidates ? 'metric-warning' : ''}><span>Na preverenie</span><strong>{candidates}</strong><small>{highCritical} vysoké / kritické väzby</small></div>
     </section>
 
     <section className="supplier-relationship-summary">
@@ -503,8 +609,8 @@ function SupplierDetail({ item, canEdit, canOpenAdvanced, onEditSupplier, onDele
 
     <section className="supplier-detail-grid">
       <div className="supplier-card-block">
-        <h3>Mesačné čerpanie · 2026</h3>
-        {item.paymentCount ? <div className="supplier-month-bars">{item.monthly.map((value, index) => <div key={months[index]}><span>{months[index]}</span><i><b style={{ width: `${value ? Math.max(4, Math.abs(value) / maxMonth * 100) : 0}%` }}/></i><strong>{value ? money.format(value) : '—'}</strong></div>)}</div> : <p className="supplier-muted">Táto identita nemá platbu v SIT snapshote 01–05/2026.</p>}
+        <h3>Mesačné čerpanie · {periodMode === 'all' ? '2026' : selectedYear}</h3>
+        {periodContext.paymentAvailable ? (item.paymentCount ? <div className="supplier-month-bars">{item.monthly.map((value, index) => <div key={months[index]}><span>{months[index]}</span><i><b style={{ width: `${value ? Math.max(4, Math.abs(value) / maxMonth * 100) : 0}%` }}/></i><strong>{value ? money.format(value) : '—'}</strong></div>)}</div> : <p className="supplier-muted">Táto identita nemá platbu v SIT snapshote {PAYMENT_PERIOD_LABEL}.</p>) : <p className="supplier-muted">Pre rok {selectedYear} momentálne nie je v Supplier registri dostupný riadkový finančný dataset. Zobrazenie preto filtruje iba zmluvy, SLA a servisné väzby.</p>}
       </div>
       <div className="supplier-card-block"><h3>Identita a evidencia</h3><dl className="supplier-dl"><div><dt>Názov</dt><dd>{item.name}</dd></div><div><dt>IČO</dt><dd>{item.ico || '—'}</dd></div><div><dt>Zdroj názvu</dt><dd>{record?.name ? 'Spravovaná karta' : known?.source || item.source}</dd></div><div><dt>Strediská</dt><dd>{item.centers.join(', ') || '—'}</dd></div><div><dt>Kategória</dt><dd>{valueOrDash(record?.category)}</dd></div><div><dt>Aktualizácia</dt><dd>{record?.updatedAt ? `${new Date(record.updatedAt).toLocaleString('sk-SK')} · ${record.updatedBy || 'admin'}` : 'zdrojová evidencia'}</dd></div></dl></div>
     </section>
