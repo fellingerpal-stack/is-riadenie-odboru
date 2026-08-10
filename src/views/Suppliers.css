@@ -13,3 +13,47 @@
 @media(max-width:1450px){.supplier-kpis-temporal{grid-template-columns:repeat(3,minmax(0,1fr))}.supplier-toolbar-temporal{grid-template-columns:minmax(240px,1fr) repeat(3,minmax(135px,1fr));}.supplier-toolbar-temporal .supplier-search{grid-column:1/-1}.supplier-toolbar-temporal .supplier-toolbar-result{display:none}}
 @media(max-width:1050px){.supplier-period-strip{align-items:flex-start;flex-direction:column}.supplier-period-strip small{text-align:left;max-width:none}.supplier-toolbar-temporal{grid-template-columns:repeat(2,minmax(0,1fr))}.supplier-toolbar-temporal .supplier-search{grid-column:1/-1}}
 @media(max-width:700px){.supplier-kpis-temporal{grid-template-columns:1fr}.supplier-toolbar-temporal{grid-template-columns:1fr}.supplier-toolbar-temporal .supplier-search{grid-column:auto}.supplier-period-strip{padding:10px 12px}}
+
+/* v0.33 · Raw Financial Ledger & Supplier History */
+.supplier-toolbar-ledger{grid-template-columns:minmax(280px,1.6fr) repeat(auto-fit,minmax(135px,1fr));gap:10px}
+.supplier-toolbar-ledger .supplier-toolbar-result{min-width:70px}
+.supplier-kpis-ledger{grid-template-columns:repeat(6,minmax(0,1fr))}
+.supplier-detail-metrics-ledger{grid-template-columns:repeat(6,minmax(0,1fr))}
+.supplier-detail-metrics-ledger>div:nth-child(n){border-bottom:0}
+.supplier-ledger-history{margin:14px 18px 0}
+.supplier-ledger-years{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px}
+.supplier-ledger-year{display:grid;gap:4px;padding:12px 13px;border:1px solid #dfe9f1;border-radius:12px;background:linear-gradient(145deg,#fbfdff,#f5fafc)}
+.supplier-ledger-year>span{font-size:10px;font-weight:900;letter-spacing:.06em;color:#64788f}
+.supplier-ledger-year>strong{font-size:17px;color:#123452;letter-spacing:-.02em}
+.supplier-ledger-year>small{font-size:10px;color:#76879a}
+.supplier-movements{margin:14px 18px 0}
+.supplier-movement-list{display:grid;margin-top:10px;border:1px solid #e3eaf1;border-radius:12px;overflow:hidden}
+.supplier-movement-row{display:grid;grid-template-columns:130px minmax(240px,1fr) 125px;gap:14px;align-items:center;padding:10px 12px;border-bottom:1px solid #edf2f6;background:#fff}
+.supplier-movement-row:last-child{border-bottom:0}
+.supplier-movement-row:hover{background:#f8fbfd}
+.supplier-movement-date,.supplier-movement-desc{display:grid;gap:2px;min-width:0}
+.supplier-movement-date strong,.supplier-movement-desc strong{font-size:11px;color:#213a55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.supplier-movement-date small,.supplier-movement-desc small{font-size:9px;color:#8190a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.supplier-movement-amount{text-align:right;color:#116345;font-size:12px}
+.supplier-movement-amount.negative,.supplier-month-bars strong.is-negative{color:#b54747}
+.supplier-month-bars b.is-negative{background:linear-gradient(90deg,#d36b6b,#ee9a86)}
+.supplier-period-strip-ledger{border-color:#c9e1e4;background:linear-gradient(135deg,#f5fbff,#f4fbf8)}
+
+@media(max-width:1500px){
+  .supplier-kpis-ledger{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .supplier-detail-metrics-ledger{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .supplier-detail-metrics-ledger>div{border-bottom:1px solid #e8eef4}
+}
+@media(max-width:1050px){
+  .supplier-toolbar-ledger{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .supplier-toolbar-ledger .supplier-search{grid-column:1/-1}
+  .supplier-movement-row{grid-template-columns:110px minmax(180px,1fr) 110px}
+}
+@media(max-width:700px){
+  .supplier-kpis-ledger,.supplier-detail-metrics-ledger{grid-template-columns:1fr}
+  .supplier-toolbar-ledger{grid-template-columns:1fr}
+  .supplier-toolbar-ledger .supplier-search{grid-column:auto}
+  .supplier-ledger-history,.supplier-movements{margin:12px}
+  .supplier-movement-row{grid-template-columns:1fr;gap:5px}
+  .supplier-movement-amount{text-align:left}
+}

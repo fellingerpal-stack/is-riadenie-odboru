@@ -17,6 +17,7 @@ type Confidence = 'vysoká'|'stredná'
 type CostMode = 'Prevádzka'|'Rozvoj'
 
 interface CostValue { year:number; amount:number; rowCount:number }
+interface CostEvidenceYear { year:number; topDocument:string; documentCount:number; supplierIds:string[]; zakCount:number }
 interface CostItem {
   id:string
   kpd:string
@@ -32,6 +33,7 @@ interface CostItem {
   topDocument:string
   latestDocumentCount:number
   latestZakCount:number
+  evidenceByYear?:CostEvidenceYear[]
 }
 interface PaymentRow {
   supplierId:string
@@ -73,12 +75,28 @@ const compactMoney=new Intl.NumberFormat('sk-SK',{style:'currency',currency:'EUR
 const number=new Intl.NumberFormat('sk-SK',{maximumFractionDigits:1})
 
 function amountFor(item:CostItem,year:number){return item.values.find(value=>value.year===year)?.amount??0}
+function evidenceForYear(item:CostItem,year:number){return item.evidenceByYear?.find(entry=>entry.year===year)}
+function documentForYear(item:CostItem,year:number){return evidenceForYear(item,year)?.topDocument||item.topDocument||'—'}
 function percent(value:number,total:number){return total?value/total*100:0}
 function norm(value:string){return value.toLocaleLowerCase('sk-SK').normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
 function normalizedCode(value:string){return String(value||'').replace(/^0+/,'')||'0'}
 function evidenceSupplierFor(item:CostItem,year:number,state:AppState):EvidenceSupplier{
+  const direct=item.evidenceByYear?.find(entry=>entry.year===year)
+  if(direct?.supplierIds?.length){
+    const primary=direct.supplierIds[0]
+    const rawIco=String(primary||'').replace(/\D/g,'')
+    const ico=rawIco?rawIco.padStart(8,''):''
+    const fallback=ico?`Firma / IČO ${ico}`:'Bez IČO / interné položky'
+    return {
+      key:primary,
+      name:resolveSupplierName(state,primary,fallback),
+      ico,
+      match:direct.topDocument&&direct.topDocument!=='—'?'doklad':'položka',
+      multiple:Math.max(0,direct.supplierIds.length-1),
+    }
+  }
   if(year!==2026)return {key:'',name:'',ico:'',match:'none',multiple:0}
-  const exactDocument=String(item.topDocument||'').trim()
+  const exactDocument=String(documentForYear(item,year)||'').trim()
   let candidates=exactDocument&&exactDocument!=='—'
     ? paymentDataset.payments.filter(payment=>payment.document===exactDocument)
     : []
@@ -112,6 +130,7 @@ function evidenceSupplierFor(item:CostItem,year:number,state:AppState):EvidenceS
     multiple:Math.max(0,suppliers.length-1),
   }
 }
+
 function signedPct(value:number){return `${value>0?'+':''}${number.format(value)} %`}
 function roleCount(assignments:Record<string,unknown>,role:'R'|'A'){return Object.values(assignments).filter(value=>splitRaciRoles(value).includes(role)).length}
 
@@ -186,7 +205,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
     if(mode!=='Všetko'&&item.mode!==mode)return false
     if(category!=='Všetko'&&item.category!==category)return false
     if(confidence!=='Všetko'&&item.confidence!==confidence)return false
-    if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${item.topDocument}`).includes(norm(search)))return false
+    if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForYear(item,year)}`).includes(norm(search)))return false
     return true
   }),[mode,category,confidence,search,period])
 
@@ -239,7 +258,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
       const supplier=evidenceSupplierMeta.get(item.id)??{key:'',name:'',ico:'',match:'none',multiple:0}
       if(evidenceEntity!=='Všetko'&&item.entity!==evidenceEntity)return false
       if(evidenceSupplier!=='Všetko'&&supplier.key!==evidenceSupplier)return false
-      if(evidenceSearch&&!norm(`${item.label} ${item.reason} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${item.topDocument} ${supplier.name} ${supplier.ico}`).includes(norm(evidenceSearch)))return false
+      if(evidenceSearch&&!norm(`${item.label} ${item.reason} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForYear(item,year)} ${supplier.name} ${supplier.ico}`).includes(norm(evidenceSearch)))return false
       return true
     })
     return [...result].sort((a,b)=>{
@@ -295,7 +314,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
       if(item.mode!=='Prevádzka')return false
       if(category!=='Všetko'&&item.category!==category)return false
       if(confidence!=='Všetko'&&item.confidence!==confidence)return false
-      if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${item.topDocument}`).includes(norm(search)))return false
+      if(search&&!norm(`${item.label} ${item.entity} ${item.category} ${item.kpd} ${item.ppd} ${documentForYear(item,year)}`).includes(norm(search)))return false
       return true
     }).reduce((sum,item)=>sum+amountFor(item,trendYear),0),
   }))
@@ -316,7 +335,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
   function exportCurrent(){
     downloadCsv(`it-naklady-${year}-${period==='fullYear'?'jan-dec':'jan-jun'}.csv`,[
       ['Rok','Režim','Kategória','Entita','Dodávateľ','IČO','KPD','PPD','Položka','Suma','Dôvera','TOP doklad','Dôvod klasifikácie'],
-      ...rows.map(item=>{const supplier=evidenceSupplierFor(item,year,state);return [String(year),item.mode,item.category,item.entity,supplier.name,supplier.ico,item.kpd,item.ppd,item.label,String(amountFor(item,year)),item.confidence,item.topDocument,item.reason]}),
+      ...rows.map(item=>{const supplier=evidenceSupplierFor(item,year,state);return [String(year),item.mode,item.category,item.entity,supplier.name,supplier.ico,item.kpd,item.ppd,item.label,String(amountFor(item,year)),item.confidence,documentForYear(item,year),item.reason]}),
     ])
   }
 
@@ -387,7 +406,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
         <button className="itc-density-button" onClick={()=>{setEvidenceSearch('');setEvidenceEntity('Všetko');setEvidenceSupplier('Všetko');setEvidenceSort('amount')}}>Reset</button>
       </div>
       <div className={`itc-evidence-shell ${evidenceDense?'dense':''}`}>
-        <table className="itc-table"><colgroup><col className="itc-col-item"/><col className="itc-col-code"/><col className="itc-col-mode"/><col className="itc-col-category"/><col className="itc-col-supplier"/><col className="itc-col-confidence"/><col className="itc-col-document"/><col className="itc-col-amount"/></colgroup><thead><tr><th>Položka</th><th>KPD / PPD</th><th>RUN/CHANGE</th><th>Kategória / entita</th><th>Dodávateľ</th><th>Dôvera</th><th>TOP doklad</th><th className="number">{year}</th></tr></thead><tbody>{evidenceRows.slice(0,evidenceLimit).map(item=>{const supplier=evidenceSupplierMeta.get(item.id)??{key:'',name:'',ico:'',match:'none',multiple:0};return <tr key={item.id}><td><strong>{item.label}</strong><small>{item.reason}</small></td><td className="itc-code-cell"><strong>{item.kpd} / {item.ppd||'—'}</strong></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td className="itc-supplier-cell">{supplier.key?<><strong>{supplier.name}{supplier.multiple?` +${supplier.multiple}`:''}</strong><small>{supplier.ico?`IČO ${supplier.ico}`:'bez IČO'} · {supplier.match==='doklad'?'zhoda dokladu':'zhoda položky'}</small></>:<><strong>—</strong><small>bez spoľahlivej zhody</small></>}</td><td><Badge tone={item.confidence==='vysoká'?'success':'warning'}>{item.confidence}</Badge></td><td className="itc-document-cell"><strong>{item.topDocument||'—'}</strong></td><td className={`number ${amountFor(item,year)<0?'itc-negative':''}`}><strong>{money.format(amountFor(item,year))}</strong></td></tr>})}</tbody></table>
+        <table className="itc-table"><colgroup><col className="itc-col-item"/><col className="itc-col-code"/><col className="itc-col-mode"/><col className="itc-col-category"/><col className="itc-col-supplier"/><col className="itc-col-confidence"/><col className="itc-col-document"/><col className="itc-col-amount"/></colgroup><thead><tr><th>Položka</th><th>KPD / PPD</th><th>RUN/CHANGE</th><th>Kategória / entita</th><th>Dodávateľ</th><th>Dôvera</th><th>TOP doklad</th><th className="number">{year}</th></tr></thead><tbody>{evidenceRows.slice(0,evidenceLimit).map(item=>{const supplier=evidenceSupplierMeta.get(item.id)??{key:'',name:'',ico:'',match:'none',multiple:0};return <tr key={item.id}><td><strong>{item.label}</strong><small>{item.reason}</small></td><td className="itc-code-cell"><strong>{item.kpd} / {item.ppd||'—'}</strong></td><td><Badge tone={item.mode==='Prevádzka'?'info':'purple'}>{item.mode}</Badge></td><td><strong>{item.category}</strong><small>{item.entity}</small></td><td className="itc-supplier-cell">{supplier.key?<><strong>{supplier.name}{supplier.multiple?` +${supplier.multiple}`:''}</strong><small>{supplier.ico?`IČO ${supplier.ico}`:'bez IČO'} · {supplier.match==='doklad'?'zhoda dokladu':'zhoda položky'}</small></>:<><strong>—</strong><small>bez spoľahlivej zhody</small></>}</td><td><Badge tone={item.confidence==='vysoká'?'success':'warning'}>{item.confidence}</Badge></td><td className="itc-document-cell"><strong>{documentForYear(item,year)}</strong></td><td className={`number ${amountFor(item,year)<0?'itc-negative':''}`}><strong>{money.format(amountFor(item,year))}</strong></td></tr>})}</tbody></table>
       </div>
       <div className="itc-table-note">Zobrazených {Math.min(evidenceRows.length,evidenceLimit)} z {evidenceRows.length} položiek. Hlavička aj pravý stĺpec so sumou zostávajú pri rolovaní viditeľné; na menších obrazovkách sa tabuľka roluje iba vo vlastnom paneli.</div>
     </section>:<section className="panel itc-full-year-evidence-note"><Icon name="shield" size={22}/><div><span className="eyebrow">CELÝ ROK · DÔKAZNOSŤ</span><h3>Celoročný pohľad je manažérsky agregát</h3><p>Pre roky 2023–2025 sú v zdrojovej dátovej bráne potvrdené mesiace január až december. Full-year IT výrez je konzervatívny: explicitné IT/DC VaV položky a priame IT KPD/PPD sú zahrnuté, generické položky bez bezpečnej IT väzby nie. Detailná dokladová tabuľka ostáva dostupná v režime Jan–Jún, kde máme auditovateľné položky po dokladoch.</p></div></section>}
