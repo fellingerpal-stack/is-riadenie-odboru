@@ -25,11 +25,25 @@ export async function loadCurrentSnapshot(): Promise<CloudSnapshot | null> {
 export async function saveCurrentSnapshot(payload: AppState, expectedVersion: number | null = null): Promise<CloudSnapshot> {
   if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
 
-  const { data, error } = await supabase.rpc('save_app_snapshot_v3', {
+  let result = await supabase.rpc('save_app_snapshot_v4', {
     p_payload: payload,
     p_expected_version: expectedVersion,
   })
 
+  if (result.error) {
+    const detail = extractErrorDetails(result.error)
+    const normalized = `${detail.code} ${detail.message}`.toLowerCase()
+    const v4Missing = normalized.includes('pgrst202')
+      || normalized.includes('save_app_snapshot_v4') && (normalized.includes('schema cache') || normalized.includes('could not find'))
+    if (v4Missing) {
+      result = await supabase.rpc('save_app_snapshot_v3', {
+        p_payload: payload,
+        p_expected_version: expectedVersion,
+      })
+    }
+  }
+
+  const { data, error } = result
   if (error) {
     const detail = extractErrorDetails(error)
     const parts = [
@@ -369,13 +383,13 @@ export async function writeUserAudit(action: string, targetUserId: string, targe
   if (error) console.warn('Auditný záznam sa nepodarilo uložiť:', error.message)
 }
 
-export async function listUserAudit(): Promise<UserAuditEntry[]> {
+export async function listUserAudit(limit = 200): Promise<UserAuditEntry[]> {
   if (!supabase) return []
   const { data, error } = await supabase
     .from('user_admin_audit')
     .select('id, actor_id, actor_name, target_user_id, target_user_name, action, detail, created_at')
     .order('created_at', { ascending: false })
-    .limit(100)
+    .limit(Math.max(20, Math.min(limit, 1000)))
   if (error) throw error
   return (data ?? []).map((row) => ({
     id: String(row.id ?? ''),
