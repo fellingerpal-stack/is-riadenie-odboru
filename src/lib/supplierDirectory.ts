@@ -3,6 +3,7 @@ import informationSystems from '../data/informationSystems.seed.json'
 import { supplierRelationshipCandidates } from '../data/supplierRelationshipCandidates'
 import { sitPayments } from './managementIntelligence'
 import { knownSupplierByIco, normalizeSupplierIco } from '../data/supplierRegistry'
+import supplierPaymentHistory from '../data/supplierPaymentsHistory.json'
 
 interface InformationSystemSupplierRow {
   sourceKey?: string
@@ -21,6 +22,20 @@ export interface SupplierRelationshipView extends SupplierRelationship {
   locked: boolean
 }
 
+export interface SupplierLedgerYear {
+  year: number
+  amount: number
+  movementCount: number
+  positiveAmount: number
+  negativeAmount: number
+  correctionCount: number
+  monthly: number[]
+  contracts: string[]
+  centers: string[]
+  kpd: string[]
+  topNotes: string[]
+}
+
 export interface SupplierDirectoryItem {
   key: string
   ico: string
@@ -34,6 +49,18 @@ export interface SupplierDirectoryItem {
   contracts: string[]
   centers: string[]
   topNotes: string[]
+  ledgerAmount: number
+  ledgerMovementCount: number
+  ledgerPositiveAmount: number
+  ledgerNegativeAmount: number
+  ledgerCorrectionCount: number
+  ledgerYears: SupplierLedgerYear[]
+  ledgerContracts: string[]
+  ledgerCenters: string[]
+  ledgerKpd: string[]
+  ledgerTopNotes: string[]
+  ledgerFirstDate: string
+  ledgerLastDate: string
   systems: { name: string; criticality: string; contractNumber: string; slaStatus: string; contractValidTo: string }[]
   relationships: SupplierRelationshipView[]
   record: SupplierRecord | null
@@ -115,6 +142,24 @@ export function resolveSupplierName(state: AppState, icoOrKey: string, fallback 
   return fallback || (normalizedIco ? `Firma / IČO ${normalizedIco}` : icoOrKey)
 }
 
+interface SupplierLedgerVendorRow {
+  supplierId: string
+  amount: number
+  movementCount: number
+  positiveAmount: number
+  negativeAmount: number
+  correctionCount: number
+  years: SupplierLedgerYear[]
+  contracts: string[]
+  centers: string[]
+  kpd: string[]
+  topNotes: string[]
+  firstDate: string
+  lastDate: string
+}
+
+const supplierLedger = supplierPaymentHistory as { vendors: SupplierLedgerVendorRow[] }
+
 export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[] {
   const map = new Map<string, SupplierDirectoryItem>()
   const serviceCriticality = new Map((state.services || []).map(service => [service.id, service.criticality || '']))
@@ -134,6 +179,18 @@ export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[]
         contracts: [],
         centers: [],
         topNotes: [],
+        ledgerAmount: 0,
+        ledgerMovementCount: 0,
+        ledgerPositiveAmount: 0,
+        ledgerNegativeAmount: 0,
+        ledgerCorrectionCount: 0,
+        ledgerYears: [],
+        ledgerContracts: [],
+        ledgerCenters: [],
+        ledgerKpd: [],
+        ledgerTopNotes: [],
+        ledgerFirstDate: '',
+        ledgerLastDate: '',
         systems: [],
         relationships: [],
         record: null,
@@ -170,6 +227,25 @@ export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[]
     item.contracts = mergeUnique([...item.contracts, ...vendor.contracts])
     item.centers = mergeUnique([...item.centers, ...vendor.centers])
     item.topNotes = mergeUnique([...item.topNotes, ...vendor.topNotes]).slice(0, 8)
+  })
+
+  supplierLedger.vendors.forEach(vendor => {
+    const ico = normalizeSupplierIco(vendor.supplierId)
+    if (!ico) return
+    const identity = supplierNameForPayment(ico)
+    const item = ensure(ico, ico, identity.name, `${identity.source} · účtovný XLSX ledger`, identity.verified)
+    item.ledgerAmount = Number(vendor.amount || 0)
+    item.ledgerMovementCount = Number(vendor.movementCount || 0)
+    item.ledgerPositiveAmount = Number(vendor.positiveAmount || 0)
+    item.ledgerNegativeAmount = Number(vendor.negativeAmount || 0)
+    item.ledgerCorrectionCount = Number(vendor.correctionCount || 0)
+    item.ledgerYears = (vendor.years || []).map(year => ({ ...year, monthly: [...(year.monthly || [])] }))
+    item.ledgerContracts = mergeUnique(vendor.contracts || [])
+    item.ledgerCenters = mergeUnique(vendor.centers || [])
+    item.ledgerKpd = mergeUnique(vendor.kpd || [])
+    item.ledgerTopNotes = mergeUnique(vendor.topNotes || []).slice(0, 10)
+    item.ledgerFirstDate = vendor.firstDate || ''
+    item.ledgerLastDate = vendor.lastDate || ''
   })
 
   ;(informationSystems as InformationSystemSupplierRow[]).forEach(system => {
@@ -279,5 +355,5 @@ export function buildSupplierDirectory(state: AppState): SupplierDirectoryItem[]
         }),
       }
     })
-    .sort((a, b) => b.amount - a.amount || b.relationships.filter(item => item.status !== 'Zamietnuté').length - a.relationships.filter(item => item.status !== 'Zamietnuté').length || a.name.localeCompare(b.name, 'sk'))
+    .sort((a, b) => Math.abs(b.ledgerAmount || b.amount) - Math.abs(a.ledgerAmount || a.amount) || b.relationships.filter(item => item.status !== 'Zamietnuté').length - a.relationships.filter(item => item.status !== 'Zamietnuté').length || a.name.localeCompare(b.name, 'sk'))
 }
