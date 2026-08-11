@@ -41,8 +41,10 @@ import Contracts from './views/Contracts'
 import MyWorkspace from './views/MyWorkspace'
 import DataQuality from './views/DataQuality'
 import LogManagement from './views/LogManagement'
+import ManagementActionCenter from './views/ManagementActionCenter'
+import { countManagementActions } from './lib/actionCenter'
 
-type ViewKey='portals'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'logs'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'actionCenter'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'logs'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -50,7 +52,7 @@ const managementRoles:AppRole[]=['admin','manager']
 const resolverRoles:AppRole[]=['admin','manager','resolver']
 const employeeRoles:AppRole[]=['admin','manager','resolver','employee']
 const orisNavGroups:{label:string;items:NavItem[]}[]=[
-  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},{key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},{key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles}]},
+  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},{key:'actionCenter',label:'Management Action Center',icon:'tasks',roles:['admin','manager','resolver','viewer'],badge:s=>countManagementActions(s)},{key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},{key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles}]},
   {label:'Spoločné',items:[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
@@ -88,7 +90,7 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
   ]},
 ]
 const oitNavGroups:{label:string;items:NavItem[]}[]=[
-  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},{key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},{key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles}]},
+  {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},{key:'actionCenter',label:'Management Action Center',icon:'tasks',roles:['admin','manager','resolver','viewer'],badge:s=>countManagementActions(s)},{key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},{key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles}]},
   {label:'Spoločné',items:[
     {key:'technology',label:'Technologický katalóg',icon:'systems',roles:['admin','manager','resolver','viewer']},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
@@ -116,6 +118,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
 const portalNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Pracovný priestor',items:[
     {key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},
+    {key:'actionCenter',label:'Management Action Center',icon:'tasks',roles:['admin','manager','resolver','viewer'],badge:s=>countManagementActions(s)},
     {key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},
     {key:'intelligence',label:'Riadiace centrum IT',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles},
@@ -381,7 +384,7 @@ export default function App(){
     return()=>window.removeEventListener('keydown',handler)
   },[])
 
-  const workspace=view==='portals'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'||view==='logs'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='actionCenter'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'||view==='logs'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
@@ -650,6 +653,7 @@ export default function App(){
       <main className="content">
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong> {syncError}</span><div className="sync-alert-actions"><button className="button button-secondary button-small" onClick={()=>void saveCloud()}>Skúsiť uložiť znova</button><button className="button button-ghost button-small" onClick={()=>void loadCloud()}>Načítať z DB</button></div></div>}
         {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared}/>}
+        {view==='actionCenter'&&<ManagementActionCenter state={state} currentUser={displayName} go={go}/>}
         {view==='myWorkspace'&&<MyWorkspace state={state} currentUser={displayName} role={role} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
         {view==='dataQuality'&&<DataQuality state={state} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
         {view==='technology'&&<TechnologyCatalog state={state} go={go}/>}
