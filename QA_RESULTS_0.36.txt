@@ -1,0 +1,29 @@
+IS Riadenie odboru v0.36.0 - QA výsledky
+=========================================
+
+1. TypeScript/TSX syntakticka kontrola cez TypeScript 5.8.3 transpileModule:
+   - src/App.tsx: OK
+   - src/lib/actionCenter.ts: OK
+   - src/views/ManagementActionCenter.tsx: OK
+
+2. Verzie:
+   - package.json: 0.36.0
+   - src/data/seed.json meta.version: 0.36.0
+   - src/lib/storage.ts CURRENT_VERSION: 0.36.0
+
+3. Runtime kontrola Action Center engine nad bundled seed datami
+   Referencny cas testu: 2026-08-11 10:55 Europe/Bratislava
+   - otvorene signaly: 75
+   - kriticke: 28
+   - vysoke: 19
+   - zdroje v seed baseline: Helpdesk, Change management, IAM / Pristupy,
+     Problem management, Asset management, Rizika, Projekty a ulohy,
+     Riadiace opatrenia, Rozhodnutia
+
+4. Bez databazovej migracie
+   Release nepridava novu tabulku ani SQL. Action Center je read-only agregacna vrstva.
+
+5. Plny Vite build
+   V pracovnom baliku je release distribuovany ako delta nad v0.35.0, nie cely repozitar,
+   preto sa plny projektovy Vite build v tomto pracovnom adresari nespustal.
+   Produkcny Vercel deployment musi standardne vykonat npm build po overlayi na v0.35.0.
