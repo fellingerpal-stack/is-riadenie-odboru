@@ -1,0 +1,31 @@
+IS Riadenie odboru v0.37.0 – QA
+================================
+
+Zdrojový XLSX SHA-256:
+2865c69660197e9bfd1a02ae33a668bb1a334f687b6626ce93a9637ec81714af
+
+Dataset:
+- monthsLoaded = 7
+- Úloha 10 = 509559.61 EUR
+- Úloha 22 = 49508.47 EUR
+- Úloha 25 = 48541.18 EUR
+- spolu = 607609.26 EUR
+- zostatok spolu = 461073.74 EUR
+
+Mesačné hodnoty:
+- 10: 21478.07, 124760.73, 64504.75, 58064.15, 116784.39, 63313.18, 60654.34
+- 22: 0.00, 5586.88, 1832.34, 4050.07, 19304.69, 3559.52, 15174.97
+- 25: 2776.60, 4386.26, 4345.58, 6175.18, 19362.37, 6950.49, 4544.70
+
+Kontroly:
+- extract_contract_tasks_from_audit.py reprodukuje rovnaký task dataset: OK
+- package.json verzia 0.37.0: OK
+- storage CURRENT_VERSION 0.37.0: OK
+- seed meta.version 0.37.0: OK
+- ContractSpending.tsx TypeScript/JSX syntax: OK
+- ItCosts.tsx TypeScript/JSX syntax: OK
+- OperationsIntelligence.tsx TypeScript/JSX syntax: OK
+- staré UI texty 01–05 / do mája v menených view súboroch: nenájdené
+- installer test 0.36.0 -> 0.37.0: OK
+- Supabase SQL: NEVYŽADUJE SA
+- dodávateľský ledger: NEMENENÝ
