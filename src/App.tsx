@@ -657,7 +657,7 @@ export default function App(){
       <main className="content">
         {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong> {syncError}</span><div className="sync-alert-actions"><button className="button button-secondary button-small" onClick={()=>void saveCloud()}>Skúsiť uložiť znova</button><button className="button button-ghost button-small" onClick={()=>void loadCloud()}>Načítať z DB</button></div></div>}
         {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared}/>}
-        {view==='enterprise360'&&<Enterprise360 state={state} go={go}/>}
+        {view==='enterprise360'&&<Enterprise360 state={state} go={go} canEdit={canManageShared} currentUser={displayName} onGovernanceChange={enterpriseGovernance=>setState(current=>({...current,enterpriseGovernance}))} onDevelopmentRequestsChange={contractDevelopmentRequests=>setState(current=>({...current,contractDevelopmentRequests}))}/>}
         {view==='actionCenter'&&<ManagementActionCenter state={state} currentUser={displayName} go={go}/>}
         {view==='myWorkspace'&&<MyWorkspace state={state} currentUser={displayName} role={role} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
         {view==='dataQuality'&&<DataQuality state={state} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
