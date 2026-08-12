@@ -48,7 +48,7 @@ function SectionHeading({ eyebrow, title, note }: { eyebrow: string; title: stri
 }
 
 export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=true}:{go:Go;canOit?:boolean;canOris?:boolean;canShared?:boolean}){
-  const availableModules = Number(canOris) + Number(canOit) + (canShared ? 4 : 0)
+  const availableModules = Number(canOris) + Number(canOit) + (canShared ? 5 : 0)
 
   return <div className="department-portal portal-launch portal-launch-vb">
     <section className="portal-launch-hero">
@@ -63,6 +63,25 @@ export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=
         <div><span><Icon name="shield" size={17}/></span><p><strong>SSO</strong><small>oprávnenia</small></p></div>
       </div>
     </section>
+
+    {canShared && <section className="portal-launch-supermodule" aria-label="CVTI 360 Enterprise Intelligence">
+      <article className="portal-launch-card portal-launch-supercard portal-launch-cvti360">
+        <div className="portal-launch-card-accent" aria-hidden="true" />
+        <div className="portal-launch-supercopy">
+          <span className="portal-launch-card-icon"><Icon name="shield" size={26}/></span>
+          <div className="portal-launch-card-body">
+            <span className="portal-launch-card-eyebrow">SUPERMODUL · ENTERPRISE INTELLIGENCE</span>
+            <h2>CVTI 360 · jeden obraz nad celým IT</h2>
+            <p>Vyhľadaj systém alebo službu a na jednej 360° karte uvidíš financie, čerpanie, úlohy, ľudí, RACI, technológie, assety, riziká, dodávateľov, zmluvy a prevádzkové väzby.</p>
+            <div className="portal-launch-tags"><span>CRZP / ANTIPLAG pilot</span><span>Finance drill-down</span><span>RACI + Asset + ITSM</span><span>Relationship map</span></div>
+          </div>
+        </div>
+        <div className="portal-launch-super-action">
+          <button className="portal-launch-enter" onClick={()=>go('enterprise360')}><span>Otvoriť CVTI 360</span><Icon name="arrow" size={18}/></button>
+          <small>Read-only integračná vrstva nad existujúcimi modulmi.</small>
+        </div>
+      </article>
+    </section>}
 
     <SectionHeading
       eyebrow="HLAVNÉ PRACOVNÉ PRIESTORY"
