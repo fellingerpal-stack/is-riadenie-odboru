@@ -1,0 +1,13 @@
+IS Riadenie odboru v0.40.0 – changed files
+
+package.json
+src/data/seed.json
+src/lib/storage.ts
+src/styles.css
+src/views/DepartmentPortal.tsx
+
+Documentation:
+RELEASE_NOTES_0.40.md
+README_NASADENIE_0.40.txt
+QA_RESULTS_0.40.txt
+RELEASE_0.40.0_CHANGED_FILES.txt

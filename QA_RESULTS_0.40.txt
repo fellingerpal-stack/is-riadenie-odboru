@@ -1,0 +1,52 @@
+IS Riadenie odboru – v0.40.0 QA
+================================
+Date: 2026-08-12
+
+SCOPE
+- Landing page / hlavný panel only
+- Variant B visual hierarchy
+- No business logic change
+- No database change
+
+PASSED
+- DepartmentPortal.tsx TypeScript/JSX transpile syntax check: OK
+- CSS brace/structure balance: OK
+- package.json parse: OK
+- seed.json parse: OK
+- version consistency: package.json / seed.json / storage.ts = 0.40.0
+- ORIS navigation target preserved: dashboard
+- OIT navigation target preserved: oit
+- Technology navigation target preserved: technology
+- Service 360 navigation target preserved: intelligence
+- IT Costs navigation target preserved: itCosts
+- Asset Management navigation target preserved: cmdb
+- canOris / canOit / canShared access model preserved
+- 2-column primary grid present
+- 2-column shared grid present
+- utility grid present
+- responsive 2-column -> 1-column rules present
+- v0.39 contractTaskLedger + ContractSpending assets preserved
+- no SQL migration added for v0.40.0
+
+VISUAL INTENT
+- compact hero
+- two dominant department cards
+- two smaller shared management cards
+- two compact supporting tiles
+- stronger CTA hierarchy
+- subtle hover + border glow
+- shorter copy
+
+FULL BUILD
+- Not executed in this build workspace because project dependencies are not installed.
+- Changed TSX passed direct TypeScript transpile diagnostics.
+- Production Vercel/CI must complete the standard npm build before publication.
+
+POST-DEPLOY SMOKE TEST
+1. Ctrl+F5 and verify v0.40.0.
+2. Open ORIS and OIT from both dominant tiles.
+3. Open Technology Catalog and Service 360.
+4. Open IT Costs and verify v0.39 payment drill-down remains available.
+5. Open Asset Management and Network Discovery.
+6. Test restricted ORIS/OIT account.
+7. Test laptop/tablet width for horizontal overflow.
