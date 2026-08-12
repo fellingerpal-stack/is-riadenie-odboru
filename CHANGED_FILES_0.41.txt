@@ -1,0 +1,19 @@
+IS Riadenie odboru v0.41.0 – changed files
+
+Modified from v0.40.0:
+- package.json
+- src/App.tsx
+- src/components/GlobalSearch.tsx
+- src/data/seed.json
+- src/lib/storage.ts
+- src/views/DepartmentPortal.tsx
+
+New:
+- src/lib/enterprise360.ts
+- src/views/Enterprise360.tsx
+- src/views/Enterprise360.css
+- CVTI_360_0.41.md
+- RELEASE_NOTES_0.41.md
+- README_NASADENIE_0.41.txt
+- QA_RESULTS_0.41.txt
+- CHANGED_FILES_0.41.txt

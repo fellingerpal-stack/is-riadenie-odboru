@@ -1,0 +1,96 @@
+IS Riadenie odboru – v0.41.0 QA
+================================
+Date: 2026-08-12
+
+SCOPE
+-----
+- new CVTI 360 · Enterprise Intelligence supermodule
+- entity-oriented 360° aggregation over existing modules
+- CRZP / APS golden entity
+- exact finance drill-down for contract task 22
+- global search integration and entity deep links
+- landing portal + shared navigation integration
+- no database schema change
+
+PASSED – STRUCTURE / VERSION
+----------------------------
+- 18 release-specific structural checks: PASSED.
+- package.json version = 0.41.0.
+- src/data/seed.json meta.version = 0.41.0.
+- src/lib/storage.ts CURRENT_VERSION = 0.41.0.
+- enterprise360 route is registered and treated as shared scope.
+- CVTI 360 navigation item exists in ORIS, OIT and portal navigation.
+- landing portal contains CVTI 360 supermodule CTA.
+- Global Search contains CVTI 360 shortcut and entity results.
+- entity deep link format #/enterprise360?entity=<id> is supported.
+- Enterprise360 CSS braces balanced: 236 / 236.
+
+PASSED – TYPESCRIPT TARGETED CHECK
+----------------------------------
+Targeted TypeScript check completed without diagnostics for:
+- src/lib/enterprise360.ts
+- src/views/Enterprise360.tsx
+- src/views/DepartmentPortal.tsx
+- src/components/GlobalSearch.tsx
+and their local data/utility dependencies.
+
+App.tsx was additionally syntax/type-checked with unresolved external imports filtered from the isolated check; no new non-module diagnostic was returned.
+
+PASSED – ENTERPRISE DATA MODEL
+------------------------------
+- 14 enterprise entities produced from the current architecture catalog.
+- CRZP / APS resolves to service S01.
+- CRZP / APS exact finance mapping resolves to contract task 22.
+- CRZP budget = 93 552.00 EUR.
+- CRZP spent 01-07/2026 = 49 508.47 EUR.
+- CRZP remaining = 44 043.53 EUR.
+- CRZP ledger rows = 64.
+- CRZP ledger total = 49 508.47 EUR.
+- CRZP seed CMDB matches = 3.
+- CRZP linked ticket = 1.
+- CRZP linked problem = 1.
+- CRZP linked change = 1.
+- CRZP linked risk = 1.
+- CRZP linked RACI records = 2.
+- CRZP supplier candidate deduplicates to one supplier identity.
+
+PASSED – MONTHLY RECONCILIATION CRZP TASK 22
+---------------------------------------------
+Jan:      0.00 =      0.00 EUR  OK
+Feb:  5 586.88 =  5 586.88 EUR  OK
+Mar:  1 832.34 =  1 832.34 EUR  OK
+Apr:  4 050.07 =  4 050.07 EUR  OK
+May: 19 304.69 = 19 304.69 EUR  OK
+Jun:  3 559.52 =  3 559.52 EUR  OK
+Jul: 15 174.97 = 15 174.97 EUR  OK
+
+SAFETY / METHODOLOGY
+--------------------
+- CVTI 360 is read-only in v0.41.0.
+- No SQL migration is included.
+- No shared infrastructure task is heuristically allocated to unrelated entities.
+- Financial values are displayed as direct entity finance only when an exact task mapping exists.
+- Missing finance / supplier / contract links are displayed as data gaps rather than fabricated values.
+- Existing candidate supplier relationships keep their source status; CVTI 360 does not silently upgrade them to confirmed contracts.
+
+FULL VITE BUILD
+---------------
+NOT VERIFIED LOCALLY in this execution workspace.
+Reason:
+- the v0.40.0 FULL source package does not contain package-lock.json, so npm ci correctly refuses to run;
+- npm install --no-package-lock did not complete within the available execution timeout.
+- no new npm dependency was added by v0.41.0.
+
+Production Vercel/CI MUST successfully complete its standard install and `npm run build` before publication.
+
+POST-DEPLOY SMOKE TEST
+----------------------
+1. Ctrl+F5; verify footer v0.41.0.
+2. Landing -> Open CVTI 360.
+3. Verify default CRZP / APS entity.
+4. Finance -> click Feb, May and Jul and verify reconciliation badge = Sedí.
+5. Technology -> verify 3 seed CMDB assets for CRZP.
+6. Work -> verify linked ticket/problem/change where current cloud state contains them.
+7. Relations -> test source-module links.
+8. Ctrl+K -> search CRZP -> open 360° entity result.
+9. Test a user without shared read scope: CVTI 360 must not be accessible.
