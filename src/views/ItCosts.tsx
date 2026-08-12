@@ -8,6 +8,7 @@ import { resolveSupplierName } from '../lib/supplierDirectory'
 import data from '../data/itCosts.json'
 import fullYearData from '../data/itCostsFullYear.json'
 import paymentData from '../data/contractPayments.json'
+import contractTaskData from '../data/contractTasks.json'
 import ContractSpending from './ContractSpending'
 import FinancialOptimization from './FinancialOptimization'
 import './ItCosts.css'
@@ -77,6 +78,7 @@ interface CostDataset {
 const h1Dataset=data as CostDataset
 const fullYearDataset=fullYearData as CostDataset
 const paymentDataset=paymentData as PaymentDataset
+const contractTaskDataset=contractTaskData as {meta:{period:string}}
 const money=new Intl.NumberFormat('sk-SK',{style:'currency',currency:'EUR',minimumFractionDigits:2,maximumFractionDigits:2})
 const compactMoney=new Intl.NumberFormat('sk-SK',{style:'currency',currency:'EUR',notation:'compact',maximumFractionDigits:1})
 const number=new Intl.NumberFormat('sk-SK',{maximumFractionDigits:1})
@@ -395,7 +397,7 @@ export default function ItCosts({state,go,canEdit,currentUser,onActionsChange}:{
   }
 
   return <div className="itc-page">
-    <PageHeader eyebrow="Spoločný finančný pohľad 3.1 × 3.2" title={financeView==='costs'?"IT náklady · prevádzka, rozvoj a infraštruktúra":"SIT 2026 · čerpanie kontraktových úloh IT"} description={financeView==='costs'?`Klasifikovaný IT výrez za roky ${years[0]}–${years.at(-1)} · obdobie ${dataset.meta.periodLabel}. Prepínač obdobia mení KPI, RUN/CHANGE, COST × RACI aj Financial Actions; rok 2026 sa ako celý rok nezobrazuje, kým zdroj nemá júl–december.`:"Samostatný manažérsky pohľad na rozpočet, mesačné a kvartálne čerpanie úloh 10, 22 a 25. Zdrojový snapshot pokrýva január až máj 2026."} actions={<><button className="button button-secondary" onClick={()=>go('intelligence')}><Icon name="shield" size={17}/> Riadiace centrum</button>{financeView==='costs'&&<button className="button button-primary" onClick={exportCurrent}><Icon name="download" size={17}/> Export CSV</button>}</>} />
+    <PageHeader eyebrow="Spoločný finančný pohľad 3.1 × 3.2" title={financeView==='costs'?"IT náklady · prevádzka, rozvoj a infraštruktúra":"SIT 2026 · čerpanie kontraktových úloh IT"} description={financeView==='costs'?`Klasifikovaný IT výrez za roky ${years[0]}–${years.at(-1)} · obdobie ${dataset.meta.periodLabel}. Prepínač obdobia mení KPI, RUN/CHANGE, COST × RACI aj Financial Actions; rok 2026 sa ako celý rok nezobrazuje, kým zdroj nemá júl–december.`:`Samostatný manažérsky pohľad na rozpočet, mesačné a kvartálne čerpanie úloh 10, 22 a 25. Zdrojový snapshot pokrýva ${contractTaskDataset.meta.period}.`} actions={<><button className="button button-secondary" onClick={()=>go('intelligence')}><Icon name="shield" size={17}/> Riadiace centrum</button>{financeView==='costs'&&<button className="button button-primary" onClick={exportCurrent}><Icon name="download" size={17}/> Export CSV</button>}</>} />
 
     <div className="itc-module-switch" role="tablist" aria-label="Finančné pohľady"><button className={financeView==='costs'?'active':''} onClick={()=>setFinanceView('costs')}><Icon name="capacity" size={17}/>IT náklady</button><button className={financeView==='contracts'?'active':''} onClick={()=>setFinanceView('contracts')}><Icon name="tasks" size={17}/>Úlohy 10 / 22 / 25</button></div>
 

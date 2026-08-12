@@ -31,6 +31,26 @@ function percent(value:number,total:number){ return total ? value / total * 100 
 function sum(values:number[]){ return values.reduce((total,value)=>total+value,0) }
 function runRate(task:ContractTask){ return dataset.meta.monthsLoaded ? task.spent / dataset.meta.monthsLoaded * 12 : 0 }
 function budgetTone(value:number){ return value >= 100 ? 'danger' as const : value >= 80 ? 'warning' as const : 'success' as const }
+function loadedPeriodCode(){ return `01–${String(dataset.meta.monthsLoaded).padStart(2,'0')}` }
+function unloadedPeriodText(){
+  if(dataset.meta.monthsLoaded>=12)return 'Celý rok je načítaný.'
+  const start=monthNames[dataset.meta.monthsLoaded]||`M${dataset.meta.monthsLoaded+1}`
+  return `${start}–Dec nie sú v tomto snapshote nulové – zatiaľ nie sú načítané.`
+}
+function centerLabel(centers:string[]){
+  if(!centers.length)return 'bez evidovaného strediska'
+  if(centers.length<=3)return `stredisko ${centers.join(' / ')}`
+  return `strediská ${centers.slice(0,3).join(' / ')} +${centers.length-3}`
+}
+function quarterBuckets(values:number[]){
+  const count=Math.ceil(values.length/3)
+  return Array.from({length:count},(_,index)=>{
+    const start=index*3
+    const slice=values.slice(start,start+3)
+    const partial=slice.length<3
+    return {label:`Q${index+1}${partial?' · priebežne':''}`,value:sum(slice)}
+  })
+}
 
 function downloadCsv(filename:string, rows:string[][]){
   const csv=rows.map(row=>row.map(cell=>`"${String(cell).replaceAll('"','""')}"`).join(';')).join('\n')
@@ -56,13 +76,10 @@ export default function ContractSpending(){
   const forecast=avgMonthly*12
   const forecastDelta=forecast-aggregate.budget
   const timeElapsed=dataset.meta.monthsLoaded/12*100
+  const detailQuarters=quarterBuckets(Array.from({length:dataset.meta.monthsLoaded},()=>0))
 
   const series=useMemo(()=>{
-    if(granularity==='quarterly'){
-      const q1=sum(aggregate.monthly.slice(0,3))
-      const q2=sum(aggregate.monthly.slice(3,6))
-      return [{label:'Q1',value:q1},{label:'Q2 · priebežne',value:q2}]
-    }
+    if(granularity==='quarterly')return quarterBuckets(aggregate.monthly)
     if(granularity==='cumulative'){
       let running=0
       return aggregate.monthly.map((value,index)=>({label:monthNames[index],value:(running+=value)}))
@@ -80,13 +97,13 @@ export default function ContractSpending(){
 
   function exportContract(){
     downloadCsv(`sit-cerpanie-${taskCode}-${dataset.meta.year}.csv`,[
-      ['Úloha','Názov','Strediská','Rozpočet','Vyčerpané','Zostatok','Čerpanie %','Jan','Feb','Mar','Apr','Máj'],
+      ['Úloha','Názov','Strediská','Rozpočet','Vyčerpané','Zostatok','Čerpanie %',...monthNames.slice(0,dataset.meta.monthsLoaded)],
       ...selectedTasks.map(task=>[task.code,task.name,task.centers.join(', '),String(task.budget),String(task.spent),String(task.remaining),String(percent(task.spent,task.budget)),...task.monthly.map(String)]),
     ])
   }
 
   return <div className="contract-spending">
-    <section className="contract-source-note"><Icon name="database" size={20}/><div><strong>{dataset.meta.title}</strong><span>{dataset.meta.source} · {dataset.meta.period}. Jún až december nie sú v tomto snapshote nulové – zatiaľ nie sú načítané.</span></div><Badge tone="info">SIT {dataset.meta.year}</Badge></section>
+    <section className="contract-source-note"><Icon name="database" size={20}/><div><strong>{dataset.meta.title}</strong><span>{dataset.meta.source} · {dataset.meta.period}. {unloadedPeriodText()}</span></div><Badge tone="info">SIT {dataset.meta.year}</Badge></section>
 
     <section className="contract-task-grid">
       {dataset.tasks.map(task=>{
@@ -95,7 +112,7 @@ export default function ContractSpending(){
         return <button key={task.code} className={`contract-task-card ${taskCode===task.code?'active':''}`} onClick={()=>setTaskCode(current=>current===task.code?'all':task.code)}>
           <span className="contract-task-code">ÚLOHA {task.code}</span>
           <strong>{task.name}</strong>
-          <small>{task.centers.length?`stredisko ${task.centers.join(' / ')}`:'bez fixného strediska'}</small>
+          <small>{centerLabel(task.centers)}</small>
           <div className="contract-task-numbers"><span><b>{money.format(task.spent)}</b>čerpanie</span><span><b>{money.format(task.remaining)}</b>zostatok</span></div>
           <div className="contract-progress"><i style={{width:`${Math.min(100,used)}%`}}/></div>
           <footer><span>{pct.format(used)} % rozpočtu</span><Badge tone={budgetTone(percent(forecastValue,task.budget))}>run-rate {pct.format(percent(forecastValue,task.budget))} %</Badge></footer>
@@ -115,7 +132,7 @@ export default function ContractSpending(){
 
     <section className="contract-kpis">
       <article className="primary"><span>Rozpočet</span><strong>{money.format(aggregate.budget)}</strong><small>{selectedLabel}</small></article>
-      <article><span>Vyčerpané do mája</span><strong>{money.format(aggregate.spent)}</strong><small>{pct.format(spentShare)} % rozpočtu</small></article>
+      <article><span>Vyčerpané {loadedPeriodCode()}</span><strong>{money.format(aggregate.spent)}</strong><small>{pct.format(spentShare)} % rozpočtu</small></article>
       <article><span>Zostatok</span><strong>{money.format(aggregate.remaining)}</strong><small>{pct.format(100-spentShare)} % rozpočtu</small></article>
       <article><span>Priemer / mesiac</span><strong>{money.format(avgMonthly)}</strong><small>z {dataset.meta.monthsLoaded} načítaných mesiacov</small></article>
       <article className={forecastDelta>0?'risk':''}><span>Jednoduchý run-rate</span><strong>{money.format(forecast)}</strong><small>{forecastDelta>0?`+${money.format(forecastDelta)} nad rozpočet`:`${money.format(Math.abs(forecastDelta))} pod rozpočet`} · nie oficiálna prognóza</small></article>
@@ -123,7 +140,7 @@ export default function ContractSpending(){
 
     <section className="contract-main-grid">
       <article className="panel contract-chart-card">
-        <div className="panel-heading"><div><span className="eyebrow">TREND ČERPANIA</span><h3>{granularity==='monthly'?'Mesačné čerpanie':granularity==='quarterly'?'Kvartálne čerpanie':'Kumulatívne čerpanie'}</h3><p>Aktuálny snapshot pokrýva január až máj 2026.</p></div><Badge tone={budgetTone(spentShare)}>{pct.format(spentShare)} % vyčerpané</Badge></div>
+        <div className="panel-heading"><div><span className="eyebrow">TREND ČERPANIA</span><h3>{granularity==='monthly'?'Mesačné čerpanie':granularity==='quarterly'?'Kvartálne čerpanie':'Kumulatívne čerpanie'}</h3><p>Aktuálny snapshot pokrýva {dataset.meta.period}.</p></div><Badge tone={budgetTone(spentShare)}>{pct.format(spentShare)} % vyčerpané</Badge></div>
         <div className="contract-chart">
           {displaySeries.map(point=><div className="contract-bar" key={point.label}><span>{point.label}</span><div><i style={{height:`${Math.max(3,Math.abs(point.value)/maxValue*100)}%`}}/><b>{metric==='share'?`${pct.format(point.value)} %`:compactMoney.format(point.value)}</b></div></div>)}
         </div>
@@ -136,16 +153,16 @@ export default function ContractSpending(){
         <div className="contract-signal-list">
           <div><Icon name={forecastDelta>0?'warning':'check'} size={18}/><span><strong>{forecastDelta>0?'Tempo smeruje nad rozpočet':'Tempo je pod lineárnym rozpočtom'}</strong><small>Run-rate pri zachovaní priemeru: {money.format(forecast)}.</small></span></div>
           <div><Icon name="calendar" size={18}/><span><strong>Najsilnejší mesiac</strong><small>{monthNames[aggregate.monthly.indexOf(Math.max(...aggregate.monthly))]} · {money.format(Math.max(...aggregate.monthly))}</small></span></div>
-          <div><Icon name="shield" size={18}/><span><strong>Metodika</strong><small>Run-rate je jednoduchá analytická extrapolácia 5 mesiacov, nie schválený forecast.</small></span></div>
+          <div><Icon name="shield" size={18}/><span><strong>Metodika</strong><small>Run-rate je jednoduchá analytická extrapolácia {dataset.meta.monthsLoaded} načítaných mesiacov, nie schválený forecast.</small></span></div>
         </div>
       </aside>
     </section>
 
     <section className="panel contract-detail-panel">
-      <div className="panel-heading"><div><span className="eyebrow">DETAIL ÚLOH</span><h3>Rozpočet a čerpanie po úlohe</h3><p>Presné hodnoty zo súhrnného hárku čerpania SIT.</p></div><Badge tone="neutral">dáta do mája</Badge></div>
-      <div className="contract-table-wrap"><table className="contract-table"><thead><tr><th>Úloha</th><th>Názov</th><th>Stredisko</th><th className="number">Rozpočet</th><th className="number">Vyčerpané</th><th className="number">Zostatok</th><th className="number">%</th><th className="number">Q1</th><th className="number">Q2 priebežne</th></tr></thead><tbody>{selectedTasks.map(task=><tr key={task.code}><td><strong>{task.code}</strong></td><td><strong>{task.name}</strong><small>{task.description}</small></td><td>{task.centers.join(' / ')}</td><td className="number">{money.format(task.budget)}</td><td className="number"><strong>{money.format(task.spent)}</strong></td><td className="number">{money.format(task.remaining)}</td><td className="number"><Badge tone={budgetTone(percent(task.spent,task.budget))}>{pct.format(percent(task.spent,task.budget))} %</Badge></td><td className="number">{money.format(sum(task.monthly.slice(0,3)))}</td><td className="number">{money.format(sum(task.monthly.slice(3,5)))}</td></tr>)}</tbody></table></div>
+      <div className="panel-heading"><div><span className="eyebrow">DETAIL ÚLOH</span><h3>Rozpočet a čerpanie po úlohe</h3><p>Hodnoty sú nanovo agregované z filtrovaného auditu podľa zdrojového poľa Úloha.</p></div><Badge tone="neutral">dáta {loadedPeriodCode()}</Badge></div>
+      <div className="contract-table-wrap"><table className="contract-table"><thead><tr><th>Úloha</th><th>Názov</th><th>Strediská</th><th className="number">Rozpočet</th><th className="number">Vyčerpané</th><th className="number">Zostatok</th><th className="number">%</th>{detailQuarters.map(item=><th className="number" key={item.label}>{item.label}</th>)}</tr></thead><tbody>{selectedTasks.map(task=><tr key={task.code}><td><strong>{task.code}</strong></td><td><strong>{task.name}</strong><small>{task.description}</small></td><td>{task.centers.join(' / ')}</td><td className="number">{money.format(task.budget)}</td><td className="number"><strong>{money.format(task.spent)}</strong></td><td className="number">{money.format(task.remaining)}</td><td className="number"><Badge tone={budgetTone(percent(task.spent,task.budget))}>{pct.format(percent(task.spent,task.budget))} %</Badge></td>{quarterBuckets(task.monthly).map(item=><td className="number" key={item.label}>{money.format(item.value)}</td>)}</tr>)}</tbody></table></div>
     </section>
 
-    <section className="contract-method panel"><Icon name="shield" size={22}/><div><h3>Dôležitá hranica mapovania</h3><p>{dataset.meta.method} Detailné priradenie jednotlivých platieb k úlohe 25 sa tu zámerne neprepočítava podľa „ostatných stredísk“. Kontrolný zdroj toto pravidlo označuje ako metodické rozhodnutie, ktoré treba potvrdiť; manažérsky pohľad preto používa autoritatívny súhrn úloh.</p></div></section>
+    <section className="contract-method panel"><Icon name="shield" size={22}/><div><h3>Dôležitá hranica dát</h3><p>{dataset.meta.method} V release 0.37 sa aktualizuje súhrnný pohľad úloh 10 / 22 / 25. Dodávateľský riadkový ledger a Supplier 360 zostávajú zatiaľ na svojom existujúcom dátovom období a budú aktualizované samostatne.</p></div></section>
   </div>
 }
