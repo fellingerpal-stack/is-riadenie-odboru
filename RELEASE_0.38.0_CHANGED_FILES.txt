@@ -1,0 +1,17 @@
+IS Riadenie odboru v0.38.0 – changed files
+
+Modified:
+- package.json
+- src/data/seed.json
+- src/lib/storage.ts
+- src/styles.css
+- src/views/DepartmentPortal.tsx
+
+Added:
+- RELEASE_NOTES_0.38.md
+- README_NASADENIE_0.38.txt
+- QA_RESULTS_0.38.txt
+- RELEASE_0.38.0_CHANGED_FILES.txt
+
+Database / SQL:
+- no changes

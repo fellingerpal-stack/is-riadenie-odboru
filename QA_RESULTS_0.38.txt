@@ -1,0 +1,35 @@
+IS Riadenie odboru – v0.38.0 QA
+Date: 2026-08-12
+
+SCOPE
+- Landing dashboard refresh only
+- No business logic change
+- No database change
+
+PASSED
+- DepartmentPortal.tsx TypeScript/JSX syntax transpile check: OK
+- v0.38 CSS brace/structure check: OK
+- version consistency: package.json / seed.json / storage.ts = 0.38.0
+- ORIS navigation target preserved: dashboard
+- OIT navigation target preserved: oit
+- Technology navigation target preserved: technology
+- Service 360 navigation target preserved: intelligence
+- IT Costs navigation target preserved: itCosts
+- Asset Management navigation target preserved: cmdb
+- canOris / canOit / canShared access gates preserved
+- six-tile desktop structure present
+- responsive 2-column -> 1-column rules present
+- no SQL file added for v0.38.0
+
+FULL BUILD
+- NOT VERIFIED LOCALLY.
+- The working environment did not complete npm dependency installation within the execution timeout.
+- An attempted `npm run build` therefore failed because React/Vite packages were not installed locally, not because of a reported diagnostic in the changed DepartmentPortal source.
+- Production CI/Vercel must successfully complete the standard build before publication.
+
+POST-DEPLOY
+1. Ctrl+F5.
+2. Verify footer/version v0.38.0.
+3. Open all six landing tiles.
+4. Test a restricted ORIS/OIT account.
+5. Test laptop/tablet width for horizontal overflow.
