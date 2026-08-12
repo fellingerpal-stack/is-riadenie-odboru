@@ -40,35 +40,43 @@ function PortalCard({ className, eyebrow, title, subtitle, description, tags, bu
   </article>
 }
 
+function SectionHeading({ eyebrow, title, note }: { eyebrow: string; title: string; note: string }) {
+  return <div className="portal-launch-section-title">
+    <div><span>{eyebrow}</span><h2>{title}</h2></div>
+    <p>{note}</p>
+  </div>
+}
+
 export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=true}:{go:Go;canOit?:boolean;canOris?:boolean;canShared?:boolean}){
   const availableModules = Number(canOris) + Number(canOit) + (canShared ? 4 : 0)
 
-  return <div className="department-portal portal-launch">
+  return <div className="department-portal portal-launch portal-launch-vb">
     <section className="portal-launch-hero">
       <div className="portal-launch-hero-copy">
         <span className="portal-launch-kicker">PORTÁL RIADENIA CVTI SR</span>
         <h1>Vyberte pracovný priestor</h1>
-        <p>Vstúpte priamo do odborného priestoru alebo do spoločného riadiaceho modulu. Všetky oblasti používajú spoločnú autentifikáciu, synchronizované dáta a jednotné väzby medzi službami, technológiami, nákladmi a zodpovednosťami.</p>
+        <p>Dva odborné priestory a spoločné IT moduly v jednom prehľadnom vstupe. Dáta, oprávnenia a väzby medzi službami zostávajú spoločné.</p>
       </div>
       <div className="portal-launch-hero-status" aria-label="Stav portálu">
-        <div><span><Icon name="dashboard" size={18}/></span><strong>{availableModules}</strong><small>dostupných modulov</small></div>
-        <div><span><Icon name="database" size={18}/></span><strong>1</strong><small>spoločná dátová vrstva</small></div>
-        <div><span><Icon name="shield" size={18}/></span><strong>SSO</strong><small>jednotné oprávnenia</small></div>
+        <div><span><Icon name="dashboard" size={17}/></span><p><strong>{availableModules}</strong><small>modulov</small></p></div>
+        <div><span><Icon name="database" size={17}/></span><p><strong>1</strong><small>dátová vrstva</small></p></div>
+        <div><span><Icon name="shield" size={17}/></span><p><strong>SSO</strong><small>oprávnenia</small></p></div>
       </div>
     </section>
 
-    <div className="portal-launch-section-title">
-      <div><span>PRACOVNÉ PRIESTORY</span><h2>Odbory a spoločné moduly</h2></div>
-      <p>Najčastejšie používané oblasti sú dostupné jedným kliknutím.</p>
-    </div>
+    <SectionHeading
+      eyebrow="HLAVNÉ PRACOVNÉ PRIESTORY"
+      title="Odbory 3.2 a 3.1"
+      note="Primárne pracovné prostredia pre každodenné riadenie."
+    />
 
-    <section className="portal-launch-grid" aria-label="Výber pracovného priestoru">
+    <section className="portal-launch-primary-grid" aria-label="Hlavné pracovné priestory">
       <PortalCard
         className="portal-launch-oris portal-launch-featured"
         eyebrow="ODBORNÝ PRIESTOR"
         subtitle="Odbor 3.2 · ORIS"
         title="Prevádzka, rozvoj IS a projektové riadenie"
-        description="Riadenie ľudí, RACI, služieb, digitálneho portfólia, projektov, ITSM, IAM, rizík a rozhodnutí v jednom pracovnom priestore."
+        description="RACI, služby, projekty, ITSM, IAM, riziká a rozhodnutia odboru 3.2."
         tags={['RACI a služby','Digitálne portfólio','ITSM','Riadenie práce']}
         buttonLabel="Vstúpiť do ORIS"
         icon="dashboard"
@@ -80,64 +88,83 @@ export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=
         eyebrow="ODBORNÝ PRIESTOR"
         subtitle="Odbor 3.1 · OIT"
         title="Správa a prevádzka IT infraštruktúry"
-        description="RACI OIT, serverové lokality, sieťová architektúra, prevádzkované systémy, projekty, riziká a väzby na spoločné ITSM registre."
+        description="Infraštruktúra, siete, lokality, systémy, projekty a prevádzkové riziká odboru 3.1."
         tags={['79 RACI procesov','2 lokality','Sieť a systémy','53 projektov']}
         buttonLabel="Vstúpiť do OIT"
         icon="systems"
         disabled={!canOit}
         onOpen={()=>go('oit')}
       />
-
-      {canShared && <PortalCard
-        className="portal-launch-technology"
-        eyebrow="SPOLOČNÝ MODUL"
-        subtitle="Technology Intelligence"
-        title="Technologický katalóg"
-        description="Explorer infraštruktúry od lokality cez server a platformu až po informačný systém a službu, vrátane IaaS/PaaS/SaaS, kapacít a lifecycle."
-        tags={['Infra explorer','IaaS / PaaS / SaaS','Lifecycle']}
-        buttonLabel="Otvoriť katalóg"
-        icon="systems"
-        onOpen={()=>go('technology')}
-      />}
-      {canShared && <PortalCard
-        className="portal-launch-intelligence"
-        eyebrow="RIADIACE CENTRUM"
-        subtitle="Management Intelligence"
-        title="Service 360 · Control Tower"
-        description="Manažérsky pohľad nad službami, RACI, technológiami, incidentmi, zmenami, lifecycle, dodávateľmi a forecastom kontraktových úloh."
-        tags={['Service 360','Control Tower','Forecast']}
-        buttonLabel="Otvoriť riadiace centrum"
-        icon="shield"
-        onOpen={()=>go('intelligence')}
-      />}
-      {canShared && <PortalCard
-        className="portal-launch-costs"
-        eyebrow="FINANČNÝ MODUL"
-        subtitle="Finance Intelligence"
-        title="IT náklady"
-        description="Viacročný pohľad na IT platby, RUN/CHANGE, nákladové domény, dôkazné položky a väzby COST × SERVICE × RACI pre odbory 3.1 a 3.2."
-        tags={['RUN / CHANGE','Finančný ledger','COST × RACI']}
-        buttonLabel="Otvoriť IT náklady"
-        icon="capacity"
-        onOpen={()=>go('itCosts')}
-      />}
-      {canShared && <PortalCard
-        className="portal-launch-assets"
-        eyebrow="ASSET REGISTER"
-        subtitle="Asset Intelligence"
-        title="Asset Management · Asset 360"
-        description="Centrálna evidencia fyzických a virtuálnych aktív s vlastníctvom, lifecycle, QR identifikáciou, inventarizáciou a väzbami na služby a technológie."
-        tags={['Asset 360','Inventarizácia','Lifecycle']}
-        buttonLabel="Otvoriť Asset management"
-        icon="cmdb"
-        onOpen={()=>go('cmdb')}
-      />}
     </section>
 
+    {canShared && <>
+      <SectionHeading
+        eyebrow="SPOLOČNÉ RIADENIE"
+        title="Technológie a manažérsky obraz"
+        note="Spoločné moduly prepájajú oba odbory bez zmeny ich kompetencií."
+      />
+
+      <section className="portal-launch-shared-grid" aria-label="Spoločné riadiace moduly">
+        <PortalCard
+          className="portal-launch-technology portal-launch-shared"
+          eyebrow="SPOLOČNÝ MODUL"
+          subtitle="Technology Intelligence"
+          title="Technologický katalóg"
+          description="Systémy, platformy, infraštruktúra, kapacity a lifecycle v jednom exploreri."
+          tags={['Infra explorer','IaaS / PaaS / SaaS','Lifecycle']}
+          buttonLabel="Otvoriť katalóg"
+          icon="systems"
+          onOpen={()=>go('technology')}
+        />
+        <PortalCard
+          className="portal-launch-intelligence portal-launch-shared"
+          eyebrow="RIADIACE CENTRUM"
+          subtitle="Management Intelligence"
+          title="Service 360 · Control Tower"
+          description="Service 360, Control Tower, forecast a manažérske signály naprieč IT."
+          tags={['Service 360','Control Tower','Forecast']}
+          buttonLabel="Otvoriť riadiace centrum"
+          icon="shield"
+          onOpen={()=>go('intelligence')}
+        />
+      </section>
+
+      <SectionHeading
+        eyebrow="RÝCHLY PRÍSTUP"
+        title="Financie a aktíva"
+        note="Podporné registre dostupné bez vizuálneho súperenia s hlavnými pracovnými priestormi."
+      />
+
+      <section className="portal-launch-utility-grid" aria-label="Podporné spoločné moduly">
+        <PortalCard
+          className="portal-launch-costs portal-launch-utility"
+          eyebrow="FINANČNÝ MODUL"
+          subtitle="Finance Intelligence"
+          title="IT náklady"
+          description="IT platby, RUN/CHANGE a auditný drill-down úloh 10 / 22 / 25."
+          tags={['RUN / CHANGE','Finančný ledger','Drill-down']}
+          buttonLabel="Otvoriť IT náklady"
+          icon="capacity"
+          onOpen={()=>go('itCosts')}
+        />
+        <PortalCard
+          className="portal-launch-assets portal-launch-utility"
+          eyebrow="ASSET REGISTER"
+          subtitle="Asset Intelligence"
+          title="Asset Management · Asset 360"
+          description="Asset 360, inventarizácia, lifecycle a Network Discovery v jednom registri."
+          tags={['Asset 360','Network Discovery','Lifecycle']}
+          buttonLabel="Otvoriť Asset management"
+          icon="cmdb"
+          onOpen={()=>go('cmdb')}
+        />
+      </section>
+    </>}
+
     <section className="portal-launch-principles" aria-label="Princípy portálu">
-      <div><span><Icon name="shield" size={20}/></span><p><strong>Oddelené kompetencie</strong><small>Každý odbor má vlastný riadiaci priestor a scope oprávnení.</small></p></div>
-      <div><span><Icon name="database" size={20}/></span><p><strong>Spoločné dáta</strong><small>Technológie, služby, aktíva a náklady zostávajú vzájomne prepojené.</small></p></div>
-      <div><span><Icon name="roadmap" size={20}/></span><p><strong>Jeden manažérsky obraz</strong><small>Spoločné moduly vytvárajú jednotný pohľad naprieč 3.1 a 3.2.</small></p></div>
+      <div><span><Icon name="shield" size={19}/></span><p><strong>Oddelené kompetencie</strong><small>3.1 a 3.2 majú vlastné scope oprávnení.</small></p></div>
+      <div><span><Icon name="database" size={19}/></span><p><strong>Spoločné dáta</strong><small>Služby, technológie, aktíva a náklady sú prepojené.</small></p></div>
+      <div><span><Icon name="roadmap" size={19}/></span><p><strong>Jeden manažérsky obraz</strong><small>Spoločné moduly dávajú jednotný pohľad naprieč IT.</small></p></div>
     </section>
   </div>
 }
