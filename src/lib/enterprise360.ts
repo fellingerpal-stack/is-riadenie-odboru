@@ -18,6 +18,7 @@ import contractTaskData from '../data/contractTasks.json'
 import contractTaskLedgerData from '../data/contractTaskLedger.json'
 import websiteRegistryData from '../data/websiteRegistry.seed.json'
 import informationSystemsData from '../data/informationSystems.seed.json'
+import { komisContract, komisModuleSearchText, komisModulesForEntity, type KomisContractModule } from '../data/komisContract'
 
 interface ContractTask {
   code: string
@@ -124,6 +125,7 @@ export interface Enterprise360Entity {
   websites: WebsiteRegistryRow[]
   informationSystems: InformationSystemRow[]
   finance: EnterpriseFinance
+  komisModules: KomisContractModule[]
   runtimeLocation: string
   environment: string
   platform: string
@@ -308,6 +310,7 @@ export function buildEnterprise360Entities(state:AppState):Enterprise360Entity[]
     const websites=linkedWebsites(record)
     const informationSystems=linkedInformationSystems(record)
     const finance=financeFor(record,cmdb,contracts)
+    const komisModules=komisModulesForEntity(record.id)
     const owners=ownersFor(record,service)
     const openTasks=tasks.filter(task=>!isClosedStatus(task.status))
     const openIncidents=tickets.filter(ticket=>!isClosedStatus(ticket.status))
@@ -324,11 +327,12 @@ export function buildEnterprise360Entities(state:AppState):Enterprise360Entity[]
       ...projects.map(item=>item.name),...tasks.map(item=>item.title),...cmdb.map(item=>`${item.name} ${item.hostname}`),
       ...suppliers.map(item=>`${item.supplierName} ${item.role}`),...contracts.map(item=>`${item.title} ${item.contractNumber}`),
       ...websites.map(item=>`${item.name} ${item.url}`),...informationSystems.map(item=>`${item.name} ${item.supplier}`),
+      ...komisModules.map(komisModuleSearchText), record.id==='komis'?komisContract.modules.map(komisModuleSearchText).join(' '):'',
     ].join(' '))
     return {
       id:record.id,title:record.title,aliases:record.aliases,businessLayer:record.businessLayer,criticality,
       confidence:record.confidence,service,projects,tasks,tickets,problems,changes,cmdb,risks,raci,suppliers,contracts,websites,informationSystems,
-      finance,runtimeLocation:record.runtimeLocation,environment:record.environment,platform:record.platform,serverHints:record.serverHints,
+      finance,komisModules,runtimeLocation:record.runtimeLocation,environment:record.environment,platform:record.platform,serverHints:record.serverHints,
       networkDependencies:record.networkDependencies,monitoring:record.monitoring,backup:record.backup,continuity:record.continuity,
       oitDomains:record.oitDomains,oitOwners:owners.oitOwners,primaryOwner:owners.primaryOwner,businessOwner:owners.businessOwner,
       technicalOwner:owners.technicalOwner,deputy:owners.deputy,openWorkCount:openTasks.length,openIncidentCount:openIncidents.length,
@@ -349,5 +353,8 @@ export function enterprisePortfolioTotals(entities:Enterprise360Entity[]){
     openRisks:entities.reduce((sum,entity)=>sum+entity.openRiskCount,0),
     assets:entities.reduce((sum,entity)=>sum+entity.cmdb.length,0),
     attention:entities.filter(entity=>entity.attentionScore>8).length,
+    komisMonthlySlaGross:komisContract.slaMonthlyGross,
+    komisSupport84Gross:komisContract.sla84Gross,
+    komisDevelopmentGross:komisContract.developmentGross,
   }
 }
