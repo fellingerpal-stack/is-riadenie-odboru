@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Badge, Icon, PageHeader } from '../components/UI'
 import type { AppState } from '../types'
 import { buildEnterprise360Entities, enterprisePortfolioTotals, normalize360, type Enterprise360Entity, type EnterpriseLedgerRow } from '../lib/enterprise360'
+import { komisContract, type KomisContractModule } from '../data/komisContract'
 import './Enterprise360.css'
 
 type Tab='overview'|'finance'|'work'|'technology'|'governance'|'relations'
@@ -32,6 +33,38 @@ function groupDocuments(rows:EnterpriseLedgerRow[]):DocumentGroup[]{
   return [...map.values()].map(item=>({...item,amount:Math.round(item.amount*100)/100})).sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount))
 }
 
+function sumKomis(modules:KomisContractModule[],key:'slaMonthlyNet'|'slaMonthlyGross'|'slaQuarterlyGross'|'sla84Gross'|'developmentGross'){
+  return modules.reduce((sum,item)=>sum+Number(item[key]||0),0)
+}
+
+function KomisContractPanel({entity,onSelectEntity}:{entity:Enterprise360Entity;onSelectEntity:(id:string)=>void}){
+  const modules=entity.komisModules
+  if(!modules.length)return null
+  const monthlyNet=sumKomis(modules,'slaMonthlyNet')
+  const monthlyGross=sumKomis(modules,'slaMonthlyGross')
+  const supportGross=sumKomis(modules,'sla84Gross')
+  const developmentGross=sumKomis(modules,'developmentGross')
+  const portfolio=entity.id==='komis'
+  return <section className="e360-panel e360-komis-panel">
+    <header className="e360-panel-head"><div><span>KOMIS · ZMLUVNÁ FINANČNÁ VRSTVA</span><h3>{portfolio?'Mesačné SLA poplatky všetkých modulov':'SLA a rozvoj vybraného modulu'}</h3><p>Mesačný SLA údaj je prepočítaný zo zmluvnej kvartálnej ceny / 3. Rozvoj je statická jednorazová hodnota bez podpory.</p></div><a className="button button-secondary" href={komisContract.sourceUrl} target="_blank" rel="noreferrer"><Icon name="calendar" size={16}/> CRZ zmluva</a></header>
+    <div className="e360-komis-summary">
+      <MiniStat label="SLA / MESIAC S DPH" value={money.format(monthlyGross)} detail={`${money.format(monthlyNet)} bez DPH`} tone="teal"/>
+      <MiniStat label="PODPORA · 84 MESIACOV" value={money.format(supportGross)} detail={`${modules.length} ${modules.length===1?'modul':'modulov'} · 28 kvartálov`} tone="blue"/>
+      <MiniStat label="VYBUDOVANIE / ROZVOJ" value={money.format(developmentGross)} detail="statická zmluvná hodnota s DPH" tone="purple"/>
+      {portfolio?<MiniStat label="CELÁ ZMLUVA KOMIS" value={money.format(komisContract.contractGross)} detail={`${money.format(komisContract.contractNet)} bez DPH`} tone="amber"/>:<MiniStat label="DODÁVATEĽ" value={komisContract.supplier} detail={komisContract.sourceLabel} tone="amber"/>}
+    </div>
+    <div className="e360-komis-module-grid">
+      {modules.map(module=>{
+        const target=module.entityIds.find(id=>id!==entity.id)||module.entityIds[0]||''
+        const canOpen=Boolean(target&&target!==entity.id)
+        const content=<><div className="e360-komis-module-head"><span>{module.code}</span>{canOpen?<Badge tone="info">360° karta</Badge>:<Badge tone="neutral">zmluvná položka</Badge>}</div><strong>{money.format(module.slaMonthlyGross)}</strong><small>SLA / mesiac s DPH · {money.format(module.slaMonthlyNet)} bez DPH</small><dl><div><dt>Kvartál s DPH</dt><dd>{money.format(module.slaQuarterlyGross)}</dd></div><div><dt>Podpora 84 mes.</dt><dd>{money.format(module.sla84Gross)}</dd></div><div><dt>Rozvoj · staticky</dt><dd>{money.format(module.developmentGross)}</dd></div></dl><p>{module.title}</p></>
+        return canOpen?<button key={module.id} className="e360-komis-module" onClick={()=>onSelectEntity(target)}>{content}<span className="e360-komis-open">Otvoriť 360° kartu <Icon name="arrow" size={13}/></span></button>:<article key={module.id} className="e360-komis-module">{content}</article>
+      })}
+    </div>
+    {portfolio&&<div className="e360-komis-contract-foot"><span><strong>Úpravy z prevádzky / konzultácie:</strong> {komisContract.operationsFrameworkHours.toLocaleString('sk-SK')} hod. × {money.format(komisContract.operationsFrameworkHourlyNet)} = {money.format(komisContract.operationsFrameworkGross)} s DPH.</span><span><strong>Kontrola súčtu:</strong> rozvoj + 84-mesačná podpora + rámec úprav = {money.format(komisContract.contractGross)} s DPH.</span></div>}
+  </section>
+}
+
 function MiniStat({label,value,detail,tone='blue'}:{label:string;value:string;detail:string;tone?:'blue'|'teal'|'green'|'amber'|'purple'|'red'}){
   return <article className={`e360-mini-stat is-${tone}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>
 }
@@ -50,7 +83,7 @@ function Attention({entity}:{entity:Enterprise360Entity}){
   return <div className="e360-attention-list">{entries.length?entries.map((item,index)=><article key={`${item.kind}-${index}`}><span className={`e360-attention-dot is-${item.tone}`}/><div><small>{item.kind}</small><strong>{item.title}</strong><p>{item.detail}</p></div></article>):<div className="e360-empty-small"><Icon name="check" size={20}/><strong>Bez kritických upozornení</strong><span>Aktuálne prepojené dáta neindikujú otvorený problém.</span></div>}</div>
 }
 
-function FinanceView({entity,onGo}:{entity:Enterprise360Entity;onGo:Go}){
+function FinanceView({entity,onGo,onSelectEntity}:{entity:Enterprise360Entity;onGo:Go;onSelectEntity:(id:string)=>void}){
   const [month,setMonth]=useState<number|null>(null)
   const finance=entity.finance
   const scopedRows=useMemo(()=>month?finance.rows.filter(row=>row.month===month):finance.rows,[finance.rows,month])
@@ -59,6 +92,7 @@ function FinanceView({entity,onGo}:{entity:Enterprise360Entity;onGo:Go}){
   const expected=month?Number(finance.monthly[month-1]||0):finance.spent
   const maxMonth=Math.max(1,...finance.monthly.map(value=>Math.abs(value)))
   return <div className="e360-section-stack">
+    <KomisContractPanel entity={entity} onSelectEntity={onSelectEntity}/>
     {!finance.task&&<div className="e360-callout warning"><Icon name="warning" size={20}/><div><strong>Táto entita zatiaľ nemá priame mapovanie na kontraktovú rozpočtovú úlohu.</strong><span>CVTI 360 preto nezobrazuje odvodené čerpanie. Assetové a zmluvné finančné údaje ostávajú uvedené samostatne.</span></div></div>}
     <section className="e360-finance-kpis">
       <MiniStat label="ROZPOČET" value={finance.task?money.format(finance.budget):'—'} detail={finance.task?`Úloha ${finance.taskCode}`:'Bez priameho mapovania'} tone="blue"/>
@@ -171,12 +205,14 @@ export default function Enterprise360({state,go}:{state:AppState;go:Go}){
   const selectEntity=(id:string)=>{setSelectedId(id);setTab('overview');history.replaceState(null,'',`#/enterprise360?entity=${encodeURIComponent(id)}`)}
   if(!entity)return <div className="e360-empty-small"><strong>CVTI 360 nemá dostupné entity.</strong></div>
   const spentPct=pct(entity.finance.spent,entity.finance.budget)
+  const komisMonthlyGross=sumKomis(entity.komisModules,'slaMonthlyGross')
   const expiring=entity.contracts.filter(contract=>{const days=dueDays(contract.validTo);return days!==null&&days>=0&&days<=180})
   return <div className="enterprise360">
     <PageHeader eyebrow="CVTI 360 · ENTERPRISE INTELLIGENCE" title="Jeden pohľad na systém, službu a všetky súvislosti" description="Systémy, ľudia, RACI, úlohy, technológie, assety, incidenty, projekty, dodávatelia, zmluvy a financie v jednej 360° vrstve nad existujúcimi modulmi." actions={<button className="button button-secondary" onClick={()=>go('portals')}><Icon name="dashboard" size={16}/> Hlavný panel</button>}/>
 
     <section className="e360-portfolio-strip">
       <article><span>Systémy a služby</span><strong>{totals.systems}</strong><small>{totals.critical} kritických</small></article>
+      <article className="is-komis"><span>KOMIS SLA / mesiac</span><strong>{compactMoney.format(totals.komisMonthlySlaGross)}</strong><small>12 modulov · s DPH</small></article>
       <article><span>Presne mapovaný rozpočet</span><strong>{compactMoney.format(totals.budget)}</strong><small>{compactMoney.format(totals.spent)} čerpanie</small></article>
       <article><span>Otvorená práca</span><strong>{totals.openWork}</strong><small>naprieč entitami</small></article>
       <article><span>Otvorené riziká</span><strong>{totals.openRisks}</strong><small>z registrov ORIS/OIT</small></article>
@@ -188,17 +224,17 @@ export default function Enterprise360({state,go}:{state:AppState;go:Go}){
       <aside className="e360-directory">
         <div className="e360-directory-search"><Icon name="search" size={16}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Hľadať CRZP, systém, službu…"/></div>
         <div className="e360-directory-head"><span>PORTFÓLIO</span><strong>{filtered.length} entít</strong></div>
-        <div className="e360-directory-list">{filtered.map(item=><button key={item.id} className={item.id===entity.id?'is-active':''} onClick={()=>selectEntity(item.id)}><span className={`e360-directory-score is-${toneForScore(item.readinessScore)}`}>{item.readinessScore}</span><div><strong>{item.title}</strong><small>{item.service?.category||item.businessLayer}</small><p>{item.finance.task?`Úloha ${item.finance.taskCode} · ${compactMoney.format(item.finance.spent)}`:`${item.cmdb.length} assetov · ${item.openWorkCount} úloh`}</p></div>{item.attentionScore>8&&<i>{item.attentionScore}</i>}</button>)}</div>
+        <div className="e360-directory-list">{filtered.map(item=><button key={item.id} className={item.id===entity.id?'is-active':''} onClick={()=>selectEntity(item.id)}><span className={`e360-directory-score is-${toneForScore(item.readinessScore)}`}>{item.readinessScore}</span><div><strong>{item.title}</strong><small>{item.service?.category||item.businessLayer}</small><p>{item.finance.task?`Úloha ${item.finance.taskCode} · ${compactMoney.format(item.finance.spent)}`:item.komisModules.length?`KOMIS SLA · ${compactMoney.format(sumKomis(item.komisModules,'slaMonthlyGross'))}/mes.`:`${item.cmdb.length} assetov · ${item.openWorkCount} úloh`}</p></div>{item.attentionScore>8&&<i>{item.attentionScore}</i>}</button>)}</div>
       </aside>
 
       <main className="e360-detail">
         <section className="e360-entity-hero">
-          <div className="e360-entity-main"><div className="e360-entity-topline"><Badge tone={entity.criticality.toLowerCase().includes('krit')?'danger':'info'}>{entity.criticality}</Badge><span>{entity.confidence}</span><span>{entity.finance.task?`Financie · úloha ${entity.finance.taskCode}`:'Finančné mapovanie chýba'}</span></div><h2>{entity.title}</h2><p>{entity.businessLayer}</p><div className="e360-entity-tags">{entity.aliases.slice(0,5).map(alias=><span key={alias}>{alias}</span>)}</div></div>
+          <div className="e360-entity-main"><div className="e360-entity-topline"><Badge tone={entity.criticality.toLowerCase().includes('krit')?'danger':'info'}>{entity.criticality}</Badge><span>{entity.confidence}</span><span>{entity.finance.task?`Financie · úloha ${entity.finance.taskCode}`:'Finančné mapovanie čerpania chýba'}</span>{entity.komisModules.length>0&&<span>KOMIS SLA · {compactMoney.format(komisMonthlyGross)}/mes. s DPH</span>}</div><h2>{entity.title}</h2><p>{entity.businessLayer}</p><div className="e360-entity-tags">{entity.aliases.slice(0,5).map(alias=><span key={alias}>{alias}</span>)}</div></div>
           <div className="e360-score-card"><span>360 SKÓRE</span><strong>{entity.readinessScore}</strong><small>úplnosť + otvorené signály</small><div><i style={{width:`${entity.readinessScore}%`}}/></div></div>
         </section>
 
         <section className="e360-kpi-grid">
-          <button onClick={()=>setTab('finance')}><span><Icon name="capacity" size={18}/></span><p><small>ČERPANIE</small><strong>{entity.finance.task?compactMoney.format(entity.finance.spent):'—'}</strong><em>{entity.finance.task?`${number.format(spentPct)} % rozpočtu`:'bez priameho mapovania'}</em></p></button>
+          <button onClick={()=>setTab('finance')}><span><Icon name="capacity" size={18}/></span><p><small>{entity.finance.task?'ČERPANIE':'FINANCIE / SLA'}</small><strong>{entity.finance.task?compactMoney.format(entity.finance.spent):komisMonthlyGross?compactMoney.format(komisMonthlyGross):'—'}</strong><em>{entity.finance.task?`${number.format(spentPct)} % rozpočtu${komisMonthlyGross?` · SLA ${compactMoney.format(komisMonthlyGross)}/mes.`:''}`:komisMonthlyGross?'KOMIS mesačný ekvivalent s DPH':'bez priameho mapovania'}</em></p></button>
           <button onClick={()=>setTab('work')}><span><Icon name="tasks" size={18}/></span><p><small>OTVORENÁ PRÁCA</small><strong>{entity.openWorkCount+entity.openIncidentCount+entity.openProblemCount}</strong><em>{entity.openWorkCount} úloh · {entity.openIncidentCount} ticketov</em></p></button>
           <button onClick={()=>setTab('technology')}><span><Icon name="cmdb" size={18}/></span><p><small>TECHNOLÓGIE</small><strong>{entity.cmdb.length}</strong><em>{entity.oitDomains.length} OIT domén</em></p></button>
           <button onClick={()=>setTab('governance')}><span><Icon name="risk" size={18}/></span><p><small>RIZIKÁ</small><strong>{entity.openRiskCount}</strong><em>{entity.highRiskCount} vysokých / kritických</em></p></button>
@@ -214,12 +250,12 @@ export default function Enterprise360({state,go}:{state:AppState;go:Go}){
           <div className="e360-two-col e360-overview-grid">
             <section className="e360-panel"><header className="e360-panel-head"><div><span>ATTENTION CENTER</span><h3>Čomu sa venovať</h3><p>Signály z dátovej úplnosti, rizík, ticketov a problem managementu.</p></div><Badge tone={entity.attentionScore>8?'danger':entity.attentionScore>4?'warning':'success'}>{entity.attentionScore} bodov</Badge></header><Attention entity={entity}/></section>
             <section className="e360-panel"><header className="e360-panel-head"><div><span>EXECUTIVE SNAPSHOT</span><h3>Riadiaci obraz</h3><p>Najdôležitejšie väzby na jednej obrazovke.</p></div><Badge tone={toneForScore(entity.readinessScore)}>360 skóre {entity.readinessScore}</Badge></header>
-              <div className="e360-snapshot-grid"><article><small>Prevádzka</small><strong>{entity.runtimeLocation||'—'}</strong><span>{entity.environment||'—'}</span></article><article><small>Dodávatelia</small><strong>{entity.suppliers.length||'—'}</strong><span>{entity.suppliers.slice(0,2).map(item=>item.supplierName).join(' · ')||'väzba nepotvrdená'}</span></article><article><small>Zmluvy</small><strong>{entity.contracts.length}</strong><span>{expiring.length?`${expiring.length} do 180 dní`:'bez blízkej expirácie v dátach'}</span></article><article><small>Web / register</small><strong>{entity.websites.length}</strong><span>{entity.websites[0]?.url||'bez priamej väzby'}</span></article></div>
+              <div className="e360-snapshot-grid"><article><small>Prevádzka</small><strong>{entity.runtimeLocation||'—'}</strong><span>{entity.environment||'—'}</span></article><article><small>Dodávatelia</small><strong>{entity.suppliers.length||'—'}</strong><span>{entity.suppliers.slice(0,2).map(item=>item.supplierName).join(' · ')||'väzba nepotvrdená'}</span></article><article><small>Zmluvy</small><strong>{entity.contracts.length}</strong><span>{expiring.length?`${expiring.length} do 180 dní`:'bez blízkej expirácie v dátach'}</span></article><article><small>Web / register</small><strong>{entity.websites.length}</strong><span>{entity.websites[0]?.url||'bez priamej väzby'}</span></article>{entity.komisModules.length>0&&<article><small>KOMIS SLA / mesiac</small><strong>{money.format(komisMonthlyGross)}</strong><span>{entity.komisModules.length} ${entity.komisModules.length===1?'modul':'modulov'} · s DPH</span></article>}</div>
             </section>
           </div>
           <section className="e360-panel"><header className="e360-panel-head"><div><span>PREKLIKY DO ZDROJOV</span><h3>Otvoriť pôvodný modul</h3><p>CVTI 360 údaje nekopíruje – toto sú zdrojové pracovné priestory.</p></div></header><div className="e360-quick-grid"><QuickLink icon="capacity" label="IT náklady" detail={entity.finance.task?`Úloha ${entity.finance.taskCode} · drill-down platieb`:'Finančný register'} onClick={()=>go('itCosts')}/><QuickLink icon="systems" label="Technologický katalóg" detail="Platforma, služby a infraštruktúra" onClick={()=>go('technology')}/><QuickLink icon="cmdb" label="Asset Management" detail={`${entity.cmdb.length} súvisiacich aktív`} onClick={()=>go('cmdb')}/><QuickLink icon="tasks" label="Riadenie práce" detail="Úlohy, projekty a zmeny" onClick={()=>go('work')}/><QuickLink icon="database" label="Dodávatelia" detail={`${entity.suppliers.length} väzieb`} onClick={()=>go('suppliers')}/><QuickLink icon="shield" label="Service 360" detail="Prevádzkové a manažérske signály" onClick={()=>go('intelligence')}/></div></section>
         </div>}
-        {tab==='finance'&&<FinanceView entity={entity} onGo={go}/>} 
+        {tab==='finance'&&<FinanceView entity={entity} onGo={go} onSelectEntity={selectEntity}/>} 
         {tab==='work'&&<WorkView entity={entity} onGo={go}/>} 
         {tab==='technology'&&<TechnologyView entity={entity} onGo={go}/>} 
         {tab==='governance'&&<GovernanceView entity={entity} onGo={go}/>} 

@@ -3,9 +3,11 @@ import { Badge, Empty, Field, Icon, Modal, PageHeader } from '../components/UI'
 import { buildContractDirectory, emptyContractRecord, type ContractView } from '../lib/contractDirectory'
 import { buildSupplierDirectory } from '../lib/supplierDirectory'
 import type { AppState, ContractRecord, ContractRenewalType, ContractStatus } from '../types'
+import { komisContract } from '../data/komisContract'
 import './Contracts.css'
 
 const money = new Intl.NumberFormat('sk-SK', { style:'currency', currency:'EUR', maximumFractionDigits:0 })
+const money2 = new Intl.NumberFormat('sk-SK', { style:'currency', currency:'EUR', minimumFractionDigits:2, maximumFractionDigits:2 })
 const dateFmt = new Intl.DateTimeFormat('sk-SK')
 
 type ContractTab = 'overview'|'register'|'renewals'|'sla'
@@ -50,6 +52,20 @@ function downloadCsv(rows: ContractView[]) {
   const blob=new Blob([text],{type:'text/csv;charset=utf-8'})
   const url=URL.createObjectURL(blob)
   const link=document.createElement('a');link.href=url;link.download='zmluvy-sla-renewal.csv';link.click();URL.revokeObjectURL(url)
+}
+
+function KomisContractSlaPanel(){
+  return <section className="panel komis-contract-sla-panel">
+    <div className="panel-heading"><div><span className="eyebrow">KOMIS · ZMLUVNÉ SLA</span><h3>Mesačný ekvivalent podpory podľa modulov</h3><p>Zmluva definuje podporu kvartálne na 84 mesiacov. Mesačný údaj = zmluvná kvartálna cena / 3; nejde o prepis skutočnej fakturácie.</p></div><a className="button button-secondary" href={komisContract.sourceUrl} target="_blank" rel="noreferrer"><Icon name="calendar" size={16}/> Otvoriť CRZ</a></div>
+    <div className="komis-contract-summary">
+      <article><span>MODULY</span><strong>{komisContract.modules.length}</strong><small>samostatných SLA položiek</small></article>
+      <article><span>SLA / MESIAC</span><strong>{money2.format(komisContract.slaMonthlyGross)}</strong><small>{money2.format(komisContract.slaMonthlyNet)} bez DPH</small></article>
+      <article><span>PODPORA 84 MES.</span><strong>{money2.format(komisContract.sla84Gross)}</strong><small>{money2.format(komisContract.sla84Net)} bez DPH</small></article>
+      <article><span>ROZVOJ / VYBUDOVANIE</span><strong>{money2.format(komisContract.developmentGross)}</strong><small>statická hodnota s DPH</small></article>
+    </div>
+    <div className="komis-contract-table-wrap"><table className="contract-table komis-contract-table"><thead><tr><th>Modul</th><th>SLA / mesiac</th><th>SLA / kvartál</th><th>Podpora 84 mes.</th><th>Rozvoj / vybudovanie</th></tr></thead><tbody>{komisContract.modules.map(module=><tr key={module.id}><td><strong>{module.code}</strong><small>{module.title}</small></td><td><strong>{money2.format(module.slaMonthlyGross)}</strong><small>{money2.format(module.slaMonthlyNet)} bez DPH</small></td><td><strong>{money2.format(module.slaQuarterlyGross)}</strong><small>{money2.format(module.slaQuarterlyNet)} bez DPH</small></td><td><strong>{money2.format(module.sla84Gross)}</strong><small>{money2.format(module.sla84Net)} bez DPH</small></td><td><strong>{money2.format(module.developmentGross)}</strong><small>{money2.format(module.developmentNet)} bez DPH · staticky</small></td></tr>)}</tbody></table></div>
+    <div className="komis-contract-note"><span><strong>Rámec prevádzkových úprav:</strong> {komisContract.operationsFrameworkHours.toLocaleString('sk-SK')} hod. × {money2.format(komisContract.operationsFrameworkHourlyNet)} = {money2.format(komisContract.operationsFrameworkGross)} s DPH.</span><span><strong>Celá zmluva:</strong> {money2.format(komisContract.contractGross)} s DPH.</span></div>
+  </section>
 }
 
 function ContractEditor({record,suppliers,onSave,onClose}:{record:ContractRecord;suppliers:ReturnType<typeof buildSupplierDirectory>;onSave:(record:ContractRecord)=>void;onClose:()=>void}){
@@ -152,6 +168,7 @@ export default function Contracts({state,canEdit,currentUser,onChange,go}:Props)
       <section className="panel"><div className="panel-heading"><div><span className="eyebrow">NAJBLIŽŠIE ROZHODNUTIA</span><h3>Obnova a obstarávanie</h3><p>Lead-time = maximum výpovednej lehoty a času potrebného na obstarávanie.</p></div></div><div className="renewal-list">{renewalRows.length?renewalRows.slice(0,8).map(item=><button key={item.canonicalKey} onClick={()=>{setSearch(item.contractNumber);setTab('register')}}><Badge tone={toneForRenewal(item.renewalState)}>{item.renewalState}</Badge><span><strong>{item.contractNumber}</strong><small>{item.supplierName} · {daysLabel(item.daysToEnd)}</small></span><b>{item.renewalStart?`štart ${labelDate(item.renewalStart)}`:'termín doplniť'}</b></button>):<Empty title="Žiadny renewal signál" text="Po doplnení dátumov platnosti sa tu zobrazia termíny obnovy."/>}</div></section>
       <section className="panel"><div className="panel-heading"><div><span className="eyebrow">KONCENTRÁCIA</span><h3>Najvyššie čerpanie podľa zmluvy</h3></div></div><div className="contract-spend-list">{[...directory].sort((a,b)=>b.spentYtd-a.spentYtd).filter(item=>item.spentYtd).slice(0,8).map(item=><button key={item.canonicalKey} onClick={()=>{setSearch(item.contractNumber);setTab('register')}}><span><strong>{item.contractNumber}</strong><small>{item.supplierName}</small></span><b>{money.format(item.spentYtd)}</b></button>)}</div></section>
       <section className="panel span-all"><div className="panel-heading"><div><span className="eyebrow">RIADIACI MODEL</span><h3>Zmluva → dodávateľ → služba → náklad → renewal</h3><p>Spravovaná karta zmluvy dopĺňa zdrojové referencie bez prepisovania pôvodných platieb alebo registra IS.</p></div><button className="button button-secondary" onClick={()=>go('suppliers')}>Dodávatelia →</button></div><div className="contract-flow"><span>Zmluva</span><i>→</i><span>Dodávateľ</span><i>→</i><span>IS / modul</span><i>→</i><span>SLA</span><i>→</i><span>€ čerpanie</span><i>→</i><span>Obnova</span></div></section>
+      <section className="panel span-all komis-contract-overview"><div className="panel-heading"><div><span className="eyebrow">KOMIS · INTERWAY</span><h3>12 modulov · SLA {money2.format(komisContract.slaMonthlyGross)} / mesiac s DPH</h3><p>CRZ štruktúrovaný rozpočet: podpora 84 mesiacov + statické náklady na vybudovanie/rozvoj jednotlivých modulov.</p></div><button className="button button-primary" onClick={()=>setTab('sla')}>Rozpad SLA podľa modulov →</button></div></section>
     </div>}
 
     {tab==='register'&&<>
@@ -161,7 +178,7 @@ export default function Contracts({state,canEdit,currentUser,onChange,go}:Props)
 
     {tab==='renewals'&&<section className="panel renewal-radar"><div className="panel-heading"><div><span className="eyebrow">LIFECYCLE ZMLÚV</span><h3>Renewal radar</h3><p>Termín „začať obnovu“ sa počíta spätne od platnosti podľa dlhšieho z: výpovedná lehota / lead-time obstarávania.</p></div></div><div className="renewal-columns">{(['Po termíne','Začať teraz','Do 90 dní','Chýba termín','Neskôr'] as ContractView['renewalState'][]).map(group=><section key={group}><header><Badge tone={toneForRenewal(group)}>{group}</Badge><b>{directory.filter(item=>item.renewalState===group).length}</b></header>{directory.filter(item=>item.renewalState===group).slice(0,12).map(item=><button key={item.canonicalKey} onClick={()=>{setSearch(item.contractNumber);setTab('register')}}><strong>{item.contractNumber}</strong><span>{item.supplierName}</span><small>{item.validTo?`do ${labelDate(item.validTo)}`:'bez dátumu'}{item.renewalStart?` · štart ${labelDate(item.renewalStart)}`:''}</small></button>)}</section>)}</div></section>}
 
-    {tab==='sla'&&<section className="contract-table-shell"><table className="contract-table"><thead><tr><th>Zmluva</th><th>Dodávateľ</th><th>Systémy</th><th>SLA stav</th><th>SLA cieľ</th><th>Platnosť</th><th>Akcia</th></tr></thead><tbody>{slaRows.map(item=><tr key={item.canonicalKey}><td><strong>{item.contractNumber}</strong></td><td><strong>{item.supplierName}</strong><small>{item.supplierIco}</small></td><td><span>{item.systemNames.join(', ')||'—'}</span></td><td><Badge tone={item.slaStatus?'success':item.slaRequired?'warning':'neutral'}>{item.slaStatus|| (item.slaRequired?'doplniť':'neurčené')}</Badge></td><td>{item.slaTarget||'—'}</td><td>{labelDate(item.validTo)}</td><td>{canEdit?<button className="button button-secondary button-small" onClick={()=>setEditing(emptyContractRecord(item))}>Doplniť</button>:<span>Read-only</span>}</td></tr>)}</tbody></table></section>}
+    {tab==='sla'&&<div className="contract-sla-stack"><KomisContractSlaPanel/><section className="contract-table-shell"><table className="contract-table"><thead><tr><th>Zmluva</th><th>Dodávateľ</th><th>Systémy</th><th>SLA stav</th><th>SLA cieľ</th><th>Platnosť</th><th>Akcia</th></tr></thead><tbody>{slaRows.map(item=><tr key={item.canonicalKey}><td><strong>{item.contractNumber}</strong></td><td><strong>{item.supplierName}</strong><small>{item.supplierIco}</small></td><td><span>{item.systemNames.join(', ')||'—'}</span></td><td><Badge tone={item.slaStatus?'success':item.slaRequired?'warning':'neutral'}>{item.slaStatus|| (item.slaRequired?'doplniť':'neurčené')}</Badge></td><td>{item.slaTarget||'—'}</td><td>{labelDate(item.validTo)}</td><td>{canEdit?<button className="button button-secondary button-small" onClick={()=>setEditing(emptyContractRecord(item))}>Doplniť</button>:<span>Read-only</span>}</td></tr>)}</tbody></table></section></div>}
 
     {editing&&<ContractEditor record={editing} suppliers={suppliers} onSave={saveRecord} onClose={()=>setEditing(null)}/>} 
   </div>
