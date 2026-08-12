@@ -571,6 +571,39 @@ export interface ServiceArchitectureRecord {
   updatedBy?: string
 }
 
+
+export interface EnterpriseGovernanceOverride {
+  entityId: string
+  primaryOwner: string
+  businessOwner: string
+  technicalOwner: string
+  deputy: string
+  oitOwners: string[]
+  updatedAt: string
+  updatedBy: string
+}
+
+export interface ContractDevelopmentRequest {
+  id: string
+  contractKey: string
+  contractNumber: string
+  reference: string
+  title: string
+  moduleCode: string
+  status: string
+  requestDate: string
+  dueDate: string
+  owner: string
+  requestedHours: number
+  approvedHours: number
+  usedHours: number
+  note: string
+  source: string
+  importedAt: string
+  updatedAt: string
+  updatedBy: string
+}
+
 export interface AppState {
   meta: Meta
   employees: Employee[]
@@ -597,6 +630,8 @@ export interface AppState {
   supplierRecords: SupplierRecord[]
   supplierRelationships: SupplierRelationship[]
   contractRecords: ContractRecord[]
+  enterpriseGovernance: EnterpriseGovernanceOverride[]
+  contractDevelopmentRequests: ContractDevelopmentRequest[]
 }
 
 
