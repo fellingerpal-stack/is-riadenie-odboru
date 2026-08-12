@@ -3,9 +3,10 @@ import type { AccessScope, AppState } from '../types'
 import { Icon, type IconName } from './UI'
 import { buildSupplierDirectory } from '../lib/supplierDirectory'
 import { buildContractDirectory } from '../lib/contractDirectory'
+import { buildEnterprise360Entities } from '../lib/enterprise360'
 import './GlobalSearch.css'
 
-type ViewKey = 'portals'|'technology'|'intelligence'|'itCosts'|'contracts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'|'myWorkspace'|'dataQuality'
+type ViewKey = 'portals'|'enterprise360'|'technology'|'intelligence'|'itCosts'|'contracts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'|'myWorkspace'|'dataQuality'
 
 type SearchResult = {
   id: string
@@ -15,9 +16,11 @@ type SearchResult = {
   icon: IconName
   view: ViewKey
   assetId?: string
+  entityId?: string
 }
 
 const shortcuts: SearchResult[] = [
+  { id:'shortcut-360', title:'CVTI 360', subtitle:'Systémy, financie, úlohy, technológie a väzby na jednej karte', kind:'Navigácia', icon:'shield', view:'enterprise360' },
   { id:'shortcut-my', title:'Moje centrum', subtitle:'Moje úlohy, aktíva a signály', kind:'Navigácia', icon:'dashboard', view:'myWorkspace' },
   { id:'shortcut-control', title:'Riadiace centrum IT', subtitle:'Control Tower a Service 360', kind:'Navigácia', icon:'shield', view:'intelligence' },
   { id:'shortcut-tech', title:'Technologický katalóg', subtitle:'Technológie, služby a infraštruktúra', kind:'Navigácia', icon:'systems', view:'technology' },
@@ -56,13 +59,16 @@ export default function GlobalSearch({
   const results = useMemo<SearchResult[]>(() => {
     if (!normalized) {
       return shortcuts.filter(item => {
-        if (['technology','intelligence','itCosts','contracts','suppliers','cmdb','dataQuality'].includes(item.view)) return canReadShared || item.view === 'dataQuality'
+        if (['enterprise360','technology','intelligence','itCosts','contracts','suppliers','cmdb','dataQuality'].includes(item.view)) return canReadShared || item.view === 'dataQuality'
         return true
       })
     }
 
     const found: SearchResult[] = []
     if (canReadShared) {
+      buildEnterprise360Entities(state).filter(item => matches(normalized, item.title, item.aliases.join(' '), item.businessLayer, item.primaryOwner, item.oitOwners.join(' '), item.service?.name)).slice(0,10).forEach(item => found.push({
+        id:`enterprise-${item.id}`, title:item.title, subtitle:`CVTI 360 · ${item.finance.task ? `úloha ${item.finance.taskCode} · ${item.finance.spent.toLocaleString('sk-SK')} €` : `${item.cmdb.length} aktív · ${item.openWorkCount} úloh`}`, kind:'360° entita', icon:'shield', view:'enterprise360', entityId:item.id,
+      }))
       state.cmdbItems.filter(item => scopeAllowed(item.scope, canReadOit, canReadOris, canReadShared) && matches(normalized, item.name, item.id, item.assetTag, item.serialNumber, item.hostname, item.supplier, item.location, item.assignedTo)).slice(0,12).forEach(item => found.push({
         id:`asset-${item.id}`, title:item.name, subtitle:`${item.type} · ${item.assetTag || item.id} · ${item.location || 'bez lokality'}`, kind:'Aktívum', icon:'cmdb', view:'cmdb', assetId:item.id,
       }))
@@ -101,6 +107,7 @@ export default function GlobalSearch({
   const open = (result: SearchResult) => {
     go(result.view)
     if (result.assetId) window.setTimeout(() => { location.hash = `/cmdb?asset=${encodeURIComponent(result.assetId!)}` }, 10)
+    if (result.entityId) window.setTimeout(() => { location.hash = `/enterprise360?entity=${encodeURIComponent(result.entityId!)}` }, 10)
     onClose()
   }
 
