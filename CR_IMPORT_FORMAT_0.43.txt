@@ -1,0 +1,21 @@
+KOMIS – odporúčaný Excel formát pre CR / rozvojové požiadavky
+==============================================================
+
+Odporúčaný prvý riadok Excelu:
+
+CR | Názov | Modul | Stav | Požadované hodiny | Schválené hodiny | Čerpané hodiny | Dátum | Termín | Vlastník | Poznámka
+
+Príklad:
+CR-2026-001 | Úprava exportu CRZP | CRZP / ANTIPLAG | Schválená | 80 | 60 | 24 | 2026-08-12 | 2026-09-30 | Martin Vozák | Prvá etapa
+
+Podporované sú aj varianty hlavičiek:
+- CR ID, ID, Číslo CR
+- Popis, Požiadavka
+- Systém, Module
+- Odhad hodín
+- Approved hours
+- Spotrebované hodiny, Realizované hodiny, Used hours
+- Gestor, Zodpovedný, Owner
+- Komentár, Note
+
+Čerpanie zmluvného rámca 7 000 h sa počíta výhradne zo stĺpca Čerpané hodiny.

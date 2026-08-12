@@ -1,0 +1,87 @@
+IS Riadenie odboru – v0.43.0 QA
+================================
+Date: 2026-08-12
+
+SCOPE
+- CVTI 360 governance ownership editing
+- KOMIS quarterly SLA presentation
+- KOMIS CR / development request register
+- Excel import foundation for CR records
+- Existing synchronized snapshot persistence
+- No SQL/database schema change
+
+PASSED – VERSION / STATE
+- package.json version = 0.43.0
+- seed meta.version = 0.43.0
+- storage CURRENT_VERSION = 0.43.0
+- enterpriseGovernance default + migration present
+- contractDevelopmentRequests default + migration present
+- App.tsx passes admin/manager shared-write editing callbacks into Enterprise360
+
+PASSED – GOVERNANCE
+- Primary owner edit UI present
+- Business owner edit UI present
+- Technical owner edit UI present
+- Deputy edit UI present
+- Multi-value OIT owners edit UI present
+- Existing employee names exposed as datalist suggestions
+- Manual governance override takes precedence in CVTI 360
+- Updated-at / updated-by metadata stored and displayed
+- Source RACI/CMDB records are not rewritten
+
+PASSED – KOMIS SLA
+- 12 SLA modules detected
+- quarterly net total = 45,950.00 EUR
+- quarterly gross total = 55,140.00 EUR
+- monthly equivalent gross = 18,380.00 EUR
+- 84-month support gross = 1,543,920.00 EUR
+- development/build gross = 6,223,968.00 EUR
+- quarterly amount is primary in CVTI 360 module cards
+- monthly amount is secondary / equivalent only
+- Contracts & SLA table uses quarterly amount as primary column
+
+PASSED – CR DEVELOPMENT REGISTER
+- dedicated Rozvoj / CR tab present
+- contractual 7,000-hour limit shown for KOMIS
+- rate 55 EUR/hour net used for financial equivalent
+- framework gross = 462,000.00 EUR
+- requested / approved / used / remaining metrics present
+- used-hours value is the source of contractual consumption
+- manual create / edit / delete present for authorized users
+- filters: search / module / status
+- Excel import supports XLSX/XLS via existing xlsx dependency
+- duplicate reference updates existing request instead of adding a duplicate
+- generic contractKey / contractNumber model included for future contracts
+- KOMIS module entities reuse contractKey=komis so module CRs count toward the same framework
+
+PASSED – CONTRACT RECONCILIATION
+- development gross 6,223,968.00
+- 84m support gross 1,543,920.00
+- 7,000h framework gross 462,000.00
+- total = 8,229,888.00 EUR gross
+
+PASSED – CODE CHECKS
+- Enterprise360.tsx TypeScript/JSX transpile syntax: OK
+- Contracts.tsx TypeScript/JSX transpile syntax: OK
+- App.tsx TypeScript/JSX transpile syntax: OK
+- enterprise360.ts syntax: OK
+- storage.ts syntax: OK
+- types.ts syntax: OK
+- focused strict TypeScript check of non-React data/state layer: OK
+- Enterprise360.css brace balance: OK
+- package.json parse: OK
+- seed.json parse: OK
+
+FULL BUILD
+- npm install was attempted in the build workspace but did not finish within the 45-second environment limit.
+- Therefore a full local Vite production build was not completed here.
+- Production Vercel/CI must complete its standard install + npm run build before publication.
+
+POST-DEPLOY SMOKE TEST
+1. Verify v0.43.0 in the application footer.
+2. CVTI 360 -> KOMIS: verify SLA 55,140.00 EUR / quarter gross and monthly 18,380.00 EUR only as secondary data.
+3. CVTI 360 -> KOMIS -> Rozvoj / CR: verify 7,000 h framework and create one test CR.
+4. Refresh the app and verify the CR persists after snapshot sync.
+5. Import a small test XLSX and verify used-hour totals.
+6. CVTI 360 -> CRZP/ANTIPLAG -> Riadenie: edit ownership and verify persistence after refresh.
+7. Contracts & SLA -> KOMIS: verify quarter-first table hierarchy.
