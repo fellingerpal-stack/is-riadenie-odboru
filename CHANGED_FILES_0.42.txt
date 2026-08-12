@@ -1,0 +1,16 @@
+IS Riadenie odboru v0.42.0 – zmenené súbory
+============================================
+package.json
+src/data/seed.json
+src/lib/storage.ts
+src/data/komisContract.ts
+src/lib/enterprise360.ts
+src/views/Enterprise360.tsx
+src/views/Enterprise360.css
+src/components/GlobalSearch.tsx
+src/views/Contracts.tsx
+src/views/Contracts.css
+RELEASE_NOTES_0.42.md
+README_NASADENIE_0.42.txt
+QA_RESULTS_0.42.txt
+CHANGED_FILES_0.42.txt

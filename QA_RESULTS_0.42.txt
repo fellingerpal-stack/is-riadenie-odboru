@@ -1,0 +1,42 @@
+IS Riadenie odboru v0.42.0 - automated QA
+Date: 2026-08-12
+
+[1] Version consistency
+package.json:4:  "version": "0.42.0",
+src/data/seed.json:3:    "version": "0.42.0",
+6:const CURRENT_VERSION = '0.42.0'
+OK
+
+[2] TypeScript/TSX transpile syntax
+OK src/data/komisContract.ts
+OK src/lib/enterprise360.ts
+OK src/views/Enterprise360.tsx
+OK src/components/GlobalSearch.tsx
+OK src/views/Contracts.tsx
+
+[3] Focused strict typecheck with local dependency stubs
+OK
+
+[4] CSS structure
+OK src/views/Enterprise360.css 269 blocks
+OK src/views/Contracts.css 92 blocks
+
+[5] KOMIS contract arithmetic
+OK modules 12
+OK monthly SLA gross 18380.00
+OK contract net 6858240.00
+OK contract gross 8229888.00
+
+[6] Enterprise 360 runtime aggregation
+OK CRZP task 22 + SLA 49508.47 1840
+OK SVD/SCIDAP combined modules SCIDAP, SVD
+OK KOMIS portfolio 12 modules
+
+[7] Data source wiring
+OK CRZ source URL
+OK CVTI 360 contract panel
+OK Contracts SLA panel
+OK contract module global search
+
+[8] Full npm/Vite build
+NOT VERIFIED LOCALLY: npm dependency installation timed out in the build workspace. No new npm dependency was added. Production Vercel/CI must complete npm install and npm run build.
