@@ -1,0 +1,59 @@
+IS Riadenie odboru – v0.39.0 QA
+================================
+Date: 2026-08-12
+
+SCOPE
+- IT náklady -> Úlohy 10 / 22 / 25 payment/document drill-down
+- Clickable task cards, spent KPI and chart columns
+- Row-level July audit ledger with KPD/PPD/FZD/PGD/PRACM
+- CSV export from drill-down
+- No database change
+
+DATA RECONCILIATION – PASSED
+- Source rows used: 357
+- Task 10: 171 rows = 509 559.61 EUR
+- Task 22: 64 rows = 49 508.47 EUR
+- Task 25: 122 rows = 48 541.18 EUR
+- Total: 357 rows = 607 609.26 EUR
+- Every task/month value in contractTaskLedger.json was compared with contractTasks.json: exact to 0.01 EUR.
+- Task 10 / February: 24 rows, 10 documents = 124 760.73 EUR
+- Task 10 / May: 25 rows, 13 documents = 116 784.39 EUR
+- Task 22 / July: 14 rows, 1 document = 15 174.97 EUR
+- Task 25 / May: 19 rows, 18 documents = 19 362.37 EUR
+- Ledger IDs are unique.
+
+SOURCE / GENERATOR – PASSED
+- scripts/extract_contract_task_ledger_from_audit.py compiles with Python py_compile.
+- Generator re-created 357 rows from the July filtered audit.
+- Generator fails deployment data preparation if task totals do not reconcile with contractTasks.json.
+- JSON parse checks passed for package.json, seed.json, contractTasks.json and contractTaskLedger.json.
+
+FRONTEND – PASSED
+- ContractSpending.tsx TypeScript/JSX transpile syntax check: OK.
+- New ledger import present.
+- Task card -> drill-down handler present.
+- Chart bar -> month/quarter/cumulative drill-down handler present.
+- Spent KPI -> drill-down handler present.
+- Doklady / Riadky views present.
+- Search fields include document, note, KPD, PPD, PRACM, FZD and PGD.
+- Reconciliation status and CSV detail export present.
+- Responsive drill-down CSS rules present.
+
+VERSION – PASSED
+- package.json = 0.39.0
+- src/data/seed.json meta.version = 0.39.0
+- src/lib/storage.ts CURRENT_VERSION = 0.39.0
+
+FULL BUILD
+- NOT VERIFIED LOCALLY.
+- npm dependency installation timed out and node_modules was not created.
+- `npm run build` therefore reports missing React/Vite modules before application type checking can run.
+- Production Vercel/CI must successfully complete the standard build before publication.
+
+POST-DEPLOY SMOKE TEST
+1. IT náklady -> Úlohy 10 / 22 / 25 -> click Úloha 10: 509 559.61 EUR and status Súčet sedí.
+2. Úloha 10 -> Mesačne -> click Feb: 124 760.73 EUR.
+3. Úloha 22 -> click Jul: 15 174.97 EUR.
+4. Switch Doklady / Riadky; verify FZD, PGD and PRACM in row view.
+5. Search for a document or KPD and verify filtered total.
+6. Export CSV detail.
