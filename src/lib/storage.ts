@@ -1,9 +1,9 @@
 import seed from '../data/seed.json'
-import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, ContractRecord, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, SlaPolicy, SupplierRecord, SupplierRelationship, Task, Ticket } from '../types'
+import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, ContractDevelopmentRequest, ContractRecord, EnterpriseGovernanceOverride, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, SlaPolicy, SupplierRecord, SupplierRelationship, Task, Ticket } from '../types'
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.42.0'
+const CURRENT_VERSION = '0.43.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -504,6 +504,42 @@ function migrateSupplierRelationship(relationship: SupplierRelationship): Suppli
   }
 }
 
+function migrateEnterpriseGovernance(value: Partial<EnterpriseGovernanceOverride>): EnterpriseGovernanceOverride {
+  return {
+    entityId: typeof value.entityId === 'string' ? value.entityId : '',
+    primaryOwner: typeof value.primaryOwner === 'string' ? value.primaryOwner : '',
+    businessOwner: typeof value.businessOwner === 'string' ? value.businessOwner : '',
+    technicalOwner: typeof value.technicalOwner === 'string' ? value.technicalOwner : '',
+    deputy: typeof value.deputy === 'string' ? value.deputy : '',
+    oitOwners: Array.isArray(value.oitOwners) ? value.oitOwners.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [],
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
+    updatedBy: typeof value.updatedBy === 'string' ? value.updatedBy : '',
+  }
+}
+
+function migrateContractDevelopmentRequest(value: Partial<ContractDevelopmentRequest>): ContractDevelopmentRequest {
+  return {
+    id: typeof value.id === 'string' && value.id ? value.id : `cr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    contractKey: typeof value.contractKey === 'string' && value.contractKey ? value.contractKey : 'komis',
+    contractNumber: typeof value.contractNumber === 'string' ? value.contractNumber : '',
+    reference: typeof value.reference === 'string' ? value.reference : '',
+    title: typeof value.title === 'string' ? value.title : '',
+    moduleCode: typeof value.moduleCode === 'string' ? value.moduleCode : '',
+    status: typeof value.status === 'string' && value.status ? value.status : 'Návrh',
+    requestDate: typeof value.requestDate === 'string' ? value.requestDate : '',
+    dueDate: typeof value.dueDate === 'string' ? value.dueDate : '',
+    owner: typeof value.owner === 'string' ? value.owner : '',
+    requestedHours: Number.isFinite(Number(value.requestedHours)) ? Number(value.requestedHours) : 0,
+    approvedHours: Number.isFinite(Number(value.approvedHours)) ? Number(value.approvedHours) : 0,
+    usedHours: Number.isFinite(Number(value.usedHours)) ? Number(value.usedHours) : 0,
+    note: typeof value.note === 'string' ? value.note : '',
+    source: typeof value.source === 'string' ? value.source : '',
+    importedAt: typeof value.importedAt === 'string' ? value.importedAt : '',
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
+    updatedBy: typeof value.updatedBy === 'string' ? value.updatedBy : '',
+  }
+}
+
 export function migrateState(input: AppState): AppState {
   const defaults = cloneSeed()
   const source = (input && typeof input === 'object' ? input : {}) as Partial<AppState>
@@ -542,6 +578,8 @@ export function migrateState(input: AppState): AppState {
     supplierRecords: Array.isArray(source.supplierRecords) ? source.supplierRecords.map(migrateSupplierRecord) : [],
     supplierRelationships: Array.isArray(source.supplierRelationships) ? source.supplierRelationships.map(migrateSupplierRelationship) : [],
     contractRecords: Array.isArray(source.contractRecords) ? source.contractRecords.map(migrateContractRecord) : [],
+    enterpriseGovernance: Array.isArray(source.enterpriseGovernance) ? source.enterpriseGovernance.map(migrateEnterpriseGovernance) : [],
+    contractDevelopmentRequests: Array.isArray(source.contractDevelopmentRequests) ? source.contractDevelopmentRequests.map(migrateContractDevelopmentRequest) : [],
   }
 }
 

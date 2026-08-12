@@ -2,6 +2,7 @@ import type {
   AppState,
   ChangeRequest,
   CmdbItem,
+  ContractDevelopmentRequest,
   ContractRecord,
   ProblemRecord,
   Project,
@@ -140,6 +141,9 @@ export interface Enterprise360Entity {
   businessOwner: string
   technicalOwner: string
   deputy: string
+  governanceUpdatedAt: string
+  governanceUpdatedBy: string
+  developmentRequests: ContractDevelopmentRequest[]
   openWorkCount: number
   openIncidentCount: number
   openProblemCount: number
@@ -266,21 +270,40 @@ function financeFor(record:ArchitectureCatalogRecord,cmdb:CmdbItem[],contracts:C
     contractSpentYtd:contracts.reduce((sum,item)=>sum+Number(item.spentYtd||0),0),
   }
 }
-function ownersFor(record:ArchitectureCatalogRecord,service:Service|null){
-  const oitOwners=record.oitOwnerIds.map(id=>oitPeopleById[id]||id)
+function ownersFor(state:AppState,record:ArchitectureCatalogRecord,service:Service|null){
+  const sourceOitOwners=record.oitOwnerIds.map(id=>oitPeopleById[id]||id)
+  const override=(state.enterpriseGovernance||[]).find(item=>item.entityId===record.id)
   return {
-    primaryOwner:service?.primary||'',
-    businessOwner:service?.businessOwner||'',
-    technicalOwner:service?.technicalOwner||'',
-    deputy:service?.deputy||'',
-    oitOwners,
+    primaryOwner:override?.primaryOwner||service?.primary||'',
+    businessOwner:override?.businessOwner||service?.businessOwner||'',
+    technicalOwner:override?.technicalOwner||service?.technicalOwner||'',
+    deputy:override?.deputy||service?.deputy||'',
+    oitOwners:override?.oitOwners?.length?override.oitOwners:sourceOitOwners,
+    governanceUpdatedAt:override?.updatedAt||'',
+    governanceUpdatedBy:override?.updatedBy||'',
   }
 }
-function missingFor(record:ArchitectureCatalogRecord,service:Service|null,finance:EnterpriseFinance,suppliers:SupplierRelationship[],contracts:ContractRecord[]){
+function linkedDevelopmentRequests(state:AppState,record:ArchitectureCatalogRecord,modules:KomisContractModule[],contracts:ContractRecord[]){
+  const all=state.contractDevelopmentRequests||[]
+  if(record.id==='komis')return all.filter(item=>item.contractKey==='komis')
+  const komisRows=all.filter(item=>item.contractKey==='komis')
+  const moduleRows=modules.length?komisRows.filter(item=>{
+    const requestModule=normalize360(item.moduleCode)
+    if(!requestModule)return false
+    return modules.some(module=>{
+      const names=[module.code,module.title,...module.aliases].map(normalize360).filter(Boolean)
+      return names.some(name=>name.includes(requestModule)||requestModule.includes(name))
+    })
+  }):[]
+  const contractKeys=new Set(contracts.flatMap(item=>[item.id,item.contractNumber]).map(normalize360).filter(Boolean))
+  const genericRows=all.filter(item=>item.contractKey!=='komis'&&(contractKeys.has(normalize360(item.contractKey))||contractKeys.has(normalize360(item.contractNumber))))
+  return unique([...moduleRows,...genericRows])
+}
+function missingFor(record:ArchitectureCatalogRecord,service:Service|null,finance:EnterpriseFinance,suppliers:SupplierRelationship[],contracts:ContractRecord[],owners:ReturnType<typeof ownersFor>){
   const missing:string[]=[]
-  if(!service?.businessOwner)missing.push('business owner')
-  if(!service?.technicalOwner)missing.push('technický vlastník')
-  if(!service?.deputy)missing.push('zástupca')
+  if(!owners.businessOwner)missing.push('business owner')
+  if(!owners.technicalOwner)missing.push('technický vlastník')
+  if(!owners.deputy)missing.push('zástupca')
   if(!service?.rto)missing.push('RTO')
   if(!service?.runbook)missing.push('runbook')
   if(!record.monitoring||/potvrdiť|doplniť/i.test(record.monitoring))missing.push('monitoring')
@@ -311,14 +334,15 @@ export function buildEnterprise360Entities(state:AppState):Enterprise360Entity[]
     const informationSystems=linkedInformationSystems(record)
     const finance=financeFor(record,cmdb,contracts)
     const komisModules=komisModulesForEntity(record.id)
-    const owners=ownersFor(record,service)
+    const owners=ownersFor(state,record,service)
+    const developmentRequests=linkedDevelopmentRequests(state,record,komisModules,contracts)
     const openTasks=tasks.filter(task=>!isClosedStatus(task.status))
     const openIncidents=tickets.filter(ticket=>!isClosedStatus(ticket.status))
     const openProblems=problems.filter(problem=>!isClosedStatus(problem.status))
     const activeChanges=changes.filter(change=>!isClosedStatus(change.status))
     const openRisks=risks.filter(risk=>!isClosedStatus(risk.status))
     const highRisks=openRisks.filter(risk=>['kriticka','vysoka'].includes(normalize360(risk.priority)))
-    const missing=missingFor(record,service,finance,suppliers,contracts)
+    const missing=missingFor(record,service,finance,suppliers,contracts,owners)
     const readiness=readinessScore(missing,highRisks.length,openProblems.length,openIncidents.length)
     const attention=highRisks.length*3+openProblems.length*2+openIncidents.length+activeChanges.length+missing.length
     const criticality=service?.criticality||'Neurčená'
@@ -328,6 +352,7 @@ export function buildEnterprise360Entities(state:AppState):Enterprise360Entity[]
       ...suppliers.map(item=>`${item.supplierName} ${item.role}`),...contracts.map(item=>`${item.title} ${item.contractNumber}`),
       ...websites.map(item=>`${item.name} ${item.url}`),...informationSystems.map(item=>`${item.name} ${item.supplier}`),
       ...komisModules.map(komisModuleSearchText), record.id==='komis'?komisContract.modules.map(komisModuleSearchText).join(' '):'',
+      ...developmentRequests.map(item=>`${item.reference} ${item.title} ${item.moduleCode} ${item.status} ${item.owner}`),
     ].join(' '))
     return {
       id:record.id,title:record.title,aliases:record.aliases,businessLayer:record.businessLayer,criticality,
@@ -335,7 +360,7 @@ export function buildEnterprise360Entities(state:AppState):Enterprise360Entity[]
       finance,komisModules,runtimeLocation:record.runtimeLocation,environment:record.environment,platform:record.platform,serverHints:record.serverHints,
       networkDependencies:record.networkDependencies,monitoring:record.monitoring,backup:record.backup,continuity:record.continuity,
       oitDomains:record.oitDomains,oitOwners:owners.oitOwners,primaryOwner:owners.primaryOwner,businessOwner:owners.businessOwner,
-      technicalOwner:owners.technicalOwner,deputy:owners.deputy,openWorkCount:openTasks.length,openIncidentCount:openIncidents.length,
+      technicalOwner:owners.technicalOwner,deputy:owners.deputy,governanceUpdatedAt:owners.governanceUpdatedAt,governanceUpdatedBy:owners.governanceUpdatedBy,developmentRequests,openWorkCount:openTasks.length,openIncidentCount:openIncidents.length,
       openProblemCount:openProblems.length,activeChangeCount:activeChanges.length,openRiskCount:openRisks.length,highRiskCount:highRisks.length,
       missing,readinessScore:readiness,attentionScore:attention,searchText,
     }
@@ -354,6 +379,9 @@ export function enterprisePortfolioTotals(entities:Enterprise360Entity[]){
     assets:entities.reduce((sum,entity)=>sum+entity.cmdb.length,0),
     attention:entities.filter(entity=>entity.attentionScore>8).length,
     komisMonthlySlaGross:komisContract.slaMonthlyGross,
+    komisQuarterlySlaGross:komisContract.modules.reduce((sum,item)=>sum+item.slaQuarterlyGross,0),
+    komisDevelopmentRequests:(entities.find(entity=>entity.id==='komis')?.developmentRequests||[]).length,
+    komisDevelopmentUsedHours:(entities.find(entity=>entity.id==='komis')?.developmentRequests||[]).reduce((sum,item)=>sum+Number(item.usedHours||0),0),
     komisSupport84Gross:komisContract.sla84Gross,
     komisDevelopmentGross:komisContract.developmentGross,
   }
