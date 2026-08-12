@@ -3,7 +3,7 @@ import type { AccessScope, AppState } from '../types'
 import { Icon, type IconName } from './UI'
 import { buildSupplierDirectory } from '../lib/supplierDirectory'
 import { buildContractDirectory } from '../lib/contractDirectory'
-import { buildEnterprise360Entities } from '../lib/enterprise360'
+import { buildEnterprise360Entities, normalize360 } from '../lib/enterprise360'
 import './GlobalSearch.css'
 
 type ViewKey = 'portals'|'enterprise360'|'technology'|'intelligence'|'itCosts'|'contracts'|'suppliers'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'|'myWorkspace'|'dataQuality'
@@ -66,8 +66,8 @@ export default function GlobalSearch({
 
     const found: SearchResult[] = []
     if (canReadShared) {
-      buildEnterprise360Entities(state).filter(item => matches(normalized, item.title, item.aliases.join(' '), item.businessLayer, item.primaryOwner, item.oitOwners.join(' '), item.service?.name)).slice(0,10).forEach(item => found.push({
-        id:`enterprise-${item.id}`, title:item.title, subtitle:`CVTI 360 · ${item.finance.task ? `úloha ${item.finance.taskCode} · ${item.finance.spent.toLocaleString('sk-SK')} €` : `${item.cmdb.length} aktív · ${item.openWorkCount} úloh`}`, kind:'360° entita', icon:'shield', view:'enterprise360', entityId:item.id,
+      buildEnterprise360Entities(state).filter(item => item.searchText.includes(normalize360(normalized)) || matches(normalized, item.title, item.aliases.join(' '), item.businessLayer, item.primaryOwner, item.oitOwners.join(' '), item.service?.name)).slice(0,10).forEach(item => found.push({
+        id:`enterprise-${item.id}`, title:item.title, subtitle:`CVTI 360 · ${item.finance.task ? `úloha ${item.finance.taskCode} · ${item.finance.spent.toLocaleString('sk-SK')} €` : item.komisModules.length ? `KOMIS SLA · ${item.komisModules.reduce((sum,module)=>sum+module.slaMonthlyGross,0).toLocaleString('sk-SK',{maximumFractionDigits:2})} €/mes. s DPH` : `${item.cmdb.length} aktív · ${item.openWorkCount} úloh`}`, kind:'360° entita', icon:'shield', view:'enterprise360', entityId:item.id,
       }))
       state.cmdbItems.filter(item => scopeAllowed(item.scope, canReadOit, canReadOris, canReadShared) && matches(normalized, item.name, item.id, item.assetTag, item.serialNumber, item.hostname, item.supplier, item.location, item.assignedTo)).slice(0,12).forEach(item => found.push({
         id:`asset-${item.id}`, title:item.name, subtitle:`${item.type} · ${item.assetTag || item.id} · ${item.location || 'bez lokality'}`, kind:'Aktívum', icon:'cmdb', view:'cmdb', assetId:item.id,
