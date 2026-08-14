@@ -1,0 +1,64 @@
+IS Riadenie odboru v0.45.0 - QA RESULTS
+Date: 2026-08-14
+
+[PASS] package.json version = 0.45.0
+[PASS] seed meta.version = 0.45.0
+[PASS] storage CURRENT_VERSION = 0.45.0
+[PASS] JSON parse: package.json + src/data/seed.json
+
+TYPESCRIPT / SYNTAX
+[PASS] Targeted TypeScript typecheck for ServiceDesk change surface:
+       src/types.ts, src/components/UI.tsx, src/lib/supabase.ts,
+       src/lib/helpdeskCloud.ts, src/lib/storage.ts, src/views/Helpdesk.tsx
+[PASS] TypeScript transpile syntax: src/types.ts
+[PASS] TypeScript transpile syntax: src/lib/storage.ts
+[PASS] TypeScript transpile syntax: src/lib/helpdeskCloud.ts
+[PASS] TSX transpile syntax: src/views/Helpdesk.tsx
+[PASS] TypeScript transpile syntax: supabase/functions/service-notifications/index.ts
+
+FUNCTIONAL STRUCTURE
+[PASS] Notification Center present in ServiceDesk UI
+[PASS] mark one/all notification read flow present
+[PASS] ServiceDesk polls notification/escalation state in cloud mode
+[PASS] leader queue health panel present
+[PASS] queue business-calendar configuration present
+[PASS] calendar exception CRUD UI present
+[PASS] helpdeskCloud APIs present for notifications, escalations and calendar exceptions
+
+BUSINESS CALENDAR REFERENCE TESTS
+[PASS] Fri 2026-08-14 15:00 + 8 business hours -> Mon 2026-08-17 15:00
+[PASS] Fri 2026-08-14 17:00 + 4 business hours -> Mon 2026-08-17 12:00
+[PASS] Sat 2026-08-15 + 1 business hour -> Mon 2026-08-17 09:00
+[PASS] Monday exception marked non-working + 2h -> Tue 2026-08-18 10:00
+Note: these are reference tests mirroring the SQL business-calendar rules; the migration itself was not executed against a live Postgres instance in this build environment.
+
+DATABASE STATIC SECURITY / STRUCTURE
+[PASS] service_calendar_exceptions table
+[PASS] service_notifications table
+[PASS] service_email_outbox table
+[PASS] server business-hour calculator
+[PASS] server SLA trigger
+[PASS] server notification enqueue
+[PASS] SLA warning/breach processor
+[PASS] personal notification reader + mark-read RPC
+[PASS] service-role-only email claim/complete RPC grants
+[PASS] direct authenticated writes to email outbox revoked
+[PASS] PUBLIC execute revoked from critical helper RPCs
+[PASS] calendar exception writes restricted through configurator RPC
+[PASS] optional pg_cron scheduling is failure-safe
+[PASS] final SQL readiness SELECT present
+
+EMAIL WORKER
+[PASS] worker secret header check
+[PASS] service-role DB access stays inside Edge Function
+[PASS] provider-neutral HTTPS mail-gateway webhook
+[PASS] retry/failure result returned to DB outbox
+[PASS] no service-role key referenced by browser ServiceDesk files
+
+LIMITATIONS / DEPLOYMENT GATES
+[INFO] Full Vite production build could not be completed locally because npm dependency installation timed out and a complete node_modules tree was not available.
+[INFO] Release adds no new npm dependency.
+[REQUIRED] Vercel/CI must successfully run the normal TypeScript + Vite build before production publication.
+[REQUIRED] Run migration_servicedesk_v045.sql before deploying the v0.45 frontend.
+[REQUIRED] Execute employee/resolver/admin smoke tests after migration.
+[INFO] Physical e-mail delivery is optional and requires Edge Function deployment + mail gateway secrets; in-app notifications do not depend on it.
