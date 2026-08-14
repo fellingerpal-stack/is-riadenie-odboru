@@ -3,6 +3,7 @@ import type {
   AppRole,
   Employee,
   ServiceCalendarException,
+  ServiceEmailChannel,
   ServiceNotification,
   Service,
   ServiceRoutingRule,
@@ -14,7 +15,7 @@ import type {
   TicketComment,
 } from '../types'
 import { Badge, Empty, Field, Icon, Modal, PageHeader } from '../components/UI'
-import { deleteServiceCalendarException, loadServiceCalendarExceptions, loadServiceNotifications, markServiceNotificationRead, processServiceSlaEscalations, upsertServiceCalendarException, type HelpdeskDatabaseState } from '../lib/helpdeskCloud'
+import { deleteServiceCalendarException, deleteServiceEmailChannel, loadServiceCalendarExceptions, loadServiceEmailChannels, loadServiceNotifications, markServiceNotificationRead, processServiceSlaEscalations, upsertServiceCalendarException, upsertServiceEmailChannel, type HelpdeskDatabaseState } from '../lib/helpdeskCloud'
 import './Helpdesk.css'
 
 const ticketTypes = ['Incident', 'Požiadavka']
@@ -346,6 +347,9 @@ export default function Helpdesk({
   const [calendarExceptions, setCalendarExceptions] = useState<ServiceCalendarException[]>([])
   const [calendarDraft, setCalendarDraft] = useState<ServiceCalendarException>(()=>({id:crypto.randomUUID(),day:todayIso(),isWorkingDay:false,workdayStart:'',workdayEnd:'',label:''}))
   const [calendarError, setCalendarError] = useState('')
+  const [emailChannels, setEmailChannels] = useState<ServiceEmailChannel[]>([])
+  const [emailChannelsError, setEmailChannelsError] = useState('')
+  const [emailChannelsSaving, setEmailChannelsSaving] = useState('')
   const [commentText, setCommentText] = useState('')
   const [commentInternal, setCommentInternal] = useState(false)
 
@@ -370,10 +374,20 @@ export default function Helpdesk({
     }
   }
 
+  async function refreshEmailChannels() {
+    if (databaseMode !== 'cloud' || !canConfigure) return
+    try {
+      setEmailChannels(await loadServiceEmailChannels())
+      setEmailChannelsError('')
+    } catch (error) {
+      setEmailChannelsError(error instanceof Error ? error.message : 'E-mailové kanály sa nepodarilo načítať.')
+    }
+  }
+
   useEffect(() => {
     if (databaseMode !== 'cloud' || databaseState === 'loading') return
     void refreshNotifications(true)
-    if (canConfigure) void refreshCalendarExceptions()
+    if (canConfigure) { void refreshCalendarExceptions(); void refreshEmailChannels() }
     const timer = window.setInterval(() => void refreshNotifications(true), 60_000)
     return () => window.clearInterval(timer)
   }, [databaseMode, databaseState, canConfigure])
@@ -425,6 +439,41 @@ export default function Helpdesk({
       await refreshCalendarExceptions()
     } catch (error) {
       setCalendarError(error instanceof Error ? error.message : 'Výnimku SLA kalendára sa nepodarilo odstrániť.')
+    }
+  }
+
+  function addEmailChannel() {
+    setEmailChannels((current)=>[{
+      id:crypto.randomUUID(),address:'',name:'Nový e-mailový kanál',queueId:'Q-SD-L1',ticketType:'Požiadavka',
+      category:'Ostatné',subcategory:'Iné',serviceId:'',priority:'Stredná',isActive:true,
+    },...current])
+  }
+
+  function patchEmailChannel(id: string, patch: Partial<ServiceEmailChannel>) {
+    setEmailChannels((current)=>current.map((item)=>item.id===id?{...item,...patch}:item))
+  }
+
+  async function saveEmailChannel(item: ServiceEmailChannel) {
+    if (!canConfigure || !item.address.trim()) return
+    setEmailChannelsSaving(item.id); setEmailChannelsError('')
+    try {
+      const savedId=await upsertServiceEmailChannel(item)
+      if(savedId!==item.id)setEmailChannels((current)=>current.map((candidate)=>candidate.id===item.id?{...candidate,id:savedId}:candidate))
+      await refreshEmailChannels()
+    } catch (error) {
+      setEmailChannelsError(error instanceof Error ? error.message : 'E-mailový kanál sa nepodarilo uložiť.')
+    } finally { setEmailChannelsSaving('') }
+  }
+
+  async function removeEmailChannel(id: string) {
+    if (!canConfigure) return
+    const item=emailChannels.find((candidate)=>candidate.id===id)
+    if(item && !item.address.trim()){setEmailChannels((current)=>current.filter((candidate)=>candidate.id!==id));return}
+    try {
+      await deleteServiceEmailChannel(id)
+      await refreshEmailChannels()
+    } catch (error) {
+      setEmailChannelsError(error instanceof Error ? error.message : 'E-mailový kanál sa nepodarilo odstrániť.')
     }
   }
 
@@ -760,7 +809,7 @@ export default function Helpdesk({
 
       <section className="panel sd-lead-panel"><div className="panel-heading"><div><span className="eyebrow">Vedúci skupín</span><h3>Operatívny health front</h3><p>Otvorené, nepridelené a SLA riziká podľa riešiteľskej skupiny.</p></div><Badge tone={breachedCount?'warning':'success'}>{breachedCount?'Vyžaduje pozornosť':'Stabilné'}</Badge></div><div className="sd-lead-grid">{supportQueues.filter((queue)=>queue.isActive).map((queue)=>{const queueTickets=openTickets.filter((ticket)=>ticket.queueId===queue.id);const breached=queueTickets.filter((ticket)=>slaState(ticket).tone==='danger').length;const warning=queueTickets.filter((ticket)=>slaState(ticket).tone==='warning').length;const unassigned=queueTickets.filter((ticket)=>!ticket.assignee).length;return <article key={queue.id}><header><div><strong>{queue.name}</strong><small>{queue.lead||'Vedúci neurčený'}{queue.deputy?` · zástupca ${queue.deputy}`:''}</small></div><Badge tone={breached?'danger':warning?'warning':'success'}>{breached?`${breached} po SLA`:warning?`${warning} v riziku`:'OK'}</Badge></header><div className="sd-lead-metrics"><span><small>Otvorené</small><b>{queueTickets.length}</b></span><span><small>Bez riešiteľa</small><b>{unassigned}</b></span><span><small>SLA riziko</small><b>{warning}</b></span><span><small>Po SLA</small><b>{breached}</b></span></div><footer><span>{queue.businessCalendarEnabled?`${queue.workdayStart}-${queue.workdayEnd} · pracovné dni`:'Kalendárne hodiny'}</span><span>varovanie {Math.round(queue.slaWarningMinutes/60*10)/10} h vopred</span></footer></article>})}</div></section>
 
-      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div></div></section>
+      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div><div><Icon name="mail" /><span><strong>Inbound e-mail → Ticket</strong><small>v0.46: nové správy vytvoria ticket, odpovede sa threadujú podľa čísla ticketu v predmete</small></span><Badge tone="info">Webhook</Badge></div></div></section>
     </div>}
 
 
@@ -777,6 +826,17 @@ export default function Helpdesk({
       <section className="panel sd-config-panel">
         <div className="panel-heading"><div><span className="eyebrow">Matica členstva</span><h3>Ktorý zamestnanec patrí do ktorej skupiny</h3><p>Členstvo určuje resolverom viditeľnosť fronty a pracovné oprávnenia.</p></div></div>
         <div className="sd-membership-matrix-wrap"><table className="sd-membership-matrix"><thead><tr><th>Zamestnanec</th>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><th key={queue.id}>{queue.name}</th>)}</tr></thead><tbody>{employees.map((employee)=><tr key={employee.id}><td><strong>{employee.name}</strong><small>{employee.position||employee.roleType||''}</small></td>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><td key={queue.id}><label className="sd-matrix-check"><input type="checkbox" checked={queue.members.includes(employee.name)} onChange={()=>toggleQueueMember(queue.id,employee.name)}/><span>{queue.members.includes(employee.name)?'✓':''}</span></label></td>)}</tr>)}</tbody></table></div>
+      </section>
+
+      <section className="panel sd-config-panel sd-email-channel-panel">
+        <div className="panel-heading"><div><span className="eyebrow">E-mail → Ticket</span><h3>Prijímacie adresy ServiceDesku</h3><p>Každá adresa môže automaticky určiť frontu, typ, kategóriu a prioritu. Odpoveď s číslom ticketu v predmete sa pripojí ako verejný komentár.</p></div><button className="button button-primary button-small" onClick={addEmailChannel}><Icon name="plus" size={15}/> Pridať adresu</button></div>
+        {emailChannelsError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{emailChannelsError}</span></div>}
+        <div className="sd-email-channel-grid">{emailChannels.map((item)=><article key={item.id} className={!item.isActive?'is-disabled':''}>
+          <header><label className="switch"><input type="checkbox" checked={item.isActive} onChange={(event)=>patchEmailChannel(item.id,{isActive:event.target.checked})}/><span/></label><div><strong>{item.name||'E-mailový kanál'}</strong><small>{item.address||'nová adresa'}</small></div><button className="icon-button" onClick={()=>void removeEmailChannel(item.id)} title="Odstrániť adresu"><Icon name="trash" size={15}/></button></header>
+          <div className="sd-email-channel-fields"><label>Adresa<input type="email" value={item.address} placeholder="servicedesk@cvti.sk" onChange={(event)=>patchEmailChannel(item.id,{address:event.target.value})}/></label><label>Názov<input value={item.name} onChange={(event)=>patchEmailChannel(item.id,{name:event.target.value})}/></label><label>Fronta<select value={item.queueId} onChange={(event)=>patchEmailChannel(item.id,{queueId:event.target.value})}><option value="">Bez fronty</option>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label><label>Typ<select value={item.ticketType} onChange={(event)=>patchEmailChannel(item.id,{ticketType:event.target.value})}>{ticketTypes.map((value)=><option key={value}>{value}</option>)}</select></label><label>Kategória<select value={item.category} onChange={(event)=>patchEmailChannel(item.id,{category:event.target.value,subcategory:categories[event.target.value]?.[0]||'Iné'})}>{Object.keys(categories).map((value)=><option key={value}>{value}</option>)}</select></label><label>Podkategória<select value={item.subcategory} onChange={(event)=>patchEmailChannel(item.id,{subcategory:event.target.value})}>{(categories[item.category]||['Iné']).map((value)=><option key={value}>{value}</option>)}</select></label><label>Priorita<select value={item.priority} onChange={(event)=>patchEmailChannel(item.id,{priority:event.target.value})}>{priorities.map((value)=><option key={value}>{value}</option>)}</select></label><label>Služba / systém<select value={item.serviceId} onChange={(event)=>patchEmailChannel(item.id,{serviceId:event.target.value})}><option value="">Bez väzby</option>{services.map((service)=><option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>
+          <footer><span><Icon name="mail" size={15}/> Nový e-mail = nový ticket · odpoveď na predmet s ID = komentár</span><button className="button button-secondary button-small" disabled={emailChannelsSaving===item.id||!item.address.trim()} onClick={()=>void saveEmailChannel(item)}>{emailChannelsSaving===item.id?'Ukladám…':'Uložiť kanál'}</button></footer>
+        </article>)}</div>
+        {!emailChannels.length&&!emailChannelsError&&<p className="panel-note">Zatiaľ nie je nakonfigurovaná žiadna prijímacia adresa.</p>}
       </section>
 
       <section className="panel sd-config-panel sd-calendar-panel">
