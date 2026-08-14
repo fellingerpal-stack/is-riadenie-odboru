@@ -3,7 +3,7 @@ import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, Change
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.44.0'
+const CURRENT_VERSION = '0.45.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -529,6 +529,13 @@ function migrateSupportQueue(queue: SupportQueue): SupportQueue {
     lead: typeof source.lead==='string'?source.lead:'',
     deputy: typeof source.deputy==='string'?source.deputy:'',
     workingHours: typeof source.workingHours==='string'&&source.workingHours?source.workingHours:'Po-Pi 08:00-16:00',
+    businessCalendarEnabled: source.businessCalendarEnabled!==false,
+    workingDays: Array.isArray(source.workingDays)&&source.workingDays.length?source.workingDays.filter((value):value is number=>Number.isInteger(value)&&value>=1&&value<=7):[1,2,3,4,5],
+    workdayStart: typeof source.workdayStart==='string'&&source.workdayStart?source.workdayStart:'08:00',
+    workdayEnd: typeof source.workdayEnd==='string'&&source.workdayEnd?source.workdayEnd:'16:00',
+    timezone: typeof source.timezone==='string'&&source.timezone?source.timezone:'Europe/Bratislava',
+    slaWarningMinutes: Number.isFinite(Number(source.slaWarningMinutes))?Math.max(15,Number(source.slaWarningMinutes)):240,
+    emailNotifications: source.emailNotifications!==false,
     slaPolicyId: typeof source.slaPolicyId==='string'?source.slaPolicyId:'',
     isActive: source.isActive!==false,
   }

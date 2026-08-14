@@ -1,4 +1,4 @@
-import type { ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
+import type { ServiceCalendarException, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
 import { supabase } from './supabase'
 
 export type HelpdeskDatabaseState = 'local' | 'loading' | 'synced' | 'saving' | 'error'
@@ -13,8 +13,37 @@ interface ServiceQueueRow {
   lead: string
   deputy: string
   working_hours: string
+  business_calendar_enabled: boolean
+  working_days: unknown
+  workday_start: string
+  workday_end: string
+  timezone: string
+  sla_warning_minutes: number
+  email_notifications: boolean
   sla_policy_code: string
   is_active: boolean
+}
+
+interface ServiceNotificationRow {
+  id: string
+  kind: string
+  severity: string
+  title: string
+  message: string
+  ticket_code: string
+  target_email: string
+  is_read: boolean
+  email_status: string
+  created_at: string
+}
+
+interface ServiceCalendarExceptionRow {
+  id: string
+  day: string
+  is_working_day: boolean
+  workday_start: string | null
+  workday_end: string | null
+  label: string
 }
 
 interface ServiceSlaPolicyRow {
@@ -89,8 +118,41 @@ function queueFromRow(row: ServiceQueueRow): SupportQueue {
     lead: row.lead || '',
     deputy: row.deputy || '',
     workingHours: row.working_hours || 'Po-Pi 08:00-16:00',
+    businessCalendarEnabled: row.business_calendar_enabled !== false,
+    workingDays: asArray<number>(row.working_days).filter((item) => Number.isInteger(item) && item >= 1 && item <= 7),
+    workdayStart: row.workday_start || '08:00',
+    workdayEnd: row.workday_end || '16:00',
+    timezone: row.timezone || 'Europe/Bratislava',
+    slaWarningMinutes: Number(row.sla_warning_minutes || 240),
+    emailNotifications: row.email_notifications !== false,
     slaPolicyId: row.sla_policy_code || '',
     isActive: Boolean(row.is_active),
+  }
+}
+
+function notificationFromRow(row: ServiceNotificationRow): ServiceNotification {
+  return {
+    id: row.id,
+    kind: row.kind,
+    severity: row.severity,
+    title: row.title,
+    message: row.message,
+    ticketId: row.ticket_code || '',
+    targetEmail: row.target_email || '',
+    isRead: Boolean(row.is_read),
+    emailStatus: row.email_status || 'disabled',
+    createdAt: row.created_at,
+  }
+}
+
+function calendarExceptionFromRow(row: ServiceCalendarExceptionRow): ServiceCalendarException {
+  return {
+    id: row.id,
+    day: row.day,
+    isWorkingDay: Boolean(row.is_working_day),
+    workdayStart: row.workday_start || '',
+    workdayEnd: row.workday_end || '',
+    label: row.label || '',
   }
 }
 
@@ -168,11 +230,14 @@ function friendlyHelpdeskError(error: unknown): Error {
     lower.includes('service_queues') ||
     lower.includes('service_sla_policies') ||
     lower.includes('service_routing_rules') ||
+    lower.includes('service_notifications') ||
+    lower.includes('service_email_outbox') ||
+    lower.includes('service_calendar_exceptions') ||
     lower.includes('schema cache') ||
     lower.includes('could not find the table') ||
     (lower.includes('relation') && lower.includes('does not exist'))
   ) {
-    return new Error('Databázové tabuľky Helpdesku ešte nie sú pripravené. Spustite Supabase migráciu migration_servicedesk_v044.sql pre release 0.44.0.')
+    return new Error('Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 a v0.45.0.')
   }
   if (lower.includes('permission') || lower.includes('row-level security') || lower.includes('oprávnen')) {
     return new Error('Používateľ nemá oprávnenie vykonať túto operáciu v Helpdesku.')
@@ -192,7 +257,7 @@ export async function loadHelpdeskData(): Promise<{
     const [queuesResult, policiesResult, routingResult, ticketsResult] = await Promise.all([
       supabase
         .from('service_queues')
-        .select('id, code, name, description, members, email, lead, deputy, working_hours, sla_policy_code, is_active')
+        .select('id, code, name, description, members, email, lead, deputy, working_hours, business_calendar_enabled, working_days, workday_start, workday_end, timezone, sla_warning_minutes, email_notifications, sla_policy_code, is_active')
         .order('name'),
       supabase
         .from('service_sla_policies')
@@ -222,6 +287,45 @@ export async function loadHelpdeskData(): Promise<{
   } catch (error) {
     throw friendlyHelpdeskError(error)
   }
+}
+
+export async function loadServiceNotifications(limit = 80): Promise<ServiceNotification[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('get_service_notifications', { p_limit: limit })
+  if (error) throw friendlyHelpdeskError(error)
+  return ((data ?? []) as ServiceNotificationRow[]).map(notificationFromRow)
+}
+
+export async function markServiceNotificationRead(notificationId: string, isRead = true): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('mark_service_notification_read', { p_notification_id: notificationId, p_is_read: isRead })
+  if (error) throw friendlyHelpdeskError(error)
+}
+
+export async function processServiceSlaEscalations(): Promise<number> {
+  if (!supabase) return 0
+  const { data, error } = await supabase.rpc('process_service_sla_escalations')
+  if (error) throw friendlyHelpdeskError(error)
+  return Number(data || 0)
+}
+
+export async function loadServiceCalendarExceptions(): Promise<ServiceCalendarException[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('get_service_calendar_exceptions')
+  if (error) throw friendlyHelpdeskError(error)
+  return ((data ?? []) as ServiceCalendarExceptionRow[]).map(calendarExceptionFromRow)
+}
+
+export async function upsertServiceCalendarException(item: ServiceCalendarException): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('upsert_service_calendar_exception', { p_item: item })
+  if (error) throw friendlyHelpdeskError(error)
+}
+
+export async function deleteServiceCalendarException(id: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('delete_service_calendar_exception', { p_id: id })
+  if (error) throw friendlyHelpdeskError(error)
 }
 
 export async function upsertServiceTicket(ticket: Ticket): Promise<void> {
