@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "0.43.0",
+    "version": "0.44.0",
     "organization": "CVTI SR",
     "unit": "Odbor 3.2",
     "sourceDate": "2026-07-30",
@@ -2540,7 +2540,11 @@
         "Lukáš Visokai"
       ],
       "email": "aplikacie@cvtisr.sk",
-      "isActive": true
+      "isActive": true,
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": ""
     },
     {
       "id": "Q02",
@@ -2551,7 +2555,11 @@
         "Ladislav Turányi"
       ],
       "email": "servicedesk@cvtisr.sk",
-      "isActive": true
+      "isActive": true,
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": ""
     },
     {
       "id": "Q03",
@@ -2563,7 +2571,11 @@
         "Ladislav Turányi"
       ],
       "email": "nti@cvtisr.sk",
-      "isActive": true
+      "isActive": true,
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": ""
     },
     {
       "id": "Q04",
@@ -2574,6 +2586,118 @@
         "Peter Modrák"
       ],
       "email": "web@cvtisr.sk",
+      "isActive": true,
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": ""
+    },
+    {
+      "id": "Q-SD-L1",
+      "name": "ServiceDesk L1",
+      "description": "Prvotné triedenie a všeobecná používateľská podpora.",
+      "members": [],
+      "email": "servicedesk@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
+      "isActive": true
+    },
+    {
+      "id": "Q-PREV",
+      "name": "Prevádzka IT",
+      "description": "Bežná IT prevádzka a prevádzkové požiadavky.",
+      "members": [],
+      "email": "prevadzka@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
+      "isActive": true
+    },
+    {
+      "id": "Q-TLAC",
+      "name": "Tlačové služby",
+      "description": "Tlačiarne, skenery, tonery a súvisiaca používateľská podpora.",
+      "members": [],
+      "email": "tlac@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
+      "isActive": true
+    },
+    {
+      "id": "Q-INFRA",
+      "name": "Infraštruktúra",
+      "description": "Servery, virtualizácia, storage, dátové centrá a zálohovanie.",
+      "members": [],
+      "email": "infra@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
+      "isActive": true
+    },
+    {
+      "id": "Q-SIET",
+      "name": "Sieť",
+      "description": "LAN, WAN, Wi-Fi, VPN a sieťová konektivita.",
+      "members": [],
+      "email": "siet@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
+      "isActive": true
+    },
+    {
+      "id": "Q-ENDPOINT",
+      "name": "Koncové zariadenia",
+      "description": "PC, notebooky, monitory a periférie.",
+      "members": [],
+      "email": "hw@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
+      "isActive": true
+    },
+    {
+      "id": "Q-IAM",
+      "name": "IAM / Prístupy",
+      "description": "Účty, heslá, oprávnenia a prístupové požiadavky.",
+      "members": [],
+      "email": "iam@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
+      "isActive": true
+    },
+    {
+      "id": "Q-ROZVOJ",
+      "name": "Rozvoj IS",
+      "description": "Rozvoj aplikácií, zmenové požiadavky a aplikačné úpravy.",
+      "members": [],
+      "email": "rozvojis@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
+      "isActive": true
+    },
+    {
+      "id": "Q-KOMIS",
+      "name": "KOMIS",
+      "description": "CRZP/ANTIPLAG, CREPČ, CREUČ, SK CRIS, SVD, SCIDAP, PRIMO a ďalšie moduly KOMIS.",
+      "members": [],
+      "email": "komis@cvtisr.sk",
+      "lead": "",
+      "deputy": "",
+      "workingHours": "Po-Pi 08:00-16:00",
+      "slaPolicyId": "",
       "isActive": true
     }
   ],
@@ -4543,5 +4667,103 @@
   "supplierRelationships": [],
   "contractRecords": [],
   "enterpriseGovernance": [],
-  "contractDevelopmentRequests": []
+  "contractDevelopmentRequests": [],
+  "serviceRoutingRules": [
+    {
+      "id": "RT-KOMIS",
+      "name": "KOMIS a centrálne registre",
+      "ticketType": "",
+      "category": "KOMIS a centrálne registre",
+      "subcategory": "",
+      "serviceId": "",
+      "queueId": "Q-KOMIS",
+      "priority": "",
+      "sortOrder": 10,
+      "isActive": true
+    },
+    {
+      "id": "RT-TLAC",
+      "name": "Tlač a skenovanie",
+      "ticketType": "",
+      "category": "Tlač a skenovanie",
+      "subcategory": "",
+      "serviceId": "",
+      "queueId": "Q-TLAC",
+      "priority": "",
+      "sortOrder": 20,
+      "isActive": true
+    },
+    {
+      "id": "RT-IAM",
+      "name": "Prístupy a oprávnenia",
+      "ticketType": "",
+      "category": "Prístupy a oprávnenia",
+      "subcategory": "",
+      "serviceId": "",
+      "queueId": "Q-IAM",
+      "priority": "",
+      "sortOrder": 30,
+      "isActive": true
+    },
+    {
+      "id": "RT-ENDPOINT",
+      "name": "Koncové zariadenia",
+      "ticketType": "",
+      "category": "Koncové zariadenia",
+      "subcategory": "",
+      "serviceId": "",
+      "queueId": "Q-ENDPOINT",
+      "priority": "",
+      "sortOrder": 40,
+      "isActive": true
+    },
+    {
+      "id": "RT-SIET",
+      "name": "Sieťové incidenty",
+      "ticketType": "",
+      "category": "Infraštruktúra",
+      "subcategory": "Sieť",
+      "serviceId": "",
+      "queueId": "Q-SIET",
+      "priority": "",
+      "sortOrder": 50,
+      "isActive": true
+    },
+    {
+      "id": "RT-INFRA",
+      "name": "Infraštruktúra",
+      "ticketType": "",
+      "category": "Infraštruktúra",
+      "subcategory": "",
+      "serviceId": "",
+      "queueId": "Q-INFRA",
+      "priority": "",
+      "sortOrder": 60,
+      "isActive": true
+    },
+    {
+      "id": "RT-ROZVOJ",
+      "name": "Rozvoj IS",
+      "ticketType": "",
+      "category": "Rozvoj IS",
+      "subcategory": "",
+      "serviceId": "",
+      "queueId": "Q-ROZVOJ",
+      "priority": "",
+      "sortOrder": 70,
+      "isActive": true
+    },
+    {
+      "id": "RT-L1",
+      "name": "Všeobecný fallback",
+      "ticketType": "",
+      "category": "",
+      "subcategory": "",
+      "serviceId": "",
+      "queueId": "Q-SD-L1",
+      "priority": "",
+      "sortOrder": 999,
+      "isActive": true
+    }
+  ]
 }
