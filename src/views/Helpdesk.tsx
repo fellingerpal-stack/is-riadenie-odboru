@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type {
   AppRole,
   Employee,
+  ServiceCalendarException,
+  ServiceNotification,
   Service,
   ServiceRoutingRule,
   SlaPolicy,
@@ -12,7 +14,7 @@ import type {
   TicketComment,
 } from '../types'
 import { Badge, Empty, Field, Icon, Modal, PageHeader } from '../components/UI'
-import type { HelpdeskDatabaseState } from '../lib/helpdeskCloud'
+import { deleteServiceCalendarException, loadServiceCalendarExceptions, loadServiceNotifications, markServiceNotificationRead, processServiceSlaEscalations, upsertServiceCalendarException, type HelpdeskDatabaseState } from '../lib/helpdeskCloud'
 import './Helpdesk.css'
 
 const ticketTypes = ['Incident', 'Požiadavka']
@@ -134,6 +136,14 @@ function slaState(ticket: Ticket): { label: string; tone: SlaTone; detail: strin
   if (left < 0) return { label: 'SLA prekročené', tone: 'danger', detail: `${Math.abs(Math.round(left))} h po limite`, rank: 0 }
   if (left <= 4) return { label: 'SLA v riziku', tone: 'warning', detail: `${Math.max(0, Math.round(left))} h do limitu`, rank: 1 }
   return { label: 'V limite', tone: 'success', detail: `${Math.round(left)} h zostáva`, rank: 3 }
+}
+
+function notificationTone(severity: string) {
+  if (severity === 'danger') return 'danger' as const
+  if (severity === 'warning') return 'warning' as const
+  if (severity === 'success') return 'success' as const
+  if (severity === 'info') return 'info' as const
+  return 'neutral' as const
 }
 
 function nextTicketId(type: string, _tickets: Ticket[]) {
@@ -295,7 +305,21 @@ export default function Helpdesk({
   services = Array.isArray(services) ? services : []
   employees = Array.isArray(employees) ? employees : []
   tasks = Array.isArray(tasks) ? tasks : []
-  supportQueues = Array.isArray(supportQueues) ? supportQueues.map((queue) => ({ ...queue, members: Array.isArray(queue?.members) ? queue.members : [], lead:queue?.lead||'', deputy:queue?.deputy||'', workingHours:queue?.workingHours||'Po-Pi 08:00-16:00', slaPolicyId:queue?.slaPolicyId||'' })) : []
+  supportQueues = Array.isArray(supportQueues) ? supportQueues.map((queue) => ({
+    ...queue,
+    members: Array.isArray(queue?.members) ? queue.members : [],
+    lead: queue?.lead || '',
+    deputy: queue?.deputy || '',
+    workingHours: queue?.workingHours || 'Po-Pi 08:00-16:00',
+    businessCalendarEnabled: queue?.businessCalendarEnabled !== false,
+    workingDays: Array.isArray(queue?.workingDays) && queue.workingDays.length ? queue.workingDays : [1, 2, 3, 4, 5],
+    workdayStart: queue?.workdayStart || '08:00',
+    workdayEnd: queue?.workdayEnd || '16:00',
+    timezone: queue?.timezone || 'Europe/Bratislava',
+    slaWarningMinutes: Number(queue?.slaWarningMinutes || 240),
+    emailNotifications: queue?.emailNotifications !== false,
+    slaPolicyId: queue?.slaPolicyId || '',
+  })) : []
   slaPolicies = Array.isArray(slaPolicies) && slaPolicies.length ? slaPolicies : fallbackPolicies
   serviceRoutingRules = Array.isArray(serviceRoutingRules) ? serviceRoutingRules : []
   currentUser = typeof currentUser === 'string' && currentUser.trim() ? currentUser : 'Používateľ'
@@ -316,8 +340,43 @@ export default function Helpdesk({
   const [draft, setDraft] = useState<Ticket>(() => blankTicket(slaPolicies, supportQueues))
   const [modalOpen, setModalOpen] = useState(false)
   const [alertsOpen, setAlertsOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [notifications, setNotifications] = useState<ServiceNotification[]>([])
+  const [notificationsError, setNotificationsError] = useState('')
+  const [calendarExceptions, setCalendarExceptions] = useState<ServiceCalendarException[]>([])
+  const [calendarDraft, setCalendarDraft] = useState<ServiceCalendarException>(()=>({id:crypto.randomUUID(),day:todayIso(),isWorkingDay:false,workdayStart:'',workdayEnd:'',label:''}))
+  const [calendarError, setCalendarError] = useState('')
   const [commentText, setCommentText] = useState('')
   const [commentInternal, setCommentInternal] = useState(false)
+
+  async function refreshNotifications(runEscalation = false) {
+    if (databaseMode !== 'cloud') return
+    try {
+      if (runEscalation) await processServiceSlaEscalations()
+      setNotifications(await loadServiceNotifications())
+      setNotificationsError('')
+    } catch (error) {
+      setNotificationsError(error instanceof Error ? error.message : 'Notifikácie sa nepodarilo načítať.')
+    }
+  }
+
+  async function refreshCalendarExceptions() {
+    if (databaseMode !== 'cloud' || !canConfigure) return
+    try {
+      setCalendarExceptions(await loadServiceCalendarExceptions())
+      setCalendarError('')
+    } catch (error) {
+      setCalendarError(error instanceof Error ? error.message : 'SLA kalendár sa nepodarilo načítať.')
+    }
+  }
+
+  useEffect(() => {
+    if (databaseMode !== 'cloud' || databaseState === 'loading') return
+    void refreshNotifications(true)
+    if (canConfigure) void refreshCalendarExceptions()
+    const timer = window.setInterval(() => void refreshNotifications(true), 60_000)
+    return () => window.clearInterval(timer)
+  }, [databaseMode, databaseState, canConfigure])
 
   const memberQueueIds=new Set(supportQueues.filter((queue)=>queue.members.some((member)=>member.toLowerCase()===currentUser.toLowerCase()||member.toLowerCase()===currentUserEmail.toLowerCase())).map((queue)=>queue.id))
   const visibleTickets=role==='admin'||role==='manager'
@@ -331,6 +390,43 @@ export default function Helpdesk({
   const breachedCount = openTickets.filter((ticket) => slaState(ticket).tone === 'danger').length
   const waitingCount = openTickets.filter((ticket) => ticket.status === 'Čaká na používateľa').length
   const unassignedCount = openTickets.filter((ticket) => !ticket.assignee).length
+  const unreadNotificationCount = notifications.filter((item) => !item.isRead).length
+
+  async function setNotificationRead(item: ServiceNotification, isRead = true) {
+    try {
+      await markServiceNotificationRead(item.id, isRead)
+      setNotifications((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, isRead } : candidate))
+    } catch (error) {
+      setNotificationsError(error instanceof Error ? error.message : 'Notifikáciu sa nepodarilo aktualizovať.')
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    for (const item of notifications.filter((candidate) => !candidate.isRead)) {
+      await setNotificationRead(item, true)
+    }
+  }
+
+  async function saveCalendarException() {
+    if (!canConfigure || !calendarDraft.day) return
+    try {
+      await upsertServiceCalendarException(calendarDraft)
+      setCalendarDraft({id:crypto.randomUUID(),day:todayIso(),isWorkingDay:false,workdayStart:'',workdayEnd:'',label:''})
+      await refreshCalendarExceptions()
+    } catch (error) {
+      setCalendarError(error instanceof Error ? error.message : 'Výnimku SLA kalendára sa nepodarilo uložiť.')
+    }
+  }
+
+  async function removeCalendarException(id: string) {
+    if (!canConfigure) return
+    try {
+      await deleteServiceCalendarException(id)
+      await refreshCalendarExceptions()
+    } catch (error) {
+      setCalendarError(error instanceof Error ? error.message : 'Výnimku SLA kalendára sa nepodarilo odstrániť.')
+    }
+  }
 
   const alertItems = useMemo(() => openTickets
     .map((ticket) => ({ ticket, sla: slaState(ticket) }))
@@ -583,6 +679,7 @@ export default function Helpdesk({
       title={isEmployee?"Nahlásenie a sledovanie požiadaviek":"ServiceDesk · riadenie incidentov a požiadaviek"}
       description={isEmployee?"Jednoduchý self-service pre zamestnancov. Požiadavka sa automaticky zaradí správnej riešiteľskej skupine.":"Samostatný ITSM workspace pre fronty, riešiteľské skupiny, SLA, routing a auditnú históriu."}
       actions={<div className="helpdesk-page-actions">
+        {databaseMode==='cloud'&&<button className="button button-secondary alert-button" onClick={() => { setNotificationsOpen(true); void refreshNotifications(true) }}><Icon name="helpdesk" size={17} /> Notifikácie {unreadNotificationCount > 0 && <b>{unreadNotificationCount}</b>}</button>}
         {isResolver&&<button className="button button-secondary alert-button" onClick={() => setAlertsOpen(true)}><Icon name="warning" size={17} /> Upozornenia {alertItems.length > 0 && <b>{alertItems.length}</b>}</button>}
         {isResolver&&<button className="button button-secondary" onClick={exportTickets}><Icon name="download" size={17} /> Export pre Excel</button>}
         {canCreate && <button className="button button-secondary" onClick={() => openNewTicket('Incident')}><Icon name="warning" size={17} /> Nahlásiť incident</button>}
@@ -655,13 +752,15 @@ export default function Helpdesk({
     </>}
 
     {deskView === 'sla' && <div className="servicedesk-report-grid">
-      <section className="panel sla-policy-panel"><div className="panel-heading"><div><span className="eyebrow">Riadenie úrovne služby</span><h3>SLA politiky</h3></div><Badge tone="info">kalendárne hodiny</Badge></div><div className="sla-policy-grid">{slaPolicies.map((policy) => <article key={policy.id}><header><Badge tone={priorityTone(policy.priority)}>{policy.priority}</Badge><strong>{policy.name}</strong></header><div><label>Prvá reakcia<input type="number" min="1" value={policy.firstResponseHours} disabled={!canConfigure} onChange={(event) => updatePolicy(policy.id, 'firstResponseHours', Number(event.target.value))} /><span>h</span></label><label>Vyriešenie<input type="number" min="1" value={policy.resolutionHours} disabled={!canConfigure} onChange={(event) => updatePolicy(policy.id, 'resolutionHours', Number(event.target.value))} /><span>h</span></label></div></article>)}</div><p className="panel-note">Zmena politiky sa použije na nové tickety. Pri zmene priority existujúceho ticketu sa SLA prepočíta od času jeho vytvorenia.</p></section>
+      <section className="panel sla-policy-panel"><div className="panel-heading"><div><span className="eyebrow">Riadenie úrovne služby</span><h3>SLA politiky</h3></div><Badge tone="success">pracovný kalendár</Badge></div><div className="sla-policy-grid">{slaPolicies.map((policy) => <article key={policy.id}><header><Badge tone={priorityTone(policy.priority)}>{policy.priority}</Badge><strong>{policy.name}</strong></header><div><label>Prvá reakcia<input type="number" min="1" value={policy.firstResponseHours} disabled={!canConfigure} onChange={(event) => updatePolicy(policy.id, 'firstResponseHours', Number(event.target.value))} /><span>h</span></label><label>Vyriešenie<input type="number" min="1" value={policy.resolutionHours} disabled={!canConfigure} onChange={(event) => updatePolicy(policy.id, 'resolutionHours', Number(event.target.value))} /><span>h</span></label></div></article>)}</div><p className="panel-note">Zmena politiky sa použije na nové tickety. Pri zmene priority existujúceho ticketu sa SLA prepočíta od času jeho vytvorenia.</p></section>
 
       <section className="panel queue-panel"><div className="panel-heading"><div><span className="eyebrow">Organizácia podpory</span><h3>Fronty riešiteľov</h3></div><Badge tone="neutral">{supportQueues.filter((queue) => queue.isActive).length} aktívne</Badge></div><div className="support-queue-grid">{supportQueues.map((queue) => <article key={queue.id} className={!queue.isActive ? 'is-disabled' : ''}><header><span className="queue-icon"><Icon name="helpdesk" size={18} /></span><div><strong>{queue.name}</strong><small>{queue.email}</small></div>{canConfigure && <label className="switch"><input type="checkbox" checked={queue.isActive} onChange={(event) => onSupportQueuesChange(supportQueues.map((item) => item.id === queue.id ? { ...item, isActive: event.target.checked } : item))} /><span /></label>}</header><p>{queue.description}</p><div className="queue-members">{queue.members.map((member) => <span key={member}>{initials(member)} <small>{member}</small></span>)}</div></article>)}</div></section>
 
       <section className="panel analytics-panel"><div className="panel-heading"><div><span className="eyebrow">Manažérsky report</span><h3>Rozloženie ticketov</h3></div><button className="text-button" onClick={exportTickets}><Icon name="download" size={15} /> Export pre Excel</button></div><div className="analytics-grid"><ReportList title="Podľa stavu" items={analytics.status} total={visibleTickets.length} /><ReportList title="Podľa služby" items={analytics.service} total={visibleTickets.length} /><ReportList title="Podľa riešiteľa" items={analytics.assignee} total={openTickets.length} /><ReportList title="Vek otvorených ticketov" items={analytics.age} total={openTickets.length} /></div></section>
 
-      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="roadmap" /><span><strong>E-mailové notifikácie</strong><small>Vyžadujú Edge Function a odosielaciu doménu</small></span><Badge tone="neutral">Ďalší krok</Badge></div></div></section>
+      <section className="panel sd-lead-panel"><div className="panel-heading"><div><span className="eyebrow">Vedúci skupín</span><h3>Operatívny health front</h3><p>Otvorené, nepridelené a SLA riziká podľa riešiteľskej skupiny.</p></div><Badge tone={breachedCount?'warning':'success'}>{breachedCount?'Vyžaduje pozornosť':'Stabilné'}</Badge></div><div className="sd-lead-grid">{supportQueues.filter((queue)=>queue.isActive).map((queue)=>{const queueTickets=openTickets.filter((ticket)=>ticket.queueId===queue.id);const breached=queueTickets.filter((ticket)=>slaState(ticket).tone==='danger').length;const warning=queueTickets.filter((ticket)=>slaState(ticket).tone==='warning').length;const unassigned=queueTickets.filter((ticket)=>!ticket.assignee).length;return <article key={queue.id}><header><div><strong>{queue.name}</strong><small>{queue.lead||'Vedúci neurčený'}{queue.deputy?` · zástupca ${queue.deputy}`:''}</small></div><Badge tone={breached?'danger':warning?'warning':'success'}>{breached?`${breached} po SLA`:warning?`${warning} v riziku`:'OK'}</Badge></header><div className="sd-lead-metrics"><span><small>Otvorené</small><b>{queueTickets.length}</b></span><span><small>Bez riešiteľa</small><b>{unassigned}</b></span><span><small>SLA riziko</small><b>{warning}</b></span><span><small>Po SLA</small><b>{breached}</b></span></div><footer><span>{queue.businessCalendarEnabled?`${queue.workdayStart}-${queue.workdayEnd} · pracovné dni`:'Kalendárne hodiny'}</span><span>varovanie {Math.round(queue.slaWarningMinutes/60*10)/10} h vopred</span></footer></article>})}</div></section>
+
+      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div></div></section>
     </div>}
 
 
@@ -671,7 +770,7 @@ export default function Helpdesk({
         <div className="sd-queue-config-grid">{supportQueues.map((queue)=><article key={queue.id} className={!queue.isActive?'is-disabled':''}>
           <header><div><strong>{queue.name}</strong><small>{queue.id} · {queue.email||'bez e-mailu'}</small></div><label className="switch"><input type="checkbox" checked={queue.isActive} onChange={(event)=>updateQueue(queue.id,{isActive:event.target.checked})}/><span/></label></header>
           <p>{queue.description}</p>
-          <div className="sd-queue-fields"><label>Vedúci<select value={queue.lead} onChange={(event)=>updateQueue(queue.id,{lead:event.target.value})}><option value="">Neurčený</option>{employees.map((employee)=><option key={employee.id}>{employee.name}</option>)}</select></label><label>Zástupca<select value={queue.deputy} onChange={(event)=>updateQueue(queue.id,{deputy:event.target.value})}><option value="">Neurčený</option>{employees.map((employee)=><option key={employee.id}>{employee.name}</option>)}</select></label><label>Pracovný čas<input value={queue.workingHours} onChange={(event)=>updateQueue(queue.id,{workingHours:event.target.value})}/></label><label>Predvolené SLA<select value={queue.slaPolicyId} onChange={(event)=>updateQueue(queue.id,{slaPolicyId:event.target.value})}><option value="">Podľa priority</option>{slaPolicies.map((policy)=><option key={policy.id} value={policy.id}>{policy.name}</option>)}</select></label></div>
+          <div className="sd-queue-fields"><label>Vedúci<select value={queue.lead} onChange={(event)=>updateQueue(queue.id,{lead:event.target.value})}><option value="">Neurčený</option>{employees.map((employee)=><option key={employee.id}>{employee.name}</option>)}</select></label><label>Zástupca<select value={queue.deputy} onChange={(event)=>updateQueue(queue.id,{deputy:event.target.value})}><option value="">Neurčený</option>{employees.map((employee)=><option key={employee.id}>{employee.name}</option>)}</select></label><label>Pracovný deň od<input type="time" value={queue.workdayStart} onChange={(event)=>updateQueue(queue.id,{workdayStart:event.target.value,workingHours:`Po-Pi ${event.target.value}-${queue.workdayEnd}`})}/></label><label>Pracovný deň do<input type="time" value={queue.workdayEnd} onChange={(event)=>updateQueue(queue.id,{workdayEnd:event.target.value,workingHours:`Po-Pi ${queue.workdayStart}-${event.target.value}`})}/></label><label>Predvolené SLA<select value={queue.slaPolicyId} onChange={(event)=>updateQueue(queue.id,{slaPolicyId:event.target.value})}><option value="">Podľa priority</option>{slaPolicies.map((policy)=><option key={policy.id} value={policy.id}>{policy.name}</option>)}</select></label><label>SLA varovanie (min)<input type="number" min="15" step="15" value={queue.slaWarningMinutes} onChange={(event)=>updateQueue(queue.id,{slaWarningMinutes:Math.max(15,Number(event.target.value)||240)})}/></label><label className="sd-config-toggle"><input type="checkbox" checked={queue.businessCalendarEnabled} onChange={(event)=>updateQueue(queue.id,{businessCalendarEnabled:event.target.checked})}/> SLA len v pracovnom čase</label><label className="sd-config-toggle"><input type="checkbox" checked={queue.emailNotifications} onChange={(event)=>updateQueue(queue.id,{emailNotifications:event.target.checked})}/> E-mailový outbox pre skupinu</label></div><div className="sd-working-days"><span>Pracovné dni</span>{[['Po',1],['Ut',2],['St',3],['Št',4],['Pi',5],['So',6],['Ne',7]].map(([label,day])=><label key={String(day)}><input type="checkbox" checked={queue.workingDays.includes(Number(day))} onChange={()=>{const value=Number(day);const workingDays=queue.workingDays.includes(value)?queue.workingDays.filter((item)=>item!==value):[...queue.workingDays,value].sort((a,b)=>a-b);updateQueue(queue.id,{workingDays:workingDays.length?workingDays:[1,2,3,4,5]})}}/><span>{label}</span></label>)}</div>
         </article>)}</div>
       </section>
 
@@ -680,13 +779,22 @@ export default function Helpdesk({
         <div className="sd-membership-matrix-wrap"><table className="sd-membership-matrix"><thead><tr><th>Zamestnanec</th>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><th key={queue.id}>{queue.name}</th>)}</tr></thead><tbody>{employees.map((employee)=><tr key={employee.id}><td><strong>{employee.name}</strong><small>{employee.position||employee.roleType||''}</small></td>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><td key={queue.id}><label className="sd-matrix-check"><input type="checkbox" checked={queue.members.includes(employee.name)} onChange={()=>toggleQueueMember(queue.id,employee.name)}/><span>{queue.members.includes(employee.name)?'✓':''}</span></label></td>)}</tr>)}</tbody></table></div>
       </section>
 
+      <section className="panel sd-config-panel sd-calendar-panel">
+        <div className="panel-heading"><div><span className="eyebrow">SLA kalendár</span><h3>Voľné dni a mimoriadne pracovné dni</h3><p>Víkendy určuje nastavenie skupiny. Tu evidujte sviatky, celozávodné voľno alebo výnimočný pracovný deň.</p></div><Badge tone={calendarError?'danger':'success'}>{calendarError?'Chyba načítania':`${calendarExceptions.length} výnimiek`}</Badge></div>
+        <div className="sd-calendar-editor"><label>Dátum<input type="date" value={calendarDraft.day} onChange={(event)=>setCalendarDraft({...calendarDraft,day:event.target.value})}/></label><label>Popis<input value={calendarDraft.label} onChange={(event)=>setCalendarDraft({...calendarDraft,label:event.target.value})} placeholder="napr. sviatok / celozávodné voľno"/></label><label className="sd-config-toggle"><input type="checkbox" checked={calendarDraft.isWorkingDay} onChange={(event)=>setCalendarDraft({...calendarDraft,isWorkingDay:event.target.checked})}/> Mimoriadny pracovný deň</label>{calendarDraft.isWorkingDay&&<><label>Od<input type="time" value={calendarDraft.workdayStart} onChange={(event)=>setCalendarDraft({...calendarDraft,workdayStart:event.target.value})}/></label><label>Do<input type="time" value={calendarDraft.workdayEnd} onChange={(event)=>setCalendarDraft({...calendarDraft,workdayEnd:event.target.value})}/></label></>}<button className="button button-primary button-small" onClick={()=>void saveCalendarException()}><Icon name="plus" size={15}/> Uložiť výnimku</button></div>
+        {calendarError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{calendarError}</span></div>}
+        <div className="sd-calendar-list">{calendarExceptions.length?calendarExceptions.map((item)=><article key={item.id}><div><strong>{formatDate(item.day)}</strong><span>{item.label||'Bez popisu'}</span><small>{item.isWorkingDay?`Pracovný deň${item.workdayStart&&item.workdayEnd?` · ${item.workdayStart}-${item.workdayEnd}`:''}`:'Nepracovný deň · SLA sa nepočíta'}</small></div><Badge tone={item.isWorkingDay?'info':'neutral'}>{item.isWorkingDay?'pracovný':'voľno'}</Badge><button className="icon-button" onClick={()=>void removeCalendarException(item.id)} title="Odstrániť výnimku"><Icon name="trash" size={15}/></button></article>):<p className="panel-note">Bez kalendárových výnimiek. SLA používa pracovné dni a hodiny nastavené pri jednotlivých skupinách.</p>}</div>
+      </section>
+
       <section className="panel sd-config-panel">
         <div className="panel-heading"><div><span className="eyebrow">Routing matica</span><h3>Automatické smerovanie požiadaviek</h3><p>Prvé zhodné aktívne pravidlo podľa poradia nastaví riešiteľskú skupinu a voliteľne prioritu.</p></div><button className="button button-primary button-small" onClick={addRoutingRule}><Icon name="plus" size={15}/> Pridať pravidlo</button></div>
         <div className="sd-routing-table-wrap"><table className="sd-routing-table"><thead><tr><th>#</th><th>Názov</th><th>Typ</th><th>Kategória</th><th>Podkategória</th><th>Služba</th><th>Skupina</th><th>Priorita</th><th>Aktívne</th><th/></tr></thead><tbody>{[...serviceRoutingRules].sort((a,b)=>a.sortOrder-b.sortOrder).map((rule)=><tr key={rule.id}><td><input className="sd-order-input" type="number" value={rule.sortOrder} onChange={(event)=>updateRoutingRule(rule.id,{sortOrder:Number(event.target.value)||0})}/></td><td><input value={rule.name} onChange={(event)=>updateRoutingRule(rule.id,{name:event.target.value})}/></td><td><select value={rule.ticketType} onChange={(event)=>updateRoutingRule(rule.id,{ticketType:event.target.value})}><option value="">Všetky</option>{ticketTypes.map((value)=><option key={value}>{value}</option>)}</select></td><td><select value={rule.category} onChange={(event)=>updateRoutingRule(rule.id,{category:event.target.value,subcategory:''})}><option value="">Všetky</option>{Object.keys(categories).map((value)=><option key={value}>{value}</option>)}</select></td><td><select value={rule.subcategory} onChange={(event)=>updateRoutingRule(rule.id,{subcategory:event.target.value})}><option value="">Všetky</option>{(categories[rule.category]||[]).map((value)=><option key={value}>{value}</option>)}</select></td><td><select value={rule.serviceId} onChange={(event)=>updateRoutingRule(rule.id,{serviceId:event.target.value})}><option value="">Všetky</option>{services.map((service)=><option key={service.id} value={service.id}>{service.name}</option>)}</select></td><td><select value={rule.queueId} onChange={(event)=>updateRoutingRule(rule.id,{queueId:event.target.value})}>{supportQueues.filter((queue)=>queue.isActive||queue.id===rule.queueId).map((queue)=><option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></td><td><select value={rule.priority} onChange={(event)=>updateRoutingRule(rule.id,{priority:event.target.value})}><option value="">Bez zmeny</option>{priorities.map((value)=><option key={value}>{value}</option>)}</select></td><td><label className="switch"><input type="checkbox" checked={rule.isActive} onChange={(event)=>updateRoutingRule(rule.id,{isActive:event.target.checked})}/><span/></label></td><td><button className="icon-button" onClick={()=>removeRoutingRule(rule.id)} title="Odstrániť"><Icon name="trash" size={15}/></button></td></tr>)}</tbody></table></div>
       </section>
 
-      <section className="panel sla-policy-panel"><div className="panel-heading"><div><span className="eyebrow">SLA konfigurácia</span><h3>Časové ciele podľa priority</h3></div><Badge tone="info">kalendárne hodiny</Badge></div><div className="sla-policy-grid">{slaPolicies.map((policy)=><article key={policy.id}><header><Badge tone={priorityTone(policy.priority)}>{policy.priority}</Badge><strong>{policy.name}</strong></header><div><label>Prvá reakcia<input type="number" min="1" value={policy.firstResponseHours} onChange={(event)=>updatePolicy(policy.id,'firstResponseHours',Number(event.target.value))}/><span>h</span></label><label>Vyriešenie<input type="number" min="1" value={policy.resolutionHours} onChange={(event)=>updatePolicy(policy.id,'resolutionHours',Number(event.target.value))}/><span>h</span></label></div></article>)}</div></section>
+      <section className="panel sla-policy-panel"><div className="panel-heading"><div><span className="eyebrow">SLA konfigurácia</span><h3>Časové ciele podľa priority</h3></div><Badge tone="success">pracovný kalendár</Badge></div><div className="sla-policy-grid">{slaPolicies.map((policy)=><article key={policy.id}><header><Badge tone={priorityTone(policy.priority)}>{policy.priority}</Badge><strong>{policy.name}</strong></header><div><label>Prvá reakcia<input type="number" min="1" value={policy.firstResponseHours} onChange={(event)=>updatePolicy(policy.id,'firstResponseHours',Number(event.target.value))}/><span>h</span></label><label>Vyriešenie<input type="number" min="1" value={policy.resolutionHours} onChange={(event)=>updatePolicy(policy.id,'resolutionHours',Number(event.target.value))}/><span>h</span></label></div></article>)}</div></section>
     </div>}
+
+    {notificationsOpen && <Modal title={`Notifikácie ServiceDesku (${unreadNotificationCount} nových)`} onClose={() => setNotificationsOpen(false)}><div className="sd-notification-toolbar"><span>{notificationsError || 'Serverové udalosti, SLA upozornenia a zmeny ticketov.'}</span>{unreadNotificationCount>0&&<button className="button button-secondary button-small" onClick={()=>void markAllNotificationsRead()}><Icon name="check" size={15}/> Označiť všetko ako prečítané</button>}</div><div className="sd-notification-list">{notifications.length ? notifications.map((item) => {const ticket=visibleTickets.find((candidate)=>candidate.id===item.ticketId);return <button key={item.id} className={item.isRead?'is-read':'is-unread'} onClick={()=>{void setNotificationRead(item,true);if(ticket){setNotificationsOpen(false);openTicket(ticket)}}}><span className={`sd-notification-dot sd-notification-${item.severity}`}/><div><header><strong>{item.title}</strong><Badge tone={notificationTone(item.severity)}>{item.kind}</Badge></header><p>{item.message}</p><small>{item.ticketId?`${item.ticketId} · `:''}{formatDate(item.createdAt,true)}{item.emailStatus==='sent'?' · e-mail odoslaný':item.emailStatus==='pending'?' · e-mail čaká na odoslanie':''}</small></div>{ticket&&<Icon name="chevron" size={17}/>}</button>}) : <Empty title="Bez notifikácií" text="ServiceDesk zatiaľ nevytvoril žiadnu notifikáciu pre váš účet." />}</div></Modal>}
 
     {alertsOpen && <Modal title={`Upozornenia ServiceDesku (${alertItems.length})`} onClose={() => setAlertsOpen(false)}><div className="servicedesk-alert-list">{alertItems.length ? alertItems.map(({ ticket, sla }) => <button key={ticket.id} onClick={() => { setAlertsOpen(false); openTicket(ticket) }}><span className={`alert-dot alert-${sla.tone}`} /><div><strong>{ticket.id} · {ticket.title}</strong><small>{sla.label} · {sla.detail}{!ticket.assignee ? ' · bez riešiteľa' : ''}</small></div><Icon name="chevron" size={17} /></button>) : <Empty title="Bez upozornení" text="Žiadny otvorený ticket momentálne nevyžaduje zásah." />}</div></Modal>}
 
