@@ -229,6 +229,19 @@ export interface ServiceCalendarException {
   label: string
 }
 
+export interface ServiceEmailChannel {
+  id: string
+  address: string
+  name: string
+  queueId: string
+  ticketType: string
+  category: string
+  subcategory: string
+  serviceId: string
+  priority: string
+  isActive: boolean
+}
+
 export interface ServiceRoutingRule {
   id: string
   name: string
