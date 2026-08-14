@@ -1,4 +1,4 @@
-import type { ServiceCalendarException, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
+import type { ServiceCalendarException, ServiceEmailChannel, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
 import { supabase } from './supabase'
 
 export type HelpdeskDatabaseState = 'local' | 'loading' | 'synced' | 'saving' | 'error'
@@ -44,6 +44,19 @@ interface ServiceCalendarExceptionRow {
   workday_start: string | null
   workday_end: string | null
   label: string
+}
+
+interface ServiceEmailChannelRow {
+  id: string
+  address: string
+  name: string
+  queue_code: string
+  ticket_type: string
+  category: string
+  subcategory: string
+  service_key: string
+  priority: string
+  is_active: boolean
 }
 
 interface ServiceSlaPolicyRow {
@@ -106,6 +119,21 @@ interface ServiceTicketRow {
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : []
+}
+
+function emailChannelFromRow(row: ServiceEmailChannelRow): ServiceEmailChannel {
+  return {
+    id: row.id,
+    address: row.address,
+    name: row.name,
+    queueId: row.queue_code || '',
+    ticketType: row.ticket_type || 'Požiadavka',
+    category: row.category || 'Ostatné',
+    subcategory: row.subcategory || 'Iné',
+    serviceId: row.service_key || '',
+    priority: row.priority || 'Stredná',
+    isActive: Boolean(row.is_active),
+  }
 }
 
 function queueFromRow(row: ServiceQueueRow): SupportQueue {
@@ -222,7 +250,14 @@ function sameRecord(left: unknown, right: unknown): boolean {
 }
 
 function friendlyHelpdeskError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error ?? '')
+  const source = error && typeof error === 'object' ? error as Record<string, unknown> : null
+  const parts = source
+    ? ['message', 'details', 'hint', 'code', 'error_description']
+        .map((key) => typeof source[key] === 'string' ? String(source[key]).trim() : '')
+        .filter(Boolean)
+    : []
+  const fallback = error instanceof Error ? error.message : (typeof error === 'string' ? error : '')
+  const message = parts.length ? [...new Set(parts)].join(' · ') : fallback
   const lower = message.toLowerCase()
 
   if (
@@ -232,17 +267,19 @@ function friendlyHelpdeskError(error: unknown): Error {
     lower.includes('service_routing_rules') ||
     lower.includes('service_notifications') ||
     lower.includes('service_email_outbox') ||
+    lower.includes('service_email_channels') ||
+    lower.includes('service_email_messages') ||
     lower.includes('service_calendar_exceptions') ||
     lower.includes('schema cache') ||
     lower.includes('could not find the table') ||
     (lower.includes('relation') && lower.includes('does not exist'))
   ) {
-    return new Error('Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 a v0.45.0.')
+    return new Error(`Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 až v0.46.0.${message ? ` Detail: ${message}` : ''}`)
   }
   if (lower.includes('permission') || lower.includes('row-level security') || lower.includes('oprávnen')) {
-    return new Error('Používateľ nemá oprávnenie vykonať túto operáciu v Helpdesku.')
+    return new Error(`Používateľ nemá oprávnenie vykonať túto operáciu v ServiceDesku.${message ? ` Detail: ${message}` : ''}`)
   }
-  return error instanceof Error ? error : new Error(message || 'Operácia s Helpdeskom zlyhala.')
+  return new Error(message || 'Operácia so ServiceDeskom zlyhala. Server neposlal čitateľný detail chyby.')
 }
 
 export async function loadHelpdeskData(): Promise<{
@@ -325,6 +362,26 @@ export async function upsertServiceCalendarException(item: ServiceCalendarExcept
 export async function deleteServiceCalendarException(id: string): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.rpc('delete_service_calendar_exception', { p_id: id })
+  if (error) throw friendlyHelpdeskError(error)
+}
+
+export async function loadServiceEmailChannels(): Promise<ServiceEmailChannel[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('get_service_email_channels')
+  if (error) throw friendlyHelpdeskError(error)
+  return ((data ?? []) as ServiceEmailChannelRow[]).map(emailChannelFromRow)
+}
+
+export async function upsertServiceEmailChannel(item: ServiceEmailChannel): Promise<string> {
+  if (!supabase) return item.id
+  const { data, error } = await supabase.rpc('upsert_service_email_channel', { p_item: item })
+  if (error) throw friendlyHelpdeskError(error)
+  return String(data || item.id)
+}
+
+export async function deleteServiceEmailChannel(id: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('delete_service_email_channel', { p_id: id })
   if (error) throw friendlyHelpdeskError(error)
 }
 
