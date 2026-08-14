@@ -193,6 +193,23 @@ export interface SupportQueue {
   description: string
   members: string[]
   email: string
+  lead: string
+  deputy: string
+  workingHours: string
+  slaPolicyId: string
+  isActive: boolean
+}
+
+export interface ServiceRoutingRule {
+  id: string
+  name: string
+  ticketType: string
+  category: string
+  subcategory: string
+  serviceId: string
+  queueId: string
+  priority: string
+  sortOrder: number
   isActive: boolean
 }
 
@@ -619,6 +636,7 @@ export interface AppState {
   tickets: Ticket[]
   supportQueues: SupportQueue[]
   slaPolicies: SlaPolicy[]
+  serviceRoutingRules: ServiceRoutingRule[]
   changes: ChangeRequest[]
   problems: ProblemRecord[]
   accessRequests: AccessRequest[]
