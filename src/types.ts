@@ -196,8 +196,37 @@ export interface SupportQueue {
   lead: string
   deputy: string
   workingHours: string
+  businessCalendarEnabled: boolean
+  workingDays: number[]
+  workdayStart: string
+  workdayEnd: string
+  timezone: string
+  slaWarningMinutes: number
+  emailNotifications: boolean
   slaPolicyId: string
   isActive: boolean
+}
+
+export interface ServiceNotification {
+  id: string
+  kind: string
+  severity: string
+  title: string
+  message: string
+  ticketId: string
+  targetEmail: string
+  isRead: boolean
+  emailStatus: string
+  createdAt: string
+}
+
+export interface ServiceCalendarException {
+  id: string
+  day: string
+  isWorkingDay: boolean
+  workdayStart: string
+  workdayEnd: string
+  label: string
 }
 
 export interface ServiceRoutingRule {
