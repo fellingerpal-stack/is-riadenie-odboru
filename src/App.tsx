@@ -4,7 +4,7 @@ import { exportState, importState, loadRole, loadState, migrateState, resetState
 import { loadCurrentSnapshot, saveCurrentSnapshot } from './lib/cloud'
 import { canReadScope, canWriteScope, defaultAccessScopes, profileAccess } from './lib/accessControl'
 import { loadWorkData, subscribeToWorkData, syncWorkProjects, syncWorkTasks, type WorkDatabaseState } from './lib/workCloud'
-import { loadHelpdeskData, subscribeToHelpdeskData, syncServiceQueues, syncServiceSlaPolicies, syncServiceTickets, type HelpdeskDatabaseState } from './lib/helpdeskCloud'
+import { loadHelpdeskData, subscribeToHelpdeskData, syncServiceQueues, syncServiceRoutingRules, syncServiceSlaPolicies, syncServiceTickets, type HelpdeskDatabaseState } from './lib/helpdeskCloud'
 import { loadIamData, subscribeToIamData, syncIamCampaigns, syncIamCatalog, syncIamRequests, type IamDatabaseState } from './lib/iamCloud'
 import { useAuth } from './auth/AuthContext'
 import AuthScreen from './auth/AuthScreen'
@@ -45,7 +45,7 @@ import ManagementActionCenter from './views/ManagementActionCenter'
 import Enterprise360 from './views/Enterprise360'
 import { countManagementActions } from './lib/actionCenter'
 
-type ViewKey='portals'|'enterprise360'|'actionCenter'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'logs'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'enterprise360'|'actionCenter'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'serviceDesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'logs'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
 const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
@@ -78,7 +78,6 @@ const orisNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Riadenie práce',items:[
     {key:'capacity',label:'Kapacity',icon:'capacity',roles:['admin','manager','resolver','viewer']},
     {key:'work',label:'Projekty a úlohy',icon:'projects',roles:resolverRoles,badge:s=>s.tasks.filter(t=>t.status!=='Hotovo').length},
-    {key:'helpdesk',label:'Helpdesk / ServiceDesk',icon:'helpdesk',roles:employeeRoles,badge:s=>(Array.isArray(s.tickets)?s.tickets:[]).filter(t=>!['Vyriešená','Uzatvorená','Zrušená'].includes(t.status)).length},
     {key:'changes',label:'Change management',icon:'change',roles:resolverRoles,badge:s=>(Array.isArray(s.changes)?s.changes:[]).filter(c=>!['Dokončená','Zamietnutá','Rollback','Zrušená'].includes(c.status)).length},
     {key:'problems',label:'Problem management',icon:'problem',roles:resolverRoles,badge:s=>(Array.isArray(s.problems)?s.problems:[]).filter(p=>!['Vyriešený','Uzatvorený'].includes(p.status)).length},
     {key:'iam',label:'IAM / Prístupy',icon:'iam',roles:employeeRoles,badge:s=>(Array.isArray(s.accessRequests)?s.accessRequests:[]).filter(r=>!['Dokončená','Zamietnutá','Zrušená'].includes(r.status)).length},
@@ -121,6 +120,7 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
 const portalNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Pracovný priestor',items:[
     {key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},
+    {key:'serviceDesk',label:'ServiceDesk',icon:'helpdesk',roles:allRoles,badge:s=>(Array.isArray(s.tickets)?s.tickets:[]).filter(t=>!['Vyriešená','Uzatvorená','Zrušená'].includes(t.status)).length},
     {key:'enterprise360',label:'CVTI 360 · Enterprise',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'actionCenter',label:'Management Action Center',icon:'tasks',roles:['admin','manager','resolver','viewer'],badge:s=>countManagementActions(s)},
     {key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},
@@ -200,7 +200,7 @@ function AccountProfileModal({onClose}:{onClose:()=>void}){
 }
 
 function serializeSnapshotScope(state:AppState){
-  return JSON.stringify({...state,projects:[],tasks:[],tickets:[],supportQueues:[],slaPolicies:[],accessRequests:[],accessCatalog:[],recertificationCampaigns:[]})
+  return JSON.stringify({...state,projects:[],tasks:[],tickets:[],supportQueues:[],slaPolicies:[],serviceRoutingRules:[],accessRequests:[],accessCatalog:[],recertificationCampaigns:[]})
 }
 
 function syncLabel(sync:SyncState){
@@ -284,7 +284,7 @@ export default function App(){
 
   function viewScope(key:ViewKey):AccessScope|'admin'|'portal'{
     if(key==='users'||key==='roadmap'||key==='logs')return 'admin'
-    if(key==='portals'||key==='myWorkspace'||key==='dataQuality')return 'portal'
+    if(key==='portals'||key==='serviceDesk'||key==='helpdesk'||key==='myWorkspace'||key==='dataQuality')return 'portal'
     if(key==='enterprise360'||key==='technology'||key==='intelligence'||key==='itCosts'||key==='suppliers'||key==='contracts'||key==='cmdb')return 'shared'
     if(key.startsWith('oit'))return 'oit'
     return 'oris'
@@ -357,10 +357,7 @@ export default function App(){
 
   useEffect(()=>{
     if(!auth.configured||!auth.profile?.organizationId)return
-    const unsubscribe=subscribeToHelpdeskData(auth.profile.organizationId,()=>{
-      if(helpdeskReloadTimer.current)window.clearTimeout(helpdeskReloadTimer.current)
-      helpdeskReloadTimer.current=window.setTimeout(()=>void reloadHelpdeskData(true),350)
-    })
+    const unsubscribe=subscribeToHelpdeskData(auth.profile.organizationId,()=>scheduleHelpdeskReload())
     return()=>{
       if(helpdeskReloadTimer.current)window.clearTimeout(helpdeskReloadTimer.current)
       unsubscribe()
@@ -388,7 +385,7 @@ export default function App(){
     return()=>window.removeEventListener('keydown',handler)
   },[])
 
-  const workspace=view==='portals'||view==='enterprise360'||view==='actionCenter'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'||view==='logs'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='serviceDesk'||view==='helpdesk'||view==='enterprise360'||view==='actionCenter'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'||view==='logs'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
@@ -453,6 +450,14 @@ export default function App(){
   }
 
 
+  function scheduleHelpdeskReload(delay=350){
+    if(helpdeskReloadTimer.current)window.clearTimeout(helpdeskReloadTimer.current)
+    helpdeskReloadTimer.current=window.setTimeout(()=>{
+      if(helpdeskPendingWrites.current>0){scheduleHelpdeskReload(500);return}
+      void reloadHelpdeskData(true)
+    },delay)
+  }
+
   async function reloadHelpdeskData(silent=false){
     if(!auth.configured){setHelpdeskSync('local');return}
     setHelpdeskSync('loading');setHelpdeskError('')
@@ -508,6 +513,15 @@ export default function App(){
     setState(nextState)
     if(!auth.configured){setHelpdeskSync('local');return}
     enqueueHelpdeskWrite(()=>syncServiceSlaPolicies(previous,slaPolicies))
+  }
+
+  function commitServiceRoutingRules(serviceRoutingRules:AppState['serviceRoutingRules']){
+    const previous=stateRef.current.serviceRoutingRules
+    const nextState={...stateRef.current,serviceRoutingRules}
+    stateRef.current=nextState
+    setState(nextState)
+    if(!auth.configured){setHelpdeskSync('local');return}
+    enqueueHelpdeskWrite(()=>syncServiceRoutingRules(previous,serviceRoutingRules))
   }
 
   async function reloadIamData(silent=false){
@@ -682,7 +696,7 @@ export default function App(){
         {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManageOris} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
         {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManageOris} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
         {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
-        {view==='helpdesk'&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies}/>} 
+        {(view==='serviceDesk'||view==='helpdesk')&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} serviceRoutingRules={Array.isArray(state.serviceRoutingRules)?state.serviceRoutingRules:[]} role={role} canEdit={role!=='viewer'} canConfigure={role==='admin'||role==='manager'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies} onServiceRoutingRulesChange={commitServiceRoutingRules}/>} 
         {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
         {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
         {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
