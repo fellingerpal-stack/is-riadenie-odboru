@@ -1,0 +1,16 @@
+package.json
+src/data/seed.json
+src/lib/storage.ts
+src/types.ts
+src/components/UI.tsx
+src/lib/helpdeskCloud.ts
+src/views/Helpdesk.tsx
+src/views/Helpdesk.css
+supabase/functions/.env.example
+supabase/functions/service-email-inbound/index.ts
+supabase/migration_servicedesk_v046.sql
+RELEASE_NOTES_0.46.md
+README_NASADENIE_0.46.txt
+SERVICEDESK_EMAIL_INBOUND_0.46.md
+QA_RESULTS_0.46.txt
+CHANGED_FILES_0.46.txt

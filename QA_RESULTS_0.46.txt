@@ -1,0 +1,64 @@
+IS Riadenie odboru v0.46.0 - QA
+Date: 2026-08-14
+
+VERSION / PACKAGE
+[PASS] package.json = 0.46.0
+[PASS] storage CURRENT_VERSION = 0.46.0
+[PASS] seed meta version = 0.46.0
+[PASS] package.json JSON valid
+[PASS] seed.json JSON valid
+
+TYPESCRIPT / SOURCE STRUCTURE
+[PASS] TypeScript transpile syntax: Helpdesk.tsx
+[PASS] TypeScript transpile syntax: helpdeskCloud.ts
+[PASS] TypeScript transpile syntax: types.ts
+[PASS] TypeScript transpile syntax: UI.tsx
+[PASS] TypeScript transpile syntax: service-email-inbound Edge Function
+[PASS] ServiceEmailChannel type + cloud mapper present
+[PASS] inbound channel UI present in ServiceDesk configuration
+[PASS] mail icon added to shared Icon type/map
+[PASS] responsive inbound channel CSS present
+
+ERROR HARDENING
+[PASS] ServiceDesk error formatter reads message/details/hint/code/error_description
+[PASS] object errors no longer fall back to String(object) => [object Object]
+[PASS] incomplete DB layer message references v0.44-v0.46 migrations and keeps server detail
+
+DATABASE / SECURITY STATIC CHECKS
+[PASS] service_email_channels table present
+[PASS] service_email_messages table present
+[PASS] admin/manager configurator RPC for inbound channels
+[PASS] direct authenticated mutations on inbound tables revoked
+[PASS] ingest_service_email(jsonb) present
+[PASS] PUBLIC execute revoked from inbound RPC
+[PASS] inbound RPC granted only to service_role
+[PASS] idempotency key = organization_id + message_id
+[PASS] inbound channel resolves organization from recipient address
+[PASS] reply threading searches existing ticket code in subject
+[PASS] outbound subject trigger prefixes [ticket-code]
+[PASS] new inbound ticket uses existing v0.45 server SLA/business-calendar trigger
+[PASS] inbound reply adds public comment + audit history
+[PASS] resolver/queue receives in-app notification for inbound reply
+[PASS] inbound attachment count/size controls present
+
+EDGE FUNCTION
+[PASS] POST-only provider-neutral webhook
+[PASS] x-servicedesk-inbound-secret validation
+[PASS] 4 MB payload guard
+[PASS] from/to e-mail normalization
+[PASS] messageId required for idempotency
+[PASS] optional <=5 / <=750 kB attachment normalization
+[PASS] service role remains server-side only
+[PASS] SERVICEDESK_OUTBOUND_FROM loop protection
+[PASS] RPC call only to ingest_service_email
+
+BASELINE DIFF
+[PASS] v0.45 baseline compared with v0.46 working tree
+[PASS] only intended ServiceDesk/version/release files changed or added
+
+BUILD LIMITATION
+[INFO] npm install --no-audit --no-fund --ignore-scripts was attempted once and timed out in this sandbox.
+[INFO] Full Vite production build therefore could not be completed locally because project dependencies are unavailable.
+[REQUIRED] Vercel/CI must successfully run the normal TypeScript + Vite build before production publication.
+[REQUIRED] Run migration_servicedesk_v046.sql before deploying the v0.46 frontend.
+[REQUIRED] Deploy service-email-inbound Edge Function and configure inbound secrets before enabling real mailbox forwarding.
