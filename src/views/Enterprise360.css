@@ -45,3 +45,4 @@ button.e360-komis-module:hover{border-color:#9bcfc6;background:#f5fcfa;box-shado
 @media(max-width:1280px){.e360-development-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.e360-development-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.e360-development-filters{grid-template-columns:1fr 1fr}.e360-development-filters label:first-child{grid-column:1/-1}}
 @media(max-width:720px){.e360-governance-form,.e360-development-kpis,.e360-development-filters{grid-template-columns:1fr}.e360-governance-form .is-wide,.e360-development-filters label:first-child{grid-column:auto}.e360-governance-actions,.e360-development-actions{justify-content:flex-start}}
+.portal-launch-servicedesk{--portal-accent:#117a91;--portal-accent-2:#1a9f78;--portal-soft:#eaf9f5}

@@ -10,7 +10,7 @@ type PortalCardProps = {
   description: string
   tags: string[]
   buttonLabel: string
-  icon: 'dashboard' | 'systems' | 'shield' | 'capacity' | 'cmdb'
+  icon: 'dashboard' | 'systems' | 'shield' | 'capacity' | 'cmdb' | 'helpdesk'
   disabled?: boolean
   onOpen: () => void
 }
@@ -48,7 +48,7 @@ function SectionHeading({ eyebrow, title, note }: { eyebrow: string; title: stri
 }
 
 export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=true}:{go:Go;canOit?:boolean;canOris?:boolean;canShared?:boolean}){
-  const availableModules = Number(canOris) + Number(canOit) + (canShared ? 5 : 0)
+  const availableModules = 1 + Number(canOris) + Number(canOit) + (canShared ? 5 : 0)
 
   return <div className="department-portal portal-launch portal-launch-vb">
     <section className="portal-launch-hero">
@@ -62,6 +62,25 @@ export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=
         <div><span><Icon name="database" size={17}/></span><p><strong>1</strong><small>dátová vrstva</small></p></div>
         <div><span><Icon name="shield" size={17}/></span><p><strong>SSO</strong><small>oprávnenia</small></p></div>
       </div>
+    </section>
+
+    <section className="portal-launch-supermodule" aria-label="ServiceDesk CVTI SR">
+      <article className="portal-launch-card portal-launch-supercard portal-launch-servicedesk">
+        <div className="portal-launch-card-accent" aria-hidden="true" />
+        <div className="portal-launch-supercopy">
+          <span className="portal-launch-card-icon"><Icon name="helpdesk" size={26}/></span>
+          <div className="portal-launch-card-body">
+            <span className="portal-launch-card-eyebrow">SAMOSTATNÝ PRODUKČNÝ MODUL · ITSM</span>
+            <h2>ServiceDesk CVTI SR · jeden vstup pre zamestnancov aj IT</h2>
+            <p>Zamestnanci nahlásia incident alebo požiadavku, routing matica ju automaticky pošle správnej riešiteľskej skupine a IT pracuje s frontami, SLA, komentármi a auditnou históriou.</p>
+            <div className="portal-launch-tags"><span>Self-service</span><span>Riešiteľské skupiny</span><span>Routing matica</span><span>SLA &amp; Control Tower</span></div>
+          </div>
+        </div>
+        <div className="portal-launch-super-action">
+          <button className="portal-launch-enter" onClick={()=>go('serviceDesk')}><span>Otvoriť ServiceDesk</span><Icon name="arrow" size={18}/></button>
+          <small>Samostatný workspace s produkčnými rolami a databázovými oprávneniami.</small>
+        </div>
+      </article>
     </section>
 
     {canShared && <section className="portal-launch-supermodule" aria-label="CVTI 360 Enterprise Intelligence">
