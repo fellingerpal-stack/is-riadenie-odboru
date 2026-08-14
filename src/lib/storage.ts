@@ -1,9 +1,9 @@
 import seed from '../data/seed.json'
-import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, ContractDevelopmentRequest, ContractRecord, EnterpriseGovernanceOverride, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, SlaPolicy, SupplierRecord, SupplierRelationship, Task, Ticket } from '../types'
+import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, ChangeApproval, ContractDevelopmentRequest, ContractRecord, EnterpriseGovernanceOverride, CmdbItem, CmdbRelationship, ChangeRequest, ProblemAction, ProblemRecord, Project, RecertificationCampaign, RecertificationItem, ServiceArchitectureRecord, ServiceRoutingRule, SlaPolicy, SupportQueue, SupplierRecord, SupplierRelationship, Task, Ticket } from '../types'
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.43.0'
+const CURRENT_VERSION = '0.44.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -517,6 +517,39 @@ function migrateEnterpriseGovernance(value: Partial<EnterpriseGovernanceOverride
   }
 }
 
+
+function migrateSupportQueue(queue: SupportQueue): SupportQueue {
+  const source=(queue??{}) as Partial<SupportQueue>
+  return {
+    id: typeof source.id==='string'?source.id:'',
+    name: typeof source.name==='string'?source.name:'',
+    description: typeof source.description==='string'?source.description:'',
+    members: Array.isArray(source.members)?source.members.filter((value):value is string=>typeof value==='string'):[],
+    email: typeof source.email==='string'?source.email:'',
+    lead: typeof source.lead==='string'?source.lead:'',
+    deputy: typeof source.deputy==='string'?source.deputy:'',
+    workingHours: typeof source.workingHours==='string'&&source.workingHours?source.workingHours:'Po-Pi 08:00-16:00',
+    slaPolicyId: typeof source.slaPolicyId==='string'?source.slaPolicyId:'',
+    isActive: source.isActive!==false,
+  }
+}
+
+function migrateServiceRoutingRule(rule: ServiceRoutingRule): ServiceRoutingRule {
+  const source=(rule??{}) as Partial<ServiceRoutingRule>
+  return {
+    id: typeof source.id==='string'&&source.id?source.id:`RT-${crypto.randomUUID()}`,
+    name: typeof source.name==='string'?source.name:'Routing rule',
+    ticketType: typeof source.ticketType==='string'?source.ticketType:'',
+    category: typeof source.category==='string'?source.category:'',
+    subcategory: typeof source.subcategory==='string'?source.subcategory:'',
+    serviceId: typeof source.serviceId==='string'?source.serviceId:'',
+    queueId: typeof source.queueId==='string'?source.queueId:'',
+    priority: typeof source.priority==='string'?source.priority:'',
+    sortOrder: Number.isFinite(Number(source.sortOrder))?Number(source.sortOrder):100,
+    isActive: source.isActive!==false,
+  }
+}
+
 function migrateContractDevelopmentRequest(value: Partial<ContractDevelopmentRequest>): ContractDevelopmentRequest {
   return {
     id: typeof value.id === 'string' && value.id ? value.id : `cr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -562,8 +595,9 @@ export function migrateState(input: AppState): AppState {
     decisions: Array.isArray(source.decisions) ? source.decisions : defaults.decisions,
     projects: Array.isArray(source.projects) ? source.projects.map(migrateProject) : defaults.projects,
     tasks: Array.isArray(source.tasks) ? source.tasks.map(migrateTask) : defaults.tasks,
-    supportQueues: Array.isArray(source.supportQueues) ? source.supportQueues : defaults.supportQueues,
+    supportQueues: Array.isArray(source.supportQueues) ? source.supportQueues.map(migrateSupportQueue) : defaults.supportQueues.map(migrateSupportQueue),
     slaPolicies,
+    serviceRoutingRules: Array.isArray(source.serviceRoutingRules) ? source.serviceRoutingRules.map(migrateServiceRoutingRule) : defaults.serviceRoutingRules.map(migrateServiceRoutingRule),
     tickets: Array.isArray(source.tickets) ? source.tickets.map((ticket) => migrateTicket(ticket, slaPolicies)) : defaults.tickets,
     changes: Array.isArray(source.changes) ? source.changes.map(migrateChange) : defaults.changes,
     problems: Array.isArray(source.problems) ? source.problems.map(migrateProblem) : defaults.problems,
