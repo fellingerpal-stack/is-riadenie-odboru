@@ -4,7 +4,7 @@ export type IconName =
   | 'dashboard' | 'people' | 'matrix' | 'services' | 'substitute' | 'capacity'
   | 'projects' | 'tasks' | 'helpdesk' | 'change' | 'problem' | 'iam' | 'cmdb' | 'web' | 'systems' | 'risk' | 'decision' | 'roadmap' | 'menu' | 'close'
   | 'search' | 'plus' | 'download' | 'upload' | 'refresh' | 'edit' | 'check'
-  | 'warning' | 'arrow' | 'lock' | 'database' | 'calendar' | 'user' | 'chevron' | 'trash' | 'eye' | 'eyeOff' | 'logout' | 'shield'
+  | 'warning' | 'arrow' | 'lock' | 'database' | 'calendar' | 'mail' | 'user' | 'chevron' | 'trash' | 'eye' | 'eyeOff' | 'logout' | 'shield'
 
 const paths: Record<IconName, ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></>,
@@ -39,6 +39,7 @@ const paths: Record<IconName, ReactNode> = {
   lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
   database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></>,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></>,
+  mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></>,
   user: <><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>,
   chevron: <path d="M9 18l6-6-6-6"/>,
   trash: <><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 15H6L5 6"/><path d="M10 11v6M14 11v6"/></>,
