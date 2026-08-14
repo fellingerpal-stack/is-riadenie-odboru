@@ -1,0 +1,16 @@
+package.json
+src/App.tsx
+src/types.ts
+src/data/seed.json
+src/lib/storage.ts
+src/lib/helpdeskCloud.ts
+src/views/DepartmentPortal.tsx
+src/views/Enterprise360.css
+src/views/Helpdesk.tsx
+src/views/Helpdesk.css
+supabase/migration_servicedesk_v044.sql
+RELEASE_NOTES_0.44.md
+README_NASADENIE_0.44.txt
+SERVICEDESK_0.44.md
+QA_RESULTS_0.44.txt
+CHANGED_FILES_0.44.txt

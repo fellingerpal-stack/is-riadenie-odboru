@@ -1,0 +1,86 @@
+IS Riadenie odboru v0.44.0 – QA RESULTS
+=======================================
+
+RESULT: RELEASE CANDIDATE READY FOR VERCEL/DB SMOKE TEST
+
+1. TypeScript/TSX syntax
+-----------------------
+PASS – TypeScript transpile diagnostics = 0 pre:
+- src/App.tsx
+- src/types.ts
+- src/lib/storage.ts
+- src/lib/helpdeskCloud.ts
+- src/views/Helpdesk.tsx
+- src/views/DepartmentPortal.tsx
+
+2. JSON / CSS
+-------------
+PASS – package.json valid JSON
+PASS – src/data/seed.json valid JSON
+PASS – Helpdesk.css braces balanced
+PASS – Enterprise360.css braces balanced
+PASS – package / storage / seed version = 0.44.0
+
+3. Routing tests
+----------------
+PASS – KOMIS a centrálne registre / CRZP -> Q-KOMIS
+PASS – Tlač a skenovanie -> Q-TLAC
+PASS – Prístupy a oprávnenia -> Q-IAM
+PASS – Koncové zariadenia -> Q-ENDPOINT
+PASS – Infraštruktúra / Sieť -> Q-SIET
+PASS – Infraštruktúra / Server -> Q-INFRA
+PASS – Rozvoj IS -> Q-ROZVOJ
+PASS – Ostatné -> Q-SD-L1
+
+Seed obsahuje 9 nových odporúčaných skupín a 8 routing pravidiel.
+Existujúce 4 historické skupiny ostávajú zachované.
+
+4. SQL structural/security checks
+---------------------------------
+PASS – ServiceDesk prerequisite preflight je prítomný
+PASS – service_routing_rules create + RLS
+PASS – secure get_service_tickets() reader
+PASS – get_service_tickets return arity: 30 / 30
+PASS – employee reader scoping na vlastné tickety
+PASS – resolver scoping na členské/pridelené tickety
+PASS – interné poznámky a interné komentáre sú serverovo filtrované pre employee/viewer
+PASS – verejné riešenie ostáva dostupné žiadateľovi
+PASS – employee update existujúceho ticketu nemení status/frontu/riešiteľa/priority/internal/resolution
+PASS – employee comments sú append-only voči existujúcej histórii komentárov
+PASS – employee existujúce prílohy nemožno zmazať prepisom payloadu
+PASS – server validuje max. 5 príloh a 750 kB deklarovanú veľkosť
+PASS – server routing ignoruje neaktívne skupiny
+PASS – server fallback na Q-SD-L1
+PASS – PUBLIC execute odobratý kritickým SECURITY DEFINER RPC
+PASS – priame INSERT/UPDATE/DELETE ServiceDesk tabuliek odobraté authenticated
+PASS – staré široké employee UPDATE/DELETE policies sa rušia
+PASS – nové policies sa pred create vždy dropnú, migrácia je opakovateľná v tejto časti
+
+5. Synchronizácia
+-----------------
+PASS – service_routing_rules sa načítavajú zo samostatnej DB tabuľky
+PASS – routing rules majú syncCollection write path
+PASS – realtime subscription zahŕňa routing rules
+PASS – realtime reload sa odkladá počas lokálnych pending writes, aby neprepisoval rozpracovanú konfiguráciu
+
+6. Comparative type diagnostic
+-------------------------------
+Použitý bol offline/minimálny React shim, pretože npm dependencies nie sú v pracovnom prostredí dostupné.
+Voči čistému v0.43 projektu nepribudol žiadny nový diagnostický podpis okrem TS7006 pre 16 nových JSX event handlerov. Ide o limit minimálneho shim-u: bez reálnych @types/react nevie TypeScript kontextovo typovať JSX onChange event. Rovnaký typ diagnostiky existuje už v baseline zdroji.
+
+7. Full Vite build
+------------------
+NOT CONFIRMED LOCALLY.
+Predchádzajúci npm install v tomto pracovnom prostredí vypršal na timeout a projekt nemá package-lock.json. Release nepridáva novú npm dependency.
+
+POVINNÉ pred produkčným publikovaním:
+- Supabase migrácia musí úspešne dobehnúť,
+- Vercel musí úspešne dokončiť štandardný npm install + npm run build,
+- vykonať role smoke test podľa README_NASADENIE_0.44.txt.
+
+8. Release package integrity
+----------------------------
+PASS – FULL ZIP: unzip -t bez chyby
+PASS – CHANGES ZIP: unzip -t bez chyby
+PASS – DATABASE ZIP: unzip -t bez chyby
+SHA-256 je dodaný v samostatnom RELEASE_0.44.0_SHA256.txt.
