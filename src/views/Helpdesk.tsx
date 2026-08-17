@@ -626,10 +626,11 @@ export default function Helpdesk({
     return visibleTickets
       .filter((ticket) => {
         const service = services.find((item) => item.id === ticket.serviceId)
+        const catalogService = catalogItems.find((item) => item.serviceId === ticket.serviceId)
         const queue = supportQueues.find((item) => item.id === ticket.queueId)
-        const matchesSearch = !query || `${ticket.id} ${ticket.title} ${ticket.description} ${ticket.requester} ${ticket.assignee} ${service?.name || ''} ${queue?.name || ''}`.toLowerCase().includes(query)
+        const matchesSearch = !query || `${ticket.id} ${ticket.title} ${ticket.description} ${ticket.requester} ${ticket.assignee} ${service?.name || catalogService?.name || ticket.serviceId || ''} ${queue?.name || ''}`.toLowerCase().includes(query)
         const matchesStatus = statusFilter === 'Všetky' || (statusFilter === 'Otvorené' ? !isClosed(ticket.status) : ticket.status === statusFilter)
-        const matchesMine = deskView !== 'mine' || (ticket.requester || '').toLowerCase() === currentUser.toLowerCase() || (ticket.assignee || '').toLowerCase() === currentUser.toLowerCase()
+        const matchesMine = deskView !== 'mine' || (ticket.requester || '').toLowerCase() === currentUser.toLowerCase() || (ticket.assignee || '').toLowerCase() === currentUser.toLowerCase() || Boolean(currentUserEmail && (ticket.requesterEmail || '').toLowerCase() === currentUserEmail.toLowerCase())
         return matchesSearch && matchesMine
           && (typeFilter === 'Všetky' || ticket.type === typeFilter)
           && matchesStatus
@@ -645,7 +646,7 @@ export default function Helpdesk({
         const priorityDifference = (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9)
         return priorityDifference || b.updatedAt.localeCompare(a.updatedAt)
       })
-  }, [visibleTickets, services, supportQueues, search, deskView, currentUser, typeFilter, statusFilter, priorityFilter, serviceFilter, queueFilter, assigneeFilter])
+  }, [visibleTickets, services, catalogItems, supportQueues, search, deskView, currentUser, currentUserEmail, typeFilter, statusFilter, priorityFilter, serviceFilter, queueFilter, assigneeFilter])
 
   const hasFilters = Boolean(search || typeFilter !== 'Všetky' || statusFilter !== 'Otvorené' || priorityFilter !== 'Všetky' || serviceFilter !== 'Všetky' || queueFilter !== 'Všetky' || assigneeFilter !== 'Všetci')
 
@@ -830,7 +831,7 @@ export default function Helpdesk({
 
   function exportTickets() {
     const header = ['Číslo', 'Typ', 'Názov', 'Stav', 'Priorita', 'Služba', 'Fronta', 'Riešiteľ', 'Žiadateľ', 'Vytvorené', 'SLA odpoveď', 'SLA vyriešenie', 'SLA stav']
-    const rows = filtered.map((ticket) => [ticket.id, ticket.type, ticket.title, ticket.status, ticket.priority, services.find((service) => service.id === ticket.serviceId)?.name || '', supportQueues.find((queue) => queue.id === ticket.queueId)?.name || '', ticket.assignee, ticket.requester, ticket.createdAt, ticket.firstResponseDueAt, ticket.resolutionDueAt, slaState(ticket).label])
+    const rows = filtered.map((ticket) => [ticket.id, ticket.type, ticket.title, ticket.status, ticket.priority, services.find((service) => service.id === ticket.serviceId)?.name || catalogItems.find((item)=>item.serviceId===ticket.serviceId)?.name || ticket.serviceId || '', supportQueues.find((queue) => queue.id === ticket.queueId)?.name || '', ticket.assignee, ticket.requester, ticket.createdAt, ticket.firstResponseDueAt, ticket.resolutionDueAt, slaState(ticket).label])
     const csv = `\uFEFF${[header, ...rows].map((row) => row.map(escapeCsv).join(';')).join('\n')}`
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')
@@ -939,20 +940,21 @@ export default function Helpdesk({
           <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option>Všetky</option>{ticketTypes.map((value) => <option key={value}>{value}</option>)}</select>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Otvorené</option><option>Všetky</option>{ticketStatuses.map((value) => <option key={value}>{value}</option>)}</select>
           <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option>Všetky</option>{priorities.map((value) => <option key={value}>{value}</option>)}</select>
-          <select value={queueFilter} onChange={(event) => setQueueFilter(event.target.value)}><option value="Všetky">Všetky fronty</option><option value="">Bez fronty</option>{supportQueues.filter((queue) => queue.isActive).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select>
+          {!isEmployee&&<><select value={queueFilter} onChange={(event) => setQueueFilter(event.target.value)}><option value="Všetky">Všetky fronty</option><option value="">Bez fronty</option>{supportQueues.filter((queue) => queue.isActive).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select>
           <select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)}><option value="Všetky">Všetky služby</option><option value="">Bez služby</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
-          <select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}><option>Všetci</option><option value="">Bez riešiteľa</option>{employees.map((employee) => <option key={employee.id}>{employee.name}</option>)}</select>
+          <select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}><option>Všetci</option><option value="">Bez riešiteľa</option>{employees.map((employee) => <option key={employee.id}>{employee.name}</option>)}</select></>}
           {hasFilters && <button className="text-button helpdesk-clear" onClick={clearFilters}>Zrušiť filtre</button>}
         </div>
 
         {filtered.length ? <div className="helpdesk-table-shell"><table className="data-table helpdesk-table"><thead><tr><th>Ticket</th><th>Typ</th><th>Fronta / služba</th><th>Priorita</th><th>Stav</th><th>SLA</th><th>Riešiteľ</th><th>Aktualizované</th></tr></thead><tbody>{filtered.map((ticket) => {
           const service = services.find((item) => item.id === ticket.serviceId)
+        const catalogService = catalogItems.find((item) => item.serviceId === ticket.serviceId)
           const queue = supportQueues.find((item) => item.id === ticket.queueId)
           const sla = slaState(ticket)
           return <tr key={ticket.id} className={sla.tone === 'danger' ? 'ticket-overdue-row' : ''} onClick={() => openTicket(ticket)}>
             <td><div className="ticket-primary"><div><strong>{ticket.id}</strong><span>{ticket.requester || 'Žiadateľ neurčený'}</span></div><h3>{ticket.title}</h3><p>{ticket.description}</p></div></td>
             <td><span className={`ticket-type ticket-type-${ticket.type === 'Incident' ? 'incident' : 'request'}`}>{ticket.type}</span></td>
-            <td><span className="ticket-queue">{queue?.name || 'Bez fronty'}</span><span className="ticket-service">{service?.name || 'Bez služby'}</span></td>
+            <td><span className="ticket-queue">{queue?.name || 'Bez fronty'}</span><span className="ticket-service">{service?.name || catalogService?.name || ticket.serviceId || 'Bez služby'}</span></td>
             <td><Badge tone={priorityTone(ticket.priority)}>{ticket.priority}</Badge></td>
             <td><Badge tone={statusTone(ticket.status)}>{ticket.status}</Badge></td>
             <td><span className={`sla-chip sla-${sla.tone}`}><strong>{sla.label}</strong><small>{sla.detail}</small></span></td>
