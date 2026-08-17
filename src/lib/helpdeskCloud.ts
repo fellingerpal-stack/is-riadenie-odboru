@@ -1,4 +1,4 @@
-import type { ServiceCalendarException, ServiceEmailChannel, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
+import type { ServiceCalendarException, ServiceCatalogField, ServiceCatalogItem, ServiceEmailChannel, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
 import { supabase } from './supabase'
 
 export type HelpdeskDatabaseState = 'local' | 'loading' | 'synced' | 'saving' | 'error'
@@ -59,6 +59,24 @@ interface ServiceEmailChannelRow {
   is_active: boolean
 }
 
+interface ServiceCatalogItemRow {
+  id: string
+  code: string
+  name: string
+  group_name: string
+  description: string
+  icon: string
+  ticket_type: string
+  category: string
+  subcategory: string
+  service_key: string
+  queue_code: string
+  priority: string
+  sort_order: number
+  form_schema: unknown
+  is_active: boolean
+}
+
 interface ServiceSlaPolicyRow {
   id: string
   code: string
@@ -102,6 +120,8 @@ interface ServiceTicketRow {
   status: string
   assignee: string
   channel: string
+  catalog_item_code: string
+  request_data: unknown
   due_date: string | null
   first_response_due_at: string | null
   resolution_due_at: string | null
@@ -132,6 +152,34 @@ function emailChannelFromRow(row: ServiceEmailChannelRow): ServiceEmailChannel {
     subcategory: row.subcategory || 'Iné',
     serviceId: row.service_key || '',
     priority: row.priority || 'Stredná',
+    isActive: Boolean(row.is_active),
+  }
+}
+
+function catalogItemFromRow(row: ServiceCatalogItemRow): ServiceCatalogItem {
+  const fields = asArray<ServiceCatalogField>(row.form_schema).map((field) => ({
+    key: typeof field?.key === 'string' ? field.key : '',
+    label: typeof field?.label === 'string' ? field.label : '',
+    type: ['text','textarea','select','date','number','checkbox'].includes(String(field?.type)) ? field.type : 'text',
+    required: Boolean(field?.required),
+    placeholder: typeof field?.placeholder === 'string' ? field.placeholder : '',
+    helpText: typeof field?.helpText === 'string' ? field.helpText : '',
+    options: Array.isArray(field?.options) ? field.options.filter((value): value is string => typeof value === 'string') : [],
+  })).filter((field) => field.key && field.label)
+  return {
+    id: row.code,
+    name: row.name,
+    group: row.group_name || 'Ostatné',
+    description: row.description || '',
+    icon: row.icon || 'helpdesk',
+    ticketType: row.ticket_type || 'Požiadavka',
+    category: row.category || 'Ostatné',
+    subcategory: row.subcategory || 'Iné',
+    serviceId: row.service_key || '',
+    queueId: row.queue_code || '',
+    priority: row.priority || 'Stredná',
+    sortOrder: Number(row.sort_order || 0),
+    fields,
     isActive: Boolean(row.is_active),
   }
 }
@@ -229,6 +277,8 @@ function ticketFromRow(row: ServiceTicketRow, queueCodes: Map<string, string>): 
     status: row.status,
     assignee: row.assignee,
     channel: row.channel,
+    catalogItemId: row.catalog_item_code || '',
+    requestData: row.request_data && typeof row.request_data === 'object' && !Array.isArray(row.request_data) ? row.request_data as Record<string, string | number | boolean> : {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     due: row.due_date ?? '',
@@ -269,12 +319,13 @@ function friendlyHelpdeskError(error: unknown): Error {
     lower.includes('service_email_outbox') ||
     lower.includes('service_email_channels') ||
     lower.includes('service_email_messages') ||
+    lower.includes('service_catalog_items') ||
     lower.includes('service_calendar_exceptions') ||
     lower.includes('schema cache') ||
     lower.includes('could not find the table') ||
     (lower.includes('relation') && lower.includes('does not exist'))
   ) {
-    return new Error(`Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 až v0.46.0.${message ? ` Detail: ${message}` : ''}`)
+    return new Error(`Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 až v0.47.0.${message ? ` Detail: ${message}` : ''}`)
   }
   if (lower.includes('permission') || lower.includes('row-level security') || lower.includes('oprávnen')) {
     return new Error(`Používateľ nemá oprávnenie vykonať túto operáciu v ServiceDesku.${message ? ` Detail: ${message}` : ''}`)
@@ -324,6 +375,25 @@ export async function loadHelpdeskData(): Promise<{
   } catch (error) {
     throw friendlyHelpdeskError(error)
   }
+}
+
+export async function loadServiceCatalogItems(includeInactive = false): Promise<ServiceCatalogItem[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('get_service_catalog_items', { p_include_inactive: includeInactive })
+  if (error) throw friendlyHelpdeskError(error)
+  return ((data ?? []) as ServiceCatalogItemRow[]).map(catalogItemFromRow)
+}
+
+export async function upsertServiceCatalogItem(item: ServiceCatalogItem): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('upsert_service_catalog_item', { p_item: item })
+  if (error) throw friendlyHelpdeskError(error)
+}
+
+export async function deleteServiceCatalogItem(itemCode: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('delete_service_catalog_item', { p_item_code: itemCode })
+  if (error) throw friendlyHelpdeskError(error)
 }
 
 export async function loadServiceNotifications(limit = 80): Promise<ServiceNotification[]> {

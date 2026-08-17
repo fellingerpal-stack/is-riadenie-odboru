@@ -3,7 +3,7 @@ import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, Change
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.46.0'
+const CURRENT_VERSION = '0.47.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -72,6 +72,8 @@ function migrateTicket(ticket: Ticket, policies: SlaPolicy[]): Ticket {
     status: typeof source.status === 'string' ? source.status : 'Nová',
     assignee: typeof source.assignee === 'string' ? source.assignee : '',
     channel: typeof source.channel === 'string' ? source.channel : 'Formulár',
+    catalogItemId: typeof source.catalogItemId === 'string' ? source.catalogItemId : '',
+    requestData: source.requestData && typeof source.requestData === 'object' && !Array.isArray(source.requestData) ? source.requestData as Record<string, string | number | boolean> : {},
     createdAt,
     updatedAt,
     due: typeof source.due === 'string' ? source.due : '',
