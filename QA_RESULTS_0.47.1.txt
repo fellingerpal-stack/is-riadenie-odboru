@@ -1,0 +1,39 @@
+IS Riadenie odboru v0.47.1 - QA
+Date: 2026-08-17
+
+VERSION / PACKAGE
+[PASS] package.json = 0.47.1
+[PASS] storage CURRENT_VERSION = 0.47.1
+[PASS] seed meta version = 0.47.1
+[PASS] package.json JSON valid
+[PASS] seed.json JSON valid
+
+SERVICE CATALOG BASELINE
+[PASS] v0.47 Service Catalog migration retained in combined v0.47.1 SQL
+[PASS] employee smart form / catalog frontend files retained from v0.47.0
+[PASS] no catalog data model removed
+
+POSTGRESQL 42702 HOTFIX
+[PASS] Screenshot error identified as ambiguous organization_id (SQLSTATE 42702)
+[PASS] get_service_calendar_exceptions uses cfg.organization_id / cfg.user_id
+[PASS] upsert_service_calendar_exception uses cfg.organization_id / cfg.user_id
+[PASS] delete_service_calendar_exception uses cfg.organization_id / cfg.user_id
+[PASS] get_service_email_channels uses cfg.organization_id
+[PASS] upsert_service_email_channel uses cfg.organization_id / cfg.user_id
+[PASS] delete_service_email_channel uses cfg.organization_id
+[PASS] current upsert_service_queue uses qualified configurator columns
+[PASS] routing upsert/delete uses qualified configurator columns
+[PASS] hotfix replaces 9 current ServiceDesk RPC definitions
+[PASS] PostgREST schema reload notification present
+[PASS] final readiness SELECT present
+
+DEPLOYMENT
+[PASS] combined migration_servicedesk_v0471.sql provided for production currently on v0.46
+[PASS] hotfix-only migration provided for systems where v0.47 SQL was already executed
+[PASS] no destructive table/data statements added by hotfix
+
+BUILD LIMITATION
+[INFO] Frontend runtime logic is unchanged from v0.47.0 except version/error migration reference markers.
+[INFO] Full Vite build was not rerun in this hotfix workspace because dependencies are not installed locally.
+[REQUIRED] Vercel/CI must successfully run its standard build.
+[REQUIRED] After SQL, verify E-mail -> Ticket and SLA calendar load without SQLSTATE 42702.

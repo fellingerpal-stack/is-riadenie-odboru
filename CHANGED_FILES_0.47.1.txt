@@ -1,0 +1,19 @@
+Compared with deployed v0.46.0, v0.47.1 includes the full v0.47 Service Catalog change set plus the DB hotfix:
+package.json
+src/data/seed.json
+src/types.ts
+src/lib/storage.ts
+src/lib/helpdeskCloud.ts
+src/views/Helpdesk.tsx
+src/views/Helpdesk.css
+supabase/migration_servicedesk_v047.sql (historical v0.47 catalog migration retained)
+supabase/migration_servicedesk_v0471.sql (recommended combined migration from v0.46)
+supabase/migration_servicedesk_v0471_hotfix_only.sql
+RELEASE_NOTES_0.47.md
+RELEASE_NOTES_0.47.1.md
+SERVICE_CATALOG_0.47.md
+README_NASADENIE_0.47.txt
+README_NASADENIE_0.47.1.txt
+QA_RESULTS_0.47.txt
+QA_RESULTS_0.47.1.txt
+CHANGED_FILES_0.47.1.txt
