@@ -325,7 +325,7 @@ function friendlyHelpdeskError(error: unknown): Error {
     lower.includes('could not find the table') ||
     (lower.includes('relation') && lower.includes('does not exist'))
   ) {
-    return new Error(`Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 až v0.47.0.${message ? ` Detail: ${message}` : ''}`)
+    return new Error(`Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 až v0.47.1.${message ? ` Detail: ${message}` : ''}`)
   }
   if (lower.includes('permission') || lower.includes('row-level security') || lower.includes('oprávnen')) {
     return new Error(`Používateľ nemá oprávnenie vykonať túto operáciu v ServiceDesku.${message ? ` Detail: ${message}` : ''}`)
