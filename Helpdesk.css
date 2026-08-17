@@ -1,0 +1,207 @@
+/* Release 0.5 – ServiceDesk, SLA, fronty, prílohy a reporty */
+.helpdesk-page-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end}.alert-button{position:relative}.alert-button b{min-width:20px;height:20px;display:grid;place-items:center;border-radius:999px;background:#b52f3d;color:#fff;font-size:9px}
+.helpdesk-view-tabs{display:inline-flex;gap:4px;margin:0 0 18px;padding:4px;border:1px solid #dbe4eb;border-radius:13px;background:#eaf0f5}.helpdesk-view-tabs button{border:0;background:transparent;color:#5a6d80;display:flex;align-items:center;gap:7px;padding:10px 14px;border-radius:9px;font-size:11px;font-weight:800}.helpdesk-view-tabs button:hover{color:#245f87}.helpdesk-view-tabs button.active{background:#fff;color:#1d6897;box-shadow:0 3px 10px rgba(32,65,94,.13)}.helpdesk-view-tabs span{min-width:22px;padding:2px 6px;border-radius:999px;background:#dce7ef;font-size:8px;text-align:center}
+.helpdesk-kpis{display:grid;grid-template-columns:repeat(6,minmax(155px,1fr));gap:11px;margin:0 0 18px}.helpdesk-kpi{min-width:0;min-height:94px;display:flex;align-items:center;gap:12px;padding:14px 15px;border:1px solid #dce5ed;border-radius:15px;background:#fff;color:#20364d;text-align:left;box-shadow:0 5px 16px rgba(30,50,75,.05);transition:.18s}.helpdesk-kpi:hover{transform:translateY(-2px);border-color:#adc9da;box-shadow:0 10px 24px rgba(30,50,75,.09)}.helpdesk-kpi-icon{width:41px;height:41px;flex:0 0 41px;display:grid;place-items:center;border-radius:12px;background:#eaf4fb;color:#236e9e}.helpdesk-kpi>span:last-child{min-width:0;display:grid;grid-template-columns:auto 1fr;grid-template-areas:"label label" "number note";align-items:end;column-gap:7px;row-gap:5px}.helpdesk-kpi small{grid-area:label;color:#647689;font-size:9px;line-height:1.2;font-weight:850;letter-spacing:.045em;text-transform:uppercase}.helpdesk-kpi strong{grid-area:number;color:#17324b;font-size:27px;line-height:1;font-weight:850}.helpdesk-kpi em{grid-area:note;align-self:center;color:#82909d;font-size:9px;line-height:1.25;font-style:normal}.helpdesk-kpi.is-critical,.helpdesk-kpi.is-overdue{border-color:#efc5ca;background:linear-gradient(135deg,#fff,#fff6f7)}.helpdesk-kpi.is-critical .helpdesk-kpi-icon,.helpdesk-kpi.is-overdue .helpdesk-kpi-icon{background:#ffeaed;color:#b4313d}.helpdesk-kpi.is-critical strong,.helpdesk-kpi.is-overdue strong{color:#b4313d}.helpdesk-kpi.is-open{border-color:#c8dfed;background:linear-gradient(135deg,#fff,#f5fbff)}
+.helpdesk-queue-panel{overflow:hidden;border:1px solid #dce5ed;border-radius:18px;background:#fff;box-shadow:0 6px 18px rgba(30,50,75,.05)}.helpdesk-queue-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:19px 21px 15px;border-bottom:1px solid #e8edf2}.helpdesk-queue-heading h2{margin:4px 0 3px;color:#1f344a;font-size:18px}.helpdesk-queue-heading p{margin:0;color:#7c8997;font-size:10px}.helpdesk-queue-summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.helpdesk-toolbar{display:grid;grid-template-columns:minmax(300px,1.4fr) repeat(6,minmax(118px,.55fr)) auto;gap:8px;align-items:center;padding:13px 14px;background:#f8fafc;border-bottom:1px solid #e5ebf0}.helpdesk-toolbar .search-box{height:43px;min-width:0;background:#fff}.helpdesk-toolbar select{min-width:0;width:100%;height:43px;padding:0 31px 0 10px;border:1px solid #dce4eb;border-radius:10px;background-color:#fff;color:#3d5064;font-size:9px;font-weight:700}.helpdesk-clear{min-width:max-content;padding:8px}
+.helpdesk-table-shell{max-height:calc(100vh - 410px);overflow:auto}.helpdesk-table{min-width:1360px}.helpdesk-table thead th{position:sticky;top:0;z-index:2;background:#f4f7fa}.helpdesk-table tbody tr{cursor:pointer;transition:.15s}.helpdesk-table tbody tr:hover td{background:#f5f9fc}.helpdesk-table tbody tr.ticket-overdue-row td:first-child{box-shadow:inset 3px 0 0 #ca3945}.helpdesk-table th:nth-child(1){min-width:365px}.helpdesk-table th:nth-child(2){min-width:100px}.helpdesk-table th:nth-child(3){min-width:200px}.helpdesk-table th:nth-child(6){min-width:150px}.helpdesk-table th:nth-child(7){min-width:175px}.helpdesk-table td{vertical-align:middle}.ticket-primary>div{display:flex;align-items:center;gap:9px;margin-bottom:6px}.ticket-primary>div strong{color:#296f9d;font-size:10px;letter-spacing:.03em}.ticket-primary>div span{color:#8a96a3;font-size:9px}.ticket-primary h3{margin:0;color:#23394f;font-size:12px;line-height:1.35}.ticket-primary p{display:-webkit-box;max-width:510px;margin:4px 0 0;overflow:hidden;color:#758394;font-size:9px;line-height:1.4;-webkit-box-orient:vertical;-webkit-line-clamp:2}.ticket-type{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 9px;border-radius:999px;font-size:9px;font-weight:850}.ticket-type-incident{background:#ffeaed;color:#a82f3a}.ticket-type-request{background:#e8f3fc;color:#246b99}.ticket-queue,.ticket-service{display:block;max-width:205px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ticket-queue{color:#314c64;font-size:10px;font-weight:800}.ticket-service{margin-top:3px;color:#7a8998;font-size:8px}.ticket-assignee{display:flex;align-items:center;gap:8px;color:#465c71;font-size:9px;font-weight:650}.ticket-avatar{width:27px;height:27px;flex:0 0 27px;display:grid;place-items:center;border-radius:9px;background:#e8f1f7;color:#245f86;font-size:8px;font-weight:850}.sla-chip{display:inline-flex;min-width:118px;flex-direction:column;gap:2px;padding:6px 8px;border-radius:9px;border:1px solid transparent}.sla-chip strong{font-size:9px}.sla-chip small{font-size:7px}.sla-success{background:#eaf8f1;color:#16764f;border-color:#c6ead9}.sla-warning{background:#fff3e1;color:#966016;border-color:#f2d5a8}.sla-danger{background:#ffebed;color:#a82f3b;border-color:#f3c4ca}.sla-info{background:#eaf4fb;color:#286b98}.sla-neutral{background:#f1f3f5;color:#65717e}
+.helpdesk-modal-layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(325px,.75fr);gap:18px;align-items:start}.helpdesk-form-column{min-width:0}.helpdesk-modal-banner{display:flex;align-items:center;gap:9px;min-height:49px;margin-bottom:14px;padding:10px 12px;border:1px solid #dce5ed;border-radius:12px;background:#f6f9fb}.helpdesk-modal-banner>strong{color:#2b6f9d;font-size:11px;margin-right:auto}.helpdesk-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.helpdesk-form-grid .field:nth-child(4),.helpdesk-form-grid .field:nth-child(5),.helpdesk-form-grid .field:nth-last-child(2),.helpdesk-form-grid .field:nth-last-child(1){grid-column:1/-1}.helpdesk-form-grid textarea{min-height:86px}.helpdesk-form-grid .field:nth-child(5) textarea{min-height:118px}
+.helpdesk-activity-column{display:flex;flex-direction:column;gap:12px;min-width:0}.helpdesk-activity-card{overflow:hidden;border:1px solid #dfe7ed;border-radius:14px;background:#fff}.helpdesk-activity-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:13px 14px 10px;border-bottom:1px solid #edf1f4}.helpdesk-activity-heading h3{margin:4px 0 0;color:#2a3f54;font-size:13px}.ticket-comments{max-height:210px;overflow:auto;padding:8px 13px}.ticket-comments article{margin:7px 0;padding:10px 11px;border-radius:10px;background:#f3f7fa}.ticket-comments article.is-internal{background:#fff4e5}.ticket-comments article header{display:flex;align-items:center;justify-content:space-between;gap:9px}.ticket-comments article header strong{color:#33495f;font-size:9px}.ticket-comments article header span{color:#8b97a3;font-size:8px}.ticket-comments article p{margin:6px 0 0;color:#546679;font-size:9px;line-height:1.45}.ticket-comments article small{display:block;margin-top:6px;color:#9a5d14;font-size:8px;font-weight:800;text-transform:uppercase}.ticket-comment-editor{display:flex;flex-direction:column;gap:8px;padding:11px 13px 13px;border-top:1px solid #edf1f4}.ticket-comment-editor textarea{min-height:72px;resize:vertical;border:1px solid #dce4eb;border-radius:10px;padding:10px;color:#34495e;font-size:10px}.ticket-comment-editor label{display:flex;align-items:center;gap:7px;color:#647587;font-size:9px}.ticket-comment-editor .button{align-self:flex-start}.helpdesk-empty-copy{margin:12px 0;color:#8a96a3;font-size:9px;text-align:center}.ticket-history{max-height:190px;overflow:auto;padding:12px 14px}.ticket-history>div{display:grid;grid-template-columns:12px 1fr;gap:8px;position:relative;padding:0 0 13px}.ticket-history>div:last-child{padding-bottom:0}.ticket-history>div>span{width:9px;height:9px;margin-top:2px;border-radius:50%;background:#4d9bc7;box-shadow:0 0 0 4px #e9f3f9}.ticket-history>div:not(:last-child):after{content:"";position:absolute;left:4px;top:13px;bottom:0;width:1px;background:#dfe7ed}.ticket-history p,.ticket-history strong,.ticket-history small{display:block;margin:0}.ticket-history strong{color:#455a6e;font-size:9px;line-height:1.4}.ticket-history small{margin-top:3px;color:#8995a1;font-size:8px}.helpdesk-task-button{width:100%}.helpdesk-modal-actions{margin-top:18px;padding-top:15px;border-top:1px solid #e7edf2}
+.sla-detail-card{background:linear-gradient(145deg,#fff,#f5fbff)}.sla-detail-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px}.sla-detail-list>div{padding:9px;border-radius:10px;background:#fff;border:1px solid #e3eaf0}.sla-detail-list span,.sla-detail-list strong,.sla-detail-list small{display:block}.sla-detail-list span{color:#7b8997;font-size:8px;text-transform:uppercase;font-weight:800}.sla-detail-list strong{margin-top:5px;color:#29475f;font-size:9px}.sla-detail-list small{margin-top:4px;color:#82909d;font-size:7px}
+.ticket-attachments{display:flex;flex-direction:column;gap:6px;padding:9px 12px}.ticket-attachments>div{display:flex;align-items:center;border:1px solid #e4e9ee;border-radius:9px;background:#f8fafb}.attachment-main{min-width:0;flex:1;border:0;background:transparent;display:flex;align-items:center;gap:8px;padding:8px;text-align:left;color:#37657f}.attachment-main span{min-width:0}.attachment-main strong,.attachment-main small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attachment-main strong{color:#364e63;font-size:8px}.attachment-main small{margin-top:2px;color:#8894a0;font-size:7px}.attachment-remove{width:31px;height:31px;border:0;background:transparent;color:#a73742}.attachment-upload{display:flex;align-items:center;justify-content:center;gap:7px;margin:0 12px 12px;padding:8px;border:1px dashed #a9c5d8;border-radius:9px;color:#2e719d;font-size:9px;font-weight:800;cursor:pointer}.attachment-upload input{display:none}
+.servicedesk-alert-list{display:flex;flex-direction:column;gap:7px}.servicedesk-alert-list>button{width:100%;border:1px solid #e0e7ed;border-radius:11px;background:#fff;display:flex;align-items:center;gap:10px;padding:11px;text-align:left}.servicedesk-alert-list>button:hover{background:#f6f9fb}.servicedesk-alert-list>button>div{min-width:0;flex:1}.servicedesk-alert-list strong,.servicedesk-alert-list small{display:block}.servicedesk-alert-list strong{font-size:10px;color:#324b61}.servicedesk-alert-list small{margin-top:4px;font-size:8px;color:#7d8995}.alert-dot{width:10px;height:10px;border-radius:50%;flex:0 0 10px}.alert-danger{background:#c83642;box-shadow:0 0 0 4px #ffeaed}.alert-warning{background:#d5861c;box-shadow:0 0 0 4px #fff1dc}
+.servicedesk-report-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}.sla-policy-panel,.queue-panel,.analytics-panel{grid-column:span 12}.integration-panel{grid-column:span 12}.sla-policy-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.sla-policy-grid article{padding:14px;border:1px solid #dfe7ed;border-radius:13px;background:#f9fbfc}.sla-policy-grid header{display:flex;align-items:center;justify-content:space-between;gap:8px}.sla-policy-grid header strong{font-size:10px;color:#40566a}.sla-policy-grid article>div{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.sla-policy-grid label{display:grid;grid-template-columns:1fr auto;grid-template-areas:"name name" "input unit";gap:4px;color:#71808f;font-size:8px}.sla-policy-grid label input{grid-area:input;min-width:0;height:34px;border:1px solid #d9e2e9;border-radius:8px;background:#fff;padding:0 8px;font-weight:800}.sla-policy-grid label span{grid-area:unit;align-self:center;color:#748391;font-size:9px}.panel-note{margin:13px 0 0;color:#7d8996;font-size:9px}
+.support-queue-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.support-queue-grid article{padding:14px;border:1px solid #dfe7ed;border-radius:13px;background:#fff}.support-queue-grid article.is-disabled{opacity:.58;background:#f3f5f7}.support-queue-grid header{display:flex;align-items:center;gap:9px}.queue-icon{width:35px;height:35px;display:grid;place-items:center;border-radius:10px;background:#eaf4fb;color:#2a719f}.support-queue-grid header>div{min-width:0;flex:1}.support-queue-grid strong,.support-queue-grid small{display:block}.support-queue-grid strong{font-size:11px;color:#344d62}.support-queue-grid header small{margin-top:2px;color:#7f8c98;font-size:8px}.support-queue-grid p{margin:10px 0;color:#68798a;font-size:9px}.queue-members{display:flex;gap:6px;flex-wrap:wrap}.queue-members>span{display:flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;background:#edf4f8;color:#26698f;font-size:7px;font-weight:850}.queue-members small{color:#596f82;font-size:7px}.switch{position:relative}.switch input{position:absolute;opacity:0}.switch span{display:block;width:34px;height:19px;border-radius:999px;background:#cbd5dd;position:relative;cursor:pointer}.switch span:after{content:"";position:absolute;width:15px;height:15px;left:2px;top:2px;border-radius:50%;background:#fff;transition:.15s}.switch input:checked+span{background:#2b8b83}.switch input:checked+span:after{transform:translateX(15px)}
+.analytics-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.analytics-grid>section{padding:13px;border:1px solid #e0e7ed;border-radius:12px;background:#f9fbfc}.analytics-grid h4{margin:0 0 11px;color:#3e5367;font-size:11px}.analytics-grid article{display:grid;grid-template-columns:1fr auto;gap:3px 8px;margin:8px 0}.analytics-grid article header{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px}.analytics-grid article header span,.analytics-grid article header strong{font-size:8px;color:#5e7081}.analytics-grid article>div{height:5px;border-radius:999px;background:#e5ebef;overflow:hidden}.analytics-grid article>div>span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#347db1,#1c9a91)}.analytics-grid article small{font-size:7px;color:#87939f}.analytics-grid section>div>p{font-size:8px;color:#8b96a1}
+.integration-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.integration-list>div{min-width:0;display:flex;align-items:center;gap:9px;padding:12px;border:1px solid #e0e7ed;border-radius:12px;background:#f9fbfc;color:#387392}.integration-list>div>span{min-width:0;flex:1}.integration-list strong,.integration-list small{display:block}.integration-list strong{color:#3b5165;font-size:9px}.integration-list small{margin-top:3px;color:#83909c;font-size:7px}
+@media(max-width:1550px){.helpdesk-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.helpdesk-toolbar{grid-template-columns:minmax(280px,1.4fr) repeat(3,minmax(125px,1fr))}.helpdesk-search{grid-column:span 2}.helpdesk-clear{justify-self:start}.analytics-grid,.integration-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1180px){.helpdesk-modal-layout{grid-template-columns:1fr}.helpdesk-activity-column{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.helpdesk-task-button{grid-column:1/-1}.helpdesk-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sla-policy-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.support-queue-grid{grid-template-columns:1fr}}
+@media(max-width:900px){.helpdesk-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.helpdesk-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.helpdesk-search{grid-column:1/-1}.helpdesk-queue-heading{flex-direction:column}.helpdesk-queue-summary{justify-content:flex-start}.analytics-grid,.integration-list{grid-template-columns:1fr}.helpdesk-view-tabs{display:grid;grid-template-columns:1fr;width:100%}.helpdesk-view-tabs button{justify-content:flex-start}}
+@media(max-width:650px){.helpdesk-page-actions{width:100%;flex-direction:column}.helpdesk-page-actions .button{width:100%}.helpdesk-kpis{grid-template-columns:1fr}.helpdesk-toolbar{display:flex;flex-direction:column;align-items:stretch}.helpdesk-form-grid{grid-template-columns:1fr}.helpdesk-form-grid .field{grid-column:auto!important}.helpdesk-activity-column{display:flex}.helpdesk-modal-banner{flex-wrap:wrap}.sla-policy-grid{grid-template-columns:1fr}.sla-detail-list{grid-template-columns:1fr}}
+
+
+/* FIX 0.8A – kompaktnejší ServiceDesk a viac priestoru pre frontu ticketov */
+.helpdesk-page-compact .page-header{
+  align-items:center;
+  gap:18px;
+  margin-bottom:10px;
+}
+.helpdesk-page-compact .page-header>div:first-child{
+  min-width:360px;
+}
+.helpdesk-page-compact .page-header .eyebrow{
+  margin-bottom:4px;
+  font-size:9px;
+}
+.helpdesk-page-compact .page-header h1{
+  margin:0 0 5px;
+  font-size:27px;
+  line-height:1.08;
+}
+.helpdesk-page-compact .page-header p{
+  max-width:720px;
+  margin:0;
+  font-size:10px;
+  line-height:1.35;
+}
+.helpdesk-page-compact .helpdesk-page-actions{
+  flex-wrap:nowrap;
+  gap:7px;
+}
+.helpdesk-page-compact .helpdesk-page-actions .button{
+  min-height:38px;
+  padding:0 12px;
+  border-radius:10px;
+  font-size:10px;
+  white-space:nowrap;
+}
+.helpdesk-page-compact .helpdesk-page-actions .button svg{
+  width:15px;
+  height:15px;
+}
+.helpdesk-page-compact .alert-button b{
+  min-width:18px;
+  height:18px;
+  font-size:8px;
+}
+.helpdesk-page-compact .helpdesk-view-tabs{
+  gap:3px;
+  margin:0 0 10px;
+  padding:3px;
+  border-radius:11px;
+}
+.helpdesk-page-compact .helpdesk-view-tabs button{
+  gap:6px;
+  padding:7px 11px;
+  border-radius:8px;
+  font-size:10px;
+}
+.helpdesk-page-compact .helpdesk-view-tabs button svg{
+  width:16px;
+  height:16px;
+}
+.helpdesk-page-compact .helpdesk-view-tabs span{
+  min-width:20px;
+  padding:2px 5px;
+}
+.helpdesk-page-compact .helpdesk-kpis{
+  grid-template-columns:repeat(6,minmax(130px,1fr));
+  gap:8px;
+  margin:0 0 10px;
+}
+.helpdesk-page-compact .helpdesk-kpi{
+  min-height:72px;
+  gap:9px;
+  padding:10px 11px;
+  border-radius:13px;
+  box-shadow:0 3px 10px rgba(30,50,75,.045);
+}
+.helpdesk-page-compact .helpdesk-kpi-icon{
+  width:34px;
+  height:34px;
+  flex-basis:34px;
+  border-radius:10px;
+}
+.helpdesk-page-compact .helpdesk-kpi-icon svg{
+  width:18px;
+  height:18px;
+}
+.helpdesk-page-compact .helpdesk-kpi>span:last-child{
+  column-gap:6px;
+  row-gap:3px;
+}
+.helpdesk-page-compact .helpdesk-kpi small{
+  font-size:7.5px;
+  letter-spacing:.035em;
+}
+.helpdesk-page-compact .helpdesk-kpi strong{
+  font-size:22px;
+}
+.helpdesk-page-compact .helpdesk-kpi em{
+  font-size:7.5px;
+  line-height:1.15;
+}
+.helpdesk-page-compact .helpdesk-queue-panel{
+  border-radius:15px;
+}
+.helpdesk-page-compact .helpdesk-queue-heading{
+  gap:14px;
+  padding:12px 15px 10px;
+}
+.helpdesk-page-compact .helpdesk-queue-heading .eyebrow{
+  font-size:8px;
+}
+.helpdesk-page-compact .helpdesk-queue-heading h2{
+  margin:3px 0 2px;
+  font-size:16px;
+}
+.helpdesk-page-compact .helpdesk-queue-heading p{
+  font-size:9px;
+}
+.helpdesk-page-compact .helpdesk-toolbar{
+  gap:7px;
+  padding:9px 11px;
+}
+.helpdesk-page-compact .helpdesk-toolbar .search-box,
+.helpdesk-page-compact .helpdesk-toolbar select{
+  height:38px;
+}
+.helpdesk-page-compact .helpdesk-table-shell{
+  max-height:calc(100vh - 315px);
+  min-height:260px;
+}
+
+@media(max-width:1550px){
+  .helpdesk-page-compact .helpdesk-kpis{grid-template-columns:repeat(6,minmax(115px,1fr))}
+  .helpdesk-page-compact .page-header{align-items:flex-start}
+  .helpdesk-page-compact .helpdesk-page-actions{flex-wrap:wrap}
+}
+@media(max-width:1260px){
+  .helpdesk-page-compact .page-header{flex-direction:column;gap:10px}
+  .helpdesk-page-compact .page-header>div:first-child{min-width:0}
+  .helpdesk-page-compact .helpdesk-page-actions{width:100%;justify-content:flex-start}
+  .helpdesk-page-compact .helpdesk-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .helpdesk-page-compact .helpdesk-table-shell{max-height:calc(100vh - 390px)}
+}
+@media(max-width:900px){
+  .helpdesk-page-compact .page-header h1{font-size:24px}
+  .helpdesk-page-compact .helpdesk-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .helpdesk-page-compact .helpdesk-table-shell{max-height:none}
+}
+@media(max-width:650px){
+  .helpdesk-page-compact .helpdesk-page-actions{flex-direction:column}
+  .helpdesk-page-compact .helpdesk-page-actions .button{width:100%}
+  .helpdesk-page-compact .helpdesk-kpis{grid-template-columns:1fr}
+}
+
+/* Release 0.12.1 – samostatná databáza ServiceDesku */
+.helpdesk-database-banner{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;margin:0 0 16px;padding:13px 15px;border:1px solid #cfe0ea;border-radius:14px;background:linear-gradient(135deg,#f8fcff,#eef8fc);box-shadow:0 5px 16px rgba(30,70,95,.05)}
+.helpdesk-database-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#dceff8;color:#23739f}
+.helpdesk-database-copy{display:flex;min-width:0;flex-direction:column;gap:4px}.helpdesk-database-copy strong{color:#25435a;font-size:11px}.helpdesk-database-copy span{color:#667c8e;font-size:9px;line-height:1.45}
+.helpdesk-database-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;white-space:nowrap}.helpdesk-database-actions b{padding:7px 10px;border-radius:999px;background:#dff3eb;color:#217451;font-size:9px}.helpdesk-database-actions .button{min-height:36px;padding:7px 11px;font-size:9px}
+.helpdesk-database-loading .helpdesk-database-actions b,.helpdesk-database-saving .helpdesk-database-actions b{background:#fff1d8;color:#8b5b11}.helpdesk-database-error{border-color:#edc1c5;background:linear-gradient(135deg,#fffafa,#fff1f2)}.helpdesk-database-error .helpdesk-database-icon{background:#ffe3e6;color:#b3333e}.helpdesk-database-error .helpdesk-database-actions b{background:#ffe2e5;color:#a52f39}.helpdesk-database-local{border-color:#dfe5ea;background:#f7f9fb}.helpdesk-database-local .helpdesk-database-icon{background:#e7edf2;color:#66798a}.helpdesk-database-local .helpdesk-database-actions b{background:#e8edf1;color:#607282}
+@media(max-width:760px){.helpdesk-database-banner{grid-template-columns:auto minmax(0,1fr)}.helpdesk-database-actions{grid-column:1/-1;justify-content:space-between}}
+
+/* v0.44.0 · standalone ServiceDesk configuration */
+.servicedesk-config-stack{display:flex;flex-direction:column;gap:16px}.sd-config-panel{padding:20px}.sd-config-panel .panel-heading p{margin:4px 0 0;color:#728596;font-size:12px}.sd-queue-config-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.sd-queue-config-grid>article{padding:14px;border:1px solid #dce6ed;border-radius:14px;background:#fbfdfe}.sd-queue-config-grid>article.is-disabled{opacity:.55}.sd-queue-config-grid header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.sd-queue-config-grid header strong,.sd-queue-config-grid header small{display:block}.sd-queue-config-grid header strong{color:#173b55;font-size:13px}.sd-queue-config-grid header small{margin-top:3px;color:#7c8e9c;font-size:9px}.sd-queue-config-grid>article>p{min-height:34px;margin:9px 0;color:#657b8d;font-size:10px;line-height:1.45}.sd-queue-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.sd-queue-fields label{display:flex;flex-direction:column;gap:4px;color:#718697;font-size:8px;font-weight:800;text-transform:uppercase}.sd-queue-fields input,.sd-queue-fields select{min-width:0;height:34px;border:1px solid #d6e2eb;border-radius:8px;background:#fff;padding:0 8px;color:#29495f;font-size:10px;text-transform:none}.sd-membership-matrix-wrap,.sd-routing-table-wrap{overflow:auto;border:1px solid #dce6ed;border-radius:13px}.sd-membership-matrix,.sd-routing-table{width:100%;border-collapse:collapse;background:#fff}.sd-membership-matrix{min-width:1050px}.sd-routing-table{min-width:1300px}.sd-membership-matrix th,.sd-routing-table th{position:sticky;top:0;z-index:1;background:#eef5f8;padding:9px;color:#587186;font-size:8px;text-align:left}.sd-membership-matrix td,.sd-routing-table td{border-top:1px solid #e6edf2;padding:8px;color:#405e73;font-size:9px}.sd-membership-matrix td:first-child{min-width:190px}.sd-membership-matrix td strong,.sd-membership-matrix td small{display:block}.sd-membership-matrix td small{margin-top:2px;color:#84929e;font-size:7px}.sd-matrix-check{display:grid;place-items:center}.sd-matrix-check input{position:absolute;opacity:0;pointer-events:none}.sd-matrix-check span{width:27px;height:27px;display:grid;place-items:center;border:1px solid #cbdbe6;border-radius:8px;background:#f8fbfd;color:#0b8a78;font-size:15px;font-weight:900;cursor:pointer}.sd-matrix-check input:checked+span{background:#e6f8f3;border-color:#92d8c8}.sd-routing-table input,.sd-routing-table select{width:100%;min-width:92px;height:32px;border:1px solid #d6e2eb;border-radius:7px;background:#fff;padding:0 7px;color:#2c4b61;font-size:9px}.sd-routing-table .sd-order-input{width:58px;min-width:58px}.portal-launch-servicedesk{--portal-accent:#117a91;--portal-accent-2:#1a9f78;--portal-soft:#eaf9f5}
+@media(max-width:1150px){.sd-queue-config-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.sd-queue-config-grid{grid-template-columns:1fr}.sd-queue-fields{grid-template-columns:1fr}}
+
+/* v0.44 - jednoduchý self-service formulár pre zamestnancov */
+.helpdesk-selfservice-hint{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;padding:11px 13px;border:1px solid #bfe4de;border-radius:12px;background:#f0fbf8;color:#315466;font-size:13px;line-height:1.45}
+.helpdesk-selfservice-hint svg{color:#158a78;flex:0 0 auto;margin-top:1px}.helpdesk-selfservice-hint strong{color:#0b3550}
+
+/* v0.45 ServiceDesk Operations & Notifications */
+.sd-notification-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 0 14px;color:var(--muted,#64748b);font-size:13px}.sd-notification-list{display:grid;gap:8px;max-height:62vh;overflow:auto}.sd-notification-list>button{width:100%;display:grid;grid-template-columns:12px minmax(0,1fr) 18px;align-items:start;gap:11px;text-align:left;border:1px solid #dfe7f1;border-radius:14px;background:#fff;padding:13px 14px;cursor:pointer}.sd-notification-list>button.is-unread{border-color:#a9c8ee;background:#f7fbff;box-shadow:0 4px 16px rgba(33,84,135,.07)}.sd-notification-list>button:hover{border-color:#8eb7e5}.sd-notification-list header{display:flex;align-items:center;justify-content:space-between;gap:10px}.sd-notification-list p{margin:5px 0 4px;color:#334155;line-height:1.45}.sd-notification-list small{color:#718096}.sd-notification-dot{width:9px;height:9px;border-radius:50%;margin-top:5px;background:#94a3b8}.sd-notification-danger{background:#dc2626}.sd-notification-warning{background:#d97706}.sd-notification-success{background:#16a34a}.sd-notification-info{background:#2563eb}
+.sd-lead-panel{grid-column:1/-1}.sd-lead-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.sd-lead-grid>article{border:1px solid #e2e8f0;border-radius:16px;padding:15px;background:linear-gradient(180deg,#fff,#f8fbff)}.sd-lead-grid article>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.sd-lead-grid article>header strong{display:block;font-size:15px;color:#17324d}.sd-lead-grid article>header small{display:block;margin-top:3px;color:#6b7b8e}.sd-lead-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}.sd-lead-metrics span{padding:9px;border-radius:10px;background:#eef4f9}.sd-lead-metrics small{display:block;color:#6b7b8e;font-size:11px}.sd-lead-metrics b{display:block;font-size:18px;color:#17324d;margin-top:2px}.sd-lead-grid footer{display:flex;justify-content:space-between;gap:10px;margin-top:11px;color:#6b7b8e;font-size:11px}.sd-config-toggle{display:flex!important;align-items:center;gap:8px;justify-content:flex-start!important}.sd-config-toggle input{width:auto!important;min-width:16px;height:16px}
+@media(max-width:1050px){.sd-lead-grid{grid-template-columns:1fr}.sd-lead-metrics{grid-template-columns:repeat(2,1fr)}}
+.sd-working-days{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #e6edf5}.sd-working-days>span{font-size:12px;font-weight:700;color:#516579;margin-right:3px}.sd-working-days label{position:relative;cursor:pointer}.sd-working-days input{position:absolute;opacity:0;pointer-events:none}.sd-working-days label span{display:flex;align-items:center;justify-content:center;min-width:34px;height:30px;border:1px solid #dbe5ef;border-radius:9px;background:#fff;color:#607286;font-size:12px;font-weight:700}.sd-working-days input:checked+span{background:#eaf4ff;border-color:#8dbce9;color:#185f9d}
+.sd-calendar-editor{display:flex;align-items:end;gap:10px;flex-wrap:wrap;padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fbff}.sd-calendar-editor>label:not(.sd-config-toggle){display:grid;gap:5px;font-size:11px;font-weight:700;color:#5d7084}.sd-calendar-editor input{min-height:36px;border:1px solid #d8e3ed;border-radius:9px;padding:7px 9px;background:#fff}.sd-calendar-editor .sd-config-toggle{min-height:36px;padding:0 4px}.sd-calendar-list{display:grid;gap:8px;margin-top:12px}.sd-calendar-list article{display:grid;grid-template-columns:minmax(0,1fr) auto 36px;align-items:center;gap:10px;border:1px solid #e3eaf2;border-radius:12px;padding:10px 12px;background:#fff}.sd-calendar-list article strong,.sd-calendar-list article span,.sd-calendar-list article small{display:block}.sd-calendar-list article span{margin-top:2px;color:#405469}.sd-calendar-list article small{margin-top:3px;color:#78899a}
+
+/* v0.46 ServiceDesk inbound e-mail channels */
+.sd-email-channel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sd-email-channel-grid>article{border:1px solid #dce6ed;border-radius:15px;background:linear-gradient(180deg,#fff,#f8fbfe);padding:14px}.sd-email-channel-grid>article.is-disabled{opacity:.58}.sd-email-channel-grid article>header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:10px}.sd-email-channel-grid header strong,.sd-email-channel-grid header small{display:block}.sd-email-channel-grid header strong{color:#173b55;font-size:13px}.sd-email-channel-grid header small{margin-top:3px;color:#7b8c9c;font-size:9px}.sd-email-channel-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.sd-email-channel-fields label{display:flex;flex-direction:column;gap:4px;color:#718697;font-size:8px;font-weight:800;text-transform:uppercase}.sd-email-channel-fields input,.sd-email-channel-fields select{min-width:0;height:34px;border:1px solid #d6e2eb;border-radius:8px;background:#fff;padding:0 8px;color:#29495f;font-size:10px;text-transform:none}.sd-email-channel-grid footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding-top:10px;border-top:1px solid #e5edf3}.sd-email-channel-grid footer>span{display:flex;align-items:center;gap:6px;color:#687c8d;font-size:9px;line-height:1.35}.sd-email-channel-grid footer svg{color:#13859c;flex:0 0 auto}@media(max-width:1050px){.sd-email-channel-grid{grid-template-columns:1fr}}@media(max-width:650px){.sd-email-channel-fields{grid-template-columns:1fr}.sd-email-channel-grid footer{align-items:flex-start;flex-direction:column}.sd-email-channel-grid footer .button{width:100%}}
+
+/* v0.47.0 · Service Catalog & Smart Request Forms */
+.sd-catalog-workspace{display:flex;flex-direction:column;gap:18px}.sd-catalog-hero{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,.6fr);align-items:center;gap:24px;padding:24px;background:linear-gradient(135deg,#f8fcff 0%,#eef8fb 60%,#f2fbf8 100%)}.sd-catalog-hero h2{margin:4px 0 8px;font-size:26px;color:#0b2f4c}.sd-catalog-hero p{margin:0;color:#637b8e;line-height:1.55;max-width:760px}.sd-catalog-search{width:100%}.sd-catalog-group{display:flex;flex-direction:column;gap:10px}.sd-catalog-group>header{display:flex;align-items:end;justify-content:space-between;padding:0 4px}.sd-catalog-group h3{margin:2px 0 0;font-size:18px;color:#123b59}.sd-catalog-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.sd-catalog-card{appearance:none;border:1px solid #d7e5ed;border-radius:16px;background:#fff;padding:16px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:13px;align-items:start;text-align:left;cursor:pointer;transition:.18s ease;box-shadow:0 5px 18px rgba(30,72,96,.045);color:inherit}.sd-catalog-card:hover{transform:translateY(-2px);border-color:#9fcfe0;box-shadow:0 10px 25px rgba(30,93,121,.10)}.sd-catalog-card-icon{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,#dceeff,#dff7f2);color:#087ea0;flex:0 0 auto}.sd-catalog-card strong{display:block;color:#123b59;font-size:14px;line-height:1.3}.sd-catalog-card p{margin:5px 0 10px;color:#718596;font-size:11px;line-height:1.45}.sd-catalog-card footer{display:flex;gap:6px;flex-wrap:wrap}.sd-catalog-card footer span,.sd-catalog-admin-meta span{padding:4px 7px;border-radius:999px;background:#f0f5f8;color:#5d7283;font-size:9px;font-weight:700}.sd-selected-catalog{display:flex;align-items:center;gap:11px;margin:0 0 14px;padding:12px 14px;border:1px solid #cfe5ec;border-radius:14px;background:#f5fbfc}.sd-selected-catalog>div:nth-child(2){min-width:0;flex:1}.sd-selected-catalog strong,.sd-selected-catalog small{display:block}.sd-selected-catalog strong{color:#123b59}.sd-selected-catalog small{margin-top:3px;color:#718596}.sd-request-data-panel{margin-top:14px;padding:16px;border:1px solid #d8e7ee;border-radius:14px;background:#fbfdfe}.sd-smart-form-grid{margin-top:12px}.sd-smart-checkbox{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid #dce6ec;border-radius:10px}.sd-smart-checkbox span{display:flex;flex-direction:column;gap:3px}.sd-smart-checkbox small{color:#718596}.sd-catalog-admin-panel .panel-heading{align-items:center}.sd-config-actions{display:flex;align-items:center;gap:10px}.sd-catalog-admin-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.sd-catalog-admin-grid>article{padding:14px;border:1px solid #dce6ed;border-radius:14px;background:#fbfdfe;display:flex;flex-direction:column;gap:10px}.sd-catalog-admin-grid>article.is-disabled{opacity:.58}.sd-catalog-admin-grid header{display:flex;align-items:center;gap:10px}.sd-catalog-admin-grid header>div:nth-child(2){flex:1;min-width:0}.sd-catalog-admin-grid header strong,.sd-catalog-admin-grid header small{display:block}.sd-catalog-admin-grid header small{color:#7a8c9a;margin-top:2px}.sd-catalog-admin-grid p{margin:0;color:#687d8d;font-size:11px;line-height:1.45;min-height:32px}.sd-catalog-admin-meta{display:flex;flex-wrap:wrap;gap:5px}.sd-catalog-admin-grid footer{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:auto}.sd-catalog-editor{display:flex;flex-direction:column;gap:18px}.sd-catalog-editor-main{padding:4px}.sd-catalog-field-editor{border-top:1px solid #e0e8ed;padding-top:16px}.sd-catalog-field-editor>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}.sd-catalog-field-editor h3{margin:2px 0 3px}.sd-catalog-field-editor p{margin:0;color:#718596;font-size:11px}.sd-catalog-field-editor article{padding:12px;margin-bottom:8px;border:1px solid #dce6ed;border-radius:12px;background:#fbfdfe}.sd-catalog-field-row{display:grid;grid-template-columns:1fr 1.5fr 1fr auto auto;gap:8px;align-items:end}.sd-catalog-field-row.secondary{grid-template-columns:1fr 1fr 1.5fr;margin-top:8px}.sd-catalog-field-row label{display:flex;flex-direction:column;gap:4px;color:#65798a;font-size:9px;font-weight:700}.sd-catalog-field-row input,.sd-catalog-field-row select{min-width:0}.sd-catalog-field-row .sd-config-toggle{flex-direction:row;align-items:center;padding-bottom:9px}
+@media(max-width:1180px){.sd-catalog-grid,.sd-catalog-admin-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sd-catalog-field-row{grid-template-columns:1fr 1fr}.sd-catalog-field-row.secondary{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.sd-catalog-hero{grid-template-columns:1fr}.sd-catalog-grid,.sd-catalog-admin-grid{grid-template-columns:1fr}.sd-catalog-field-row,.sd-catalog-field-row.secondary{grid-template-columns:1fr}.sd-catalog-field-row .sd-config-toggle{padding-bottom:0}}
