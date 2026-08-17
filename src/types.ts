@@ -242,6 +242,35 @@ export interface ServiceEmailChannel {
   isActive: boolean
 }
 
+export type ServiceCatalogFieldType = 'text' | 'textarea' | 'select' | 'date' | 'number' | 'checkbox'
+
+export interface ServiceCatalogField {
+  key: string
+  label: string
+  type: ServiceCatalogFieldType
+  required: boolean
+  placeholder: string
+  helpText: string
+  options: string[]
+}
+
+export interface ServiceCatalogItem {
+  id: string
+  name: string
+  group: string
+  description: string
+  icon: string
+  ticketType: string
+  category: string
+  subcategory: string
+  serviceId: string
+  queueId: string
+  priority: string
+  sortOrder: number
+  fields: ServiceCatalogField[]
+  isActive: boolean
+}
+
 export interface ServiceRoutingRule {
   id: string
   name: string
@@ -296,6 +325,8 @@ export interface Ticket {
   status: string
   assignee: string
   channel: string
+  catalogItemId?: string
+  requestData?: Record<string, string | number | boolean>
   createdAt: string
   updatedAt: string
   due: string
