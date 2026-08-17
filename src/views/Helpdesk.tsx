@@ -3,6 +3,8 @@ import type {
   AppRole,
   Employee,
   ServiceCalendarException,
+  ServiceCatalogField,
+  ServiceCatalogItem,
   ServiceEmailChannel,
   ServiceNotification,
   Service,
@@ -14,8 +16,8 @@ import type {
   TicketAttachment,
   TicketComment,
 } from '../types'
-import { Badge, Empty, Field, Icon, Modal, PageHeader } from '../components/UI'
-import { deleteServiceCalendarException, deleteServiceEmailChannel, loadServiceCalendarExceptions, loadServiceEmailChannels, loadServiceNotifications, markServiceNotificationRead, processServiceSlaEscalations, upsertServiceCalendarException, upsertServiceEmailChannel, type HelpdeskDatabaseState } from '../lib/helpdeskCloud'
+import { Badge, Empty, Field, Icon, Modal, PageHeader, type IconName } from '../components/UI'
+import { deleteServiceCalendarException, deleteServiceCatalogItem, deleteServiceEmailChannel, loadServiceCalendarExceptions, loadServiceCatalogItems, loadServiceEmailChannels, loadServiceNotifications, markServiceNotificationRead, processServiceSlaEscalations, upsertServiceCalendarException, upsertServiceCatalogItem, upsertServiceEmailChannel, type HelpdeskDatabaseState } from '../lib/helpdeskCloud'
 import './Helpdesk.css'
 
 const ticketTypes = ['Incident', 'Požiadavka']
@@ -39,7 +41,39 @@ const categories: Record<string, string[]> = {
 const channels = ['Formulár', 'E-mail', 'Telefón', 'Chat', 'Porada', 'Iné']
 const closedStatuses = ['Vyriešená', 'Uzatvorená', 'Zrušená']
 
-type DeskView = 'queue' | 'mine' | 'sla' | 'config'
+const catalogIcons: IconName[] = ['iam','lock','cmdb','warning','systems','web','change','services','helpdesk','projects','tasks','mail','shield']
+const fallbackCatalog: ServiceCatalogItem[] = [
+  {id:'CAT-ACCESS-NEW',name:'Nový prístup / oprávnenie',group:'Účty a prístupy',description:'Požiadať o nový účet alebo prístup do systému.',icon:'iam',ticketType:'Požiadavka',category:'Prístupy a oprávnenia',subcategory:'Nový prístup',serviceId:'',queueId:'Q-IAM',priority:'Stredná',sortOrder:10,isActive:true,fields:[
+    {key:'system',label:'Systém / aplikácia',type:'text',required:true,placeholder:'napr. CRZP, ekonomický IS',helpText:'Uveďte systém, do ktorého potrebujete prístup.',options:[]},
+    {key:'accessScope',label:'Požadovaný rozsah',type:'textarea',required:true,placeholder:'Čo má používateľ vedieť robiť?',helpText:'',options:[]},
+    {key:'neededBy',label:'Potrebné od',type:'date',required:false,placeholder:'',helpText:'',options:[]},
+  ]},
+  {id:'CAT-ACCESS-RESET',name:'Reset hesla / problém s prihlásením',group:'Účty a prístupy',description:'Obnova prístupu, hesla alebo MFA.',icon:'lock',ticketType:'Incident',category:'Prístupy a oprávnenia',subcategory:'Reset hesla',serviceId:'',queueId:'Q-IAM',priority:'Stredná',sortOrder:20,isActive:true,fields:[{key:'system',label:'Systém / služba',type:'text',required:true,placeholder:'Kde sa neviete prihlásiť?',helpText:'',options:[]}]},
+  {id:'CAT-ENDPOINT-PC',name:'Notebook / PC',group:'Koncové zariadenia',description:'Nové zariadenie, výmena alebo technický problém.',icon:'systems',ticketType:'Požiadavka',category:'Koncové zariadenia',subcategory:'Notebook / PC',serviceId:'',queueId:'Q-ENDPOINT',priority:'Stredná',sortOrder:30,isActive:true,fields:[
+    {key:'requestKind',label:'Typ požiadavky',type:'select',required:true,placeholder:'',helpText:'',options:['Nové zariadenie','Výmena zariadenia','Porucha','Iné']},
+    {key:'workplace',label:'Pracovisko / kancelária',type:'text',required:true,placeholder:'napr. Lamačská cesta, 3. poschodie',helpText:'',options:[]},
+    {key:'neededBy',label:'Požadovaný termín',type:'date',required:false,placeholder:'',helpText:'',options:[]},
+  ]},
+  {id:'CAT-ENDPOINT-SW',name:'Inštalácia softvéru',group:'Koncové zariadenia',description:'Inštalácia alebo aktualizácia aplikácie na pracovnej stanici.',icon:'systems',ticketType:'Požiadavka',category:'Koncové zariadenia',subcategory:'Inštalácia softvéru',serviceId:'',queueId:'Q-ENDPOINT',priority:'Nízka',sortOrder:40,isActive:true,fields:[{key:'software',label:'Názov softvéru',type:'text',required:true,placeholder:'',helpText:'',options:[]},{key:'device',label:'Počítač / inventárne číslo',type:'text',required:false,placeholder:'',helpText:'',options:[]}]},
+  {id:'CAT-PRINT-ISSUE',name:'Tlačiareň / skener nefunguje',group:'Tlač a skenovanie',description:'Incident s tlačou, skenovaním alebo zariadením.',icon:'warning',ticketType:'Incident',category:'Tlač a skenovanie',subcategory:'Tlačiareň nefunguje',serviceId:'',queueId:'Q-TLAC',priority:'Stredná',sortOrder:50,isActive:true,fields:[{key:'location',label:'Umiestnenie zariadenia',type:'text',required:true,placeholder:'Budova, poschodie, kancelária',helpText:'',options:[]},{key:'device',label:'Názov / číslo tlačiarne',type:'text',required:false,placeholder:'',helpText:'',options:[]}]},
+  {id:'CAT-NET-WIFI',name:'Sieť / Wi-Fi / VPN',group:'Sieť a infraštruktúra',description:'Nedostupnosť siete, Wi-Fi, VPN alebo konektivity.',icon:'web',ticketType:'Incident',category:'Infraštruktúra',subcategory:'Sieť',serviceId:'',queueId:'Q-SIET',priority:'Vysoká',sortOrder:60,isActive:true,fields:[{key:'location',label:'Lokalita',type:'text',required:true,placeholder:'Kde sa problém prejavuje?',helpText:'',options:[]},{key:'connection',label:'Typ pripojenia',type:'select',required:false,placeholder:'',helpText:'',options:['LAN','Wi-Fi','VPN','Internet','Iné']}]},
+  {id:'CAT-INFRA-SERVER',name:'Server / storage / infraštruktúra',group:'Sieť a infraštruktúra',description:'Prevádzkový incident servera, storage alebo platformy.',icon:'cmdb',ticketType:'Incident',category:'Infraštruktúra',subcategory:'Server',serviceId:'',queueId:'Q-INFRA',priority:'Vysoká',sortOrder:70,isActive:true,fields:[{key:'asset',label:'Server / služba / asset',type:'text',required:true,placeholder:'',helpText:'',options:[]},{key:'environment',label:'Prostredie',type:'select',required:false,placeholder:'',helpText:'',options:['PROD','TEST','DEV','Iné']}]},
+  {id:'CAT-KOMIS-CRZP',name:'CRZP / ANTIPLAG',group:'KOMIS',description:'Incident alebo požiadavka k CRZP a antiplagiátorskému systému.',icon:'services',ticketType:'Incident',category:'KOMIS a centrálne registre',subcategory:'CRZP / ANTIPLAG',serviceId:'',queueId:'Q-KOMIS',priority:'Vysoká',sortOrder:80,isActive:true,fields:[{key:'environment',label:'Prostredie',type:'select',required:true,placeholder:'',helpText:'',options:['Produkcia','Test','Neviem']},{key:'url',label:'URL / obrazovka',type:'text',required:false,placeholder:'',helpText:'',options:[]},{key:'occurredAt',label:'Kedy problém vznikol',type:'text',required:false,placeholder:'napr. dnes 10:30',helpText:'',options:[]}]},
+  {id:'CAT-KOMIS-CREPC',name:'CREPČ',group:'KOMIS',description:'Centrálny register evidencie publikačnej činnosti.',icon:'services',ticketType:'Incident',category:'KOMIS a centrálne registre',subcategory:'CREPČ',serviceId:'',queueId:'Q-KOMIS',priority:'Stredná',sortOrder:90,isActive:true,fields:[]},
+  {id:'CAT-KOMIS-CREUC',name:'CREUČ',group:'KOMIS',description:'Centrálny register evidencie umeleckej činnosti.',icon:'services',ticketType:'Incident',category:'KOMIS a centrálne registre',subcategory:'CREUČ',serviceId:'',queueId:'Q-KOMIS',priority:'Stredná',sortOrder:100,isActive:true,fields:[]},
+  {id:'CAT-KOMIS-SKCRIS',name:'SK CRIS',group:'KOMIS',description:'Požiadavky a incidenty systému SK CRIS.',icon:'services',ticketType:'Incident',category:'KOMIS a centrálne registre',subcategory:'SK CRIS',serviceId:'',queueId:'Q-KOMIS',priority:'Stredná',sortOrder:110,isActive:true,fields:[]},
+  {id:'CAT-KOMIS-SVD',name:'SVD',group:'KOMIS',description:'Požiadavky a incidenty modulu SVD.',icon:'services',ticketType:'Incident',category:'KOMIS a centrálne registre',subcategory:'SVD',serviceId:'',queueId:'Q-KOMIS',priority:'Stredná',sortOrder:120,isActive:true,fields:[]},
+  {id:'CAT-KOMIS-SCIDAP',name:'SCIDAP',group:'KOMIS',description:'Požiadavky a incidenty modulu SCIDAP.',icon:'services',ticketType:'Incident',category:'KOMIS a centrálne registre',subcategory:'SCIDAP',serviceId:'',queueId:'Q-KOMIS',priority:'Stredná',sortOrder:130,isActive:true,fields:[]},
+  {id:'CAT-DEV-CHANGE',name:'Zmenová / rozvojová požiadavka',group:'Rozvoj IS',description:'Nová funkcionalita, zmena alebo integračná požiadavka.',icon:'change',ticketType:'Požiadavka',category:'Rozvoj IS',subcategory:'Zmenová požiadavka',serviceId:'',queueId:'Q-ROZVOJ',priority:'Stredná',sortOrder:140,isActive:true,fields:[{key:'businessNeed',label:'Biznis potreba / cieľ',type:'textarea',required:true,placeholder:'Čo má zmena priniesť?',helpText:'',options:[]},{key:'deadline',label:'Požadovaný termín',type:'date',required:false,placeholder:'',helpText:'',options:[]}]},
+  {id:'CAT-APP-ISSUE',name:'Aplikácia / portál nefunguje',group:'Aplikácie',description:'Chyba alebo nedostupnosť informačného systému.',icon:'warning',ticketType:'Incident',category:'Aplikácie a portály',subcategory:'Chyba funkcie',serviceId:'',queueId:'Q-SD-L1',priority:'Stredná',sortOrder:150,isActive:true,fields:[{key:'system',label:'Systém / aplikácia',type:'text',required:true,placeholder:'',helpText:'',options:[]},{key:'url',label:'URL',type:'text',required:false,placeholder:'',helpText:'',options:[]}]},
+  {id:'CAT-OTHER',name:'Iná IT požiadavka',group:'Ostatné',description:'Ak ste nenašli vhodnú službu, použite všeobecnú požiadavku.',icon:'helpdesk',ticketType:'Požiadavka',category:'Ostatné',subcategory:'Iné',serviceId:'',queueId:'Q-SD-L1',priority:'Stredná',sortOrder:999,isActive:true,fields:[]},
+]
+
+function catalogIcon(value: string): IconName {
+  return catalogIcons.includes(value as IconName) ? value as IconName : 'helpdesk'
+}
+
+type DeskView = 'catalog' | 'queue' | 'mine' | 'sla' | 'config'
 type SlaTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 
 function databaseStateLabel(state: HelpdeskDatabaseState) {
@@ -330,7 +364,7 @@ export default function Helpdesk({
   const canCreate=role!=='viewer'
   const canOperate=isResolver
 
-  const [deskView, setDeskView] = useState<DeskView>(isResolver?'queue':'mine')
+  const [deskView, setDeskView] = useState<DeskView>(isResolver?'queue':'catalog')
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('Všetky')
   const [statusFilter, setStatusFilter] = useState('Otvorené')
@@ -350,6 +384,13 @@ export default function Helpdesk({
   const [emailChannels, setEmailChannels] = useState<ServiceEmailChannel[]>([])
   const [emailChannelsError, setEmailChannelsError] = useState('')
   const [emailChannelsSaving, setEmailChannelsSaving] = useState('')
+  const [catalogItems, setCatalogItems] = useState<ServiceCatalogItem[]>(fallbackCatalog)
+  const [catalogSearch, setCatalogSearch] = useState('')
+  const [catalogError, setCatalogError] = useState('')
+  const [catalogSaving, setCatalogSaving] = useState(false)
+  const [catalogEditorOpen, setCatalogEditorOpen] = useState(false)
+  const [catalogDraft, setCatalogDraft] = useState<ServiceCatalogItem | null>(null)
+  const [ticketFormError, setTicketFormError] = useState('')
   const [commentText, setCommentText] = useState('')
   const [commentInternal, setCommentInternal] = useState(false)
 
@@ -384,9 +425,21 @@ export default function Helpdesk({
     }
   }
 
+  async function refreshCatalog() {
+    if (databaseMode !== 'cloud') { setCatalogItems(fallbackCatalog); return }
+    try {
+      const items = await loadServiceCatalogItems(canConfigure)
+      setCatalogItems(items.length ? items : fallbackCatalog)
+      setCatalogError('')
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : 'Katalóg služieb sa nepodarilo načítať.')
+    }
+  }
+
   useEffect(() => {
     if (databaseMode !== 'cloud' || databaseState === 'loading') return
     void refreshNotifications(true)
+    void refreshCatalog()
     if (canConfigure) { void refreshCalendarExceptions(); void refreshEmailChannels() }
     const timer = window.setInterval(() => void refreshNotifications(true), 60_000)
     return () => window.clearInterval(timer)
@@ -477,6 +530,92 @@ export default function Helpdesk({
     }
   }
 
+  const activeCatalogItems = useMemo(() => catalogItems
+    .filter((item) => item.isActive)
+    .filter((item) => {
+      const query = catalogSearch.trim().toLowerCase()
+      return !query || `${item.name} ${item.group} ${item.description} ${item.category} ${item.subcategory}`.toLowerCase().includes(query)
+    })
+    .sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name)), [catalogItems, catalogSearch])
+
+  const catalogGroups = useMemo(() => Array.from(new Set(activeCatalogItems.map((item)=>item.group))), [activeCatalogItems])
+  const selectedCatalogItem = draft.catalogItemId ? catalogItems.find((item)=>item.id===draft.catalogItemId) : undefined
+
+  function blankCatalogItem(): ServiceCatalogItem {
+    return {id:`CAT-${Date.now()}`,name:'Nová služba',group:'Ostatné',description:'',icon:'helpdesk',ticketType:'Požiadavka',category:'Ostatné',subcategory:'Iné',serviceId:'',queueId:'Q-SD-L1',priority:'Stredná',sortOrder:catalogItems.length?Math.max(...catalogItems.map((item)=>item.sortOrder))+10:10,fields:[],isActive:true}
+  }
+
+  function editCatalogItem(item?: ServiceCatalogItem) {
+    if (!canConfigure) return
+    setCatalogDraft(structuredClone(item || blankCatalogItem()))
+    setCatalogEditorOpen(true)
+    setCatalogError('')
+  }
+
+  function patchCatalogField(index: number, patch: Partial<ServiceCatalogField>) {
+    setCatalogDraft((current)=>current ? {...current,fields:current.fields.map((field,fieldIndex)=>fieldIndex===index?{...field,...patch}:field)} : current)
+  }
+
+  function addCatalogField() {
+    setCatalogDraft((current)=>current ? {...current,fields:[...current.fields,{key:`field_${current.fields.length+1}`,label:'Nové pole',type:'text',required:false,placeholder:'',helpText:'',options:[]}]} : current)
+  }
+
+  function removeCatalogField(index: number) {
+    setCatalogDraft((current)=>current ? {...current,fields:current.fields.filter((_,fieldIndex)=>fieldIndex!==index)} : current)
+  }
+
+  async function saveCatalogItem() {
+    if (!canConfigure || !catalogDraft || !catalogDraft.id.trim() || !catalogDraft.name.trim()) return
+    setCatalogSaving(true); setCatalogError('')
+    try {
+      if (databaseMode==='cloud') await upsertServiceCatalogItem(catalogDraft)
+      else setCatalogItems((current)=>[...current.filter((item)=>item.id!==catalogDraft.id),catalogDraft])
+      if (databaseMode==='cloud') await refreshCatalog()
+      setCatalogEditorOpen(false)
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : 'Položku katalógu sa nepodarilo uložiť.')
+    } finally { setCatalogSaving(false) }
+  }
+
+  async function removeCatalogItem(item: ServiceCatalogItem) {
+    if (!canConfigure || !confirm(`Odstrániť položku ${item.name}?`)) return
+    try {
+      if (databaseMode==='cloud') await deleteServiceCatalogItem(item.id)
+      else setCatalogItems((current)=>current.filter((candidate)=>candidate.id!==item.id))
+      if (databaseMode==='cloud') await refreshCatalog()
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : 'Položku katalógu sa nepodarilo odstrániť.')
+    }
+  }
+
+  function openCatalogItem(item: ServiceCatalogItem) {
+    const requestData: Record<string,string|number|boolean> = {}
+    item.fields.forEach((field)=>{requestData[field.key]=field.type==='checkbox'?false:''})
+    const base = blankTicket(slaPolicies,supportQueues)
+    setDraft({
+      ...base,
+      type:item.ticketType,
+      title:item.name,
+      requester:currentUser,
+      requesterEmail:currentUserEmail,
+      serviceId:item.serviceId,
+      category:item.category,
+      subcategory:item.subcategory,
+      queueId:item.queueId,
+      priority:item.priority,
+      catalogItemId:item.id,
+      requestData,
+    })
+    setTicketFormError('')
+    setCommentText('')
+    setCommentInternal(false)
+    setModalOpen(true)
+  }
+
+  function setRequestValue(key: string, value: string | number | boolean) {
+    setDraft((current)=>({...current,requestData:{...(current.requestData||{}),[key]:value}}))
+  }
+
   const alertItems = useMemo(() => openTickets
     .map((ticket) => ({ ticket, sla: slaState(ticket) }))
     .filter(({ ticket, sla }) => sla.tone === 'danger' || sla.tone === 'warning' || (ticket.priority === 'Kritická' && !ticket.assignee))
@@ -534,7 +673,8 @@ export default function Helpdesk({
   }
 
   function openNewTicket(type = 'Požiadavka') {
-    setDraft({ ...blankTicket(slaPolicies, supportQueues), type, requester:currentUser, requesterEmail:currentUserEmail })
+    setDraft({ ...blankTicket(slaPolicies, supportQueues), type, requester:currentUser, requesterEmail:currentUserEmail, catalogItemId:'', requestData:{} })
+    setTicketFormError('')
     setCommentText('')
     setCommentInternal(false)
     setModalOpen(true)
@@ -544,6 +684,7 @@ export default function Helpdesk({
     if(!visibleTickets.some((item)=>item.id===ticket.id))return
     const prepared=applySla(ticket,slaPolicies,false,supportQueues)
     setDraft(structuredClone(canOperate?prepared:{...prepared,internalNote:'',comments:prepared.comments.filter((comment)=>!comment.internal)}))
+    setTicketFormError('')
     setCommentText('')
     setCommentInternal(false)
     setModalOpen(true)
@@ -551,6 +692,17 @@ export default function Helpdesk({
 
   function saveTicket() {
     if (!draft.title.trim()) return
+    if (!draft.id && selectedCatalogItem) {
+      const missing = selectedCatalogItem.fields.filter((field)=>field.required).filter((field)=>{
+        const value=draft.requestData?.[field.key]
+        return field.type==='checkbox' ? value!==true : String(value ?? '').trim()===''
+      })
+      if (missing.length) {
+        setTicketFormError(`Doplňte povinné údaje: ${missing.map((field)=>field.label).join(', ')}.`)
+        return
+      }
+    }
+    setTicketFormError('')
     const now = new Date().toISOString()
     if (draft.id) {
       const original = tickets.find((ticket) => ticket.id === draft.id)
@@ -753,13 +905,24 @@ export default function Helpdesk({
     </section>
 
     <div className="helpdesk-view-tabs" role="tablist">
+      <button className={deskView === 'catalog' ? 'active' : ''} onClick={() => setDeskView('catalog')}><Icon name="services" size={18} /> Katalóg služieb <span>{activeCatalogItems.length}</span></button>
       {isResolver&&<button className={deskView === 'queue' ? 'active' : ''} onClick={() => setDeskView('queue')}><Icon name="helpdesk" size={18} /> Moja fronta <span>{openTickets.length}</span></button>}
       <button className={deskView === 'mine' ? 'active' : ''} onClick={() => setDeskView('mine')}><Icon name="user" size={18} /> {isEmployee?'Moje požiadavky':'Moje tickety'} <span>{visibleTickets.filter((ticket) => ticket.requester === currentUser || ticket.assignee === currentUser || (currentUserEmail&&ticket.requesterEmail===currentUserEmail)).length}</span></button>
       {isResolver&&<button className={deskView === 'sla' ? 'active' : ''} onClick={() => setDeskView('sla')}><Icon name="capacity" size={18} /> SLA a reporty <span>{breachedCount}</span></button>}
       {canConfigure&&<button className={deskView === 'config' ? 'active' : ''} onClick={() => setDeskView('config')}><Icon name="matrix" size={18} /> Skupiny a routing <span>{supportQueues.filter((queue)=>queue.isActive).length}</span></button>}
     </div>
 
-    {deskView !== 'sla' && deskView !== 'config' && <>
+    {deskView === 'catalog' && <div className="sd-catalog-workspace">
+      <section className="panel sd-catalog-hero">
+        <div><span className="eyebrow">Self-service katalóg</span><h2>Čo potrebujete vybaviť?</h2><p>Vyberte službu alebo problém. ServiceDesk automaticky nastaví kategóriu, routing, prioritu a SLA; vy doplníte iba údaje potrebné na vyriešenie.</p></div>
+        <div className="search-box sd-catalog-search"><Icon name="search" size={18}/><input value={catalogSearch} onChange={(event)=>setCatalogSearch(event.target.value)} placeholder="Hľadať prístup, notebook, CRZP, tlač, VPN…"/></div>
+      </section>
+      {catalogError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{catalogError}</span></div>}
+      {catalogGroups.map((group)=><section key={group} className="sd-catalog-group"><header><div><span className="eyebrow">{group}</span><h3>{group}</h3></div><Badge tone="neutral">{activeCatalogItems.filter((item)=>item.group===group).length}</Badge></header><div className="sd-catalog-grid">{activeCatalogItems.filter((item)=>item.group===group).map((item)=><button key={item.id} className="sd-catalog-card" onClick={()=>openCatalogItem(item)}><span className="sd-catalog-card-icon"><Icon name={catalogIcon(item.icon)} size={24}/></span><div><strong>{item.name}</strong><p>{item.description}</p><footer><span>{item.ticketType}</span><span>{item.priority}</span>{item.fields.length>0&&<span>{item.fields.length} doplňujúcich údajov</span>}</footer></div><Icon name="chevron" size={20}/></button>)}</div></section>)}
+      {!activeCatalogItems.length&&<Empty title="Nenašla sa služba" text="Skúste iný výraz alebo použite všeobecnú požiadavku."/>}
+    </div>}
+
+    {deskView !== 'sla' && deskView !== 'config' && deskView !== 'catalog' && <>
       <div className="helpdesk-kpis">
         <button className="helpdesk-kpi is-open" onClick={() => { setStatusFilter('Otvorené'); setTypeFilter('Všetky') }}><span className="helpdesk-kpi-icon"><Icon name="helpdesk" /></span><span><small>Otvorené tickety</small><strong>{openTickets.length}</strong><em>spolu vo fronte</em></span></button>
         <button className="helpdesk-kpi" onClick={() => setTypeFilter('Incident')}><span className="helpdesk-kpi-icon"><Icon name="warning" /></span><span><small>Incidenty</small><strong>{incidentCount}</strong><em>otvorených incidentov</em></span></button>
@@ -809,11 +972,17 @@ export default function Helpdesk({
 
       <section className="panel sd-lead-panel"><div className="panel-heading"><div><span className="eyebrow">Vedúci skupín</span><h3>Operatívny health front</h3><p>Otvorené, nepridelené a SLA riziká podľa riešiteľskej skupiny.</p></div><Badge tone={breachedCount?'warning':'success'}>{breachedCount?'Vyžaduje pozornosť':'Stabilné'}</Badge></div><div className="sd-lead-grid">{supportQueues.filter((queue)=>queue.isActive).map((queue)=>{const queueTickets=openTickets.filter((ticket)=>ticket.queueId===queue.id);const breached=queueTickets.filter((ticket)=>slaState(ticket).tone==='danger').length;const warning=queueTickets.filter((ticket)=>slaState(ticket).tone==='warning').length;const unassigned=queueTickets.filter((ticket)=>!ticket.assignee).length;return <article key={queue.id}><header><div><strong>{queue.name}</strong><small>{queue.lead||'Vedúci neurčený'}{queue.deputy?` · zástupca ${queue.deputy}`:''}</small></div><Badge tone={breached?'danger':warning?'warning':'success'}>{breached?`${breached} po SLA`:warning?`${warning} v riziku`:'OK'}</Badge></header><div className="sd-lead-metrics"><span><small>Otvorené</small><b>{queueTickets.length}</b></span><span><small>Bez riešiteľa</small><b>{unassigned}</b></span><span><small>SLA riziko</small><b>{warning}</b></span><span><small>Po SLA</small><b>{breached}</b></span></div><footer><span>{queue.businessCalendarEnabled?`${queue.workdayStart}-${queue.workdayEnd} · pracovné dni`:'Kalendárne hodiny'}</span><span>varovanie {Math.round(queue.slaWarningMinutes/60*10)/10} h vopred</span></footer></article>})}</div></section>
 
-      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div><div><Icon name="mail" /><span><strong>Inbound e-mail → Ticket</strong><small>v0.46: nové správy vytvoria ticket, odpovede sa threadujú podľa čísla ticketu v predmete</small></span><Badge tone="info">Webhook</Badge></div></div></section>
+      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div><div><Icon name="mail" /><span><strong>Inbound e-mail → Ticket</strong><small>v0.46: nové správy vytvoria ticket, odpovede sa threadujú podľa čísla ticketu v predmete</small></span><Badge tone="info">Webhook</Badge></div><div><Icon name="services" /><span><strong>Katalóg služieb</strong><small>v0.47: smart formuláre, serverová validácia a automatický routing</small></span><Badge tone="success">Aktívne</Badge></div></div></section>
     </div>}
 
 
     {deskView==='config'&&canConfigure&&<div className="servicedesk-config-stack">
+      <section className="panel sd-config-panel sd-catalog-admin-panel">
+        <div className="panel-heading"><div><span className="eyebrow">Katalóg služieb</span><h3>Dlaždice a inteligentné formuláre</h3><p>Spravujte služby, ktoré zamestnanec vidí v self-service. Katalóg určuje predvolené údaje, serverový routing však zostáva autoritatívny.</p></div><div className="sd-config-actions"><Badge tone={catalogError?'danger':'success'}>{catalogItems.filter((item)=>item.isActive).length} aktívnych</Badge><button className="button button-primary button-small" onClick={()=>editCatalogItem()}><Icon name="plus" size={15}/> Pridať službu</button></div></div>
+        {catalogError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{catalogError}</span></div>}
+        <div className="sd-catalog-admin-grid">{[...catalogItems].sort((a,b)=>a.sortOrder-b.sortOrder).map((item)=><article key={item.id} className={!item.isActive?'is-disabled':''}><header><span className="sd-catalog-card-icon"><Icon name={catalogIcon(item.icon)} size={20}/></span><div><strong>{item.name}</strong><small>{item.id} · {item.group}</small></div><Badge tone={item.isActive?'success':'neutral'}>{item.isActive?'Aktívna':'Skrytá'}</Badge></header><p>{item.description||'Bez popisu.'}</p><div className="sd-catalog-admin-meta"><span>{item.ticketType}</span><span>{item.category} / {item.subcategory}</span><span>{supportQueues.find((queue)=>queue.id===item.queueId)?.name||item.queueId||'routing'}</span><span>{item.fields.length} polí</span></div><footer><button className="button button-secondary button-small" onClick={()=>editCatalogItem(item)}><Icon name="edit" size={14}/> Upraviť</button><button className="icon-button" onClick={()=>void removeCatalogItem(item)} title="Odstrániť"><Icon name="trash" size={15}/></button></footer></article>)}</div>
+      </section>
+
       <section className="panel sd-config-panel">
         <div className="panel-heading"><div><span className="eyebrow">Riešiteľské skupiny</span><h3>Skupiny, vedúci a prevádzkový režim</h3><p>Nastavte fronty, ktoré budú prijímať požiadavky z routing matice.</p></div><Badge tone="info">{supportQueues.filter((queue)=>queue.isActive).length} aktívnych</Badge></div>
         <div className="sd-queue-config-grid">{supportQueues.map((queue)=><article key={queue.id} className={!queue.isActive?'is-disabled':''}>
@@ -854,6 +1023,8 @@ export default function Helpdesk({
       <section className="panel sla-policy-panel"><div className="panel-heading"><div><span className="eyebrow">SLA konfigurácia</span><h3>Časové ciele podľa priority</h3></div><Badge tone="success">pracovný kalendár</Badge></div><div className="sla-policy-grid">{slaPolicies.map((policy)=><article key={policy.id}><header><Badge tone={priorityTone(policy.priority)}>{policy.priority}</Badge><strong>{policy.name}</strong></header><div><label>Prvá reakcia<input type="number" min="1" value={policy.firstResponseHours} onChange={(event)=>updatePolicy(policy.id,'firstResponseHours',Number(event.target.value))}/><span>h</span></label><label>Vyriešenie<input type="number" min="1" value={policy.resolutionHours} onChange={(event)=>updatePolicy(policy.id,'resolutionHours',Number(event.target.value))}/><span>h</span></label></div></article>)}</div></section>
     </div>}
 
+    {catalogEditorOpen&&catalogDraft&&<Modal title={`Katalóg služieb · ${catalogDraft.name}`} onClose={()=>setCatalogEditorOpen(false)} wide><div className="sd-catalog-editor"><div className="form-grid sd-catalog-editor-main"><Field label="Kód"><input value={catalogDraft.id} disabled={!catalogDraft.id.startsWith('CAT-')||catalogItems.some((item)=>item.id===catalogDraft.id)} onChange={(event)=>setCatalogDraft({...catalogDraft,id:event.target.value.toUpperCase().replace(/[^A-Z0-9-_]/g,'')})}/></Field><Field label="Názov"><input value={catalogDraft.name} onChange={(event)=>setCatalogDraft({...catalogDraft,name:event.target.value})}/></Field><Field label="Skupina"><input value={catalogDraft.group} onChange={(event)=>setCatalogDraft({...catalogDraft,group:event.target.value})}/></Field><Field label="Ikona"><select value={catalogDraft.icon} onChange={(event)=>setCatalogDraft({...catalogDraft,icon:event.target.value})}>{catalogIcons.map((icon)=><option key={icon} value={icon}>{icon}</option>)}</select></Field><Field label="Popis"><textarea value={catalogDraft.description} onChange={(event)=>setCatalogDraft({...catalogDraft,description:event.target.value})}/></Field><Field label="Typ"><select value={catalogDraft.ticketType} onChange={(event)=>setCatalogDraft({...catalogDraft,ticketType:event.target.value})}>{ticketTypes.map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Kategória"><select value={catalogDraft.category} onChange={(event)=>setCatalogDraft({...catalogDraft,category:event.target.value,subcategory:categories[event.target.value]?.[0]||'Iné'})}>{Object.keys(categories).map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Podkategória"><select value={catalogDraft.subcategory} onChange={(event)=>setCatalogDraft({...catalogDraft,subcategory:event.target.value})}>{(categories[catalogDraft.category]||['Iné']).map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Predvolená fronta"><select value={catalogDraft.queueId} onChange={(event)=>setCatalogDraft({...catalogDraft,queueId:event.target.value})}><option value="">Iba routing matica</option>{supportQueues.map((queue)=><option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></Field><Field label="Priorita"><select value={catalogDraft.priority} onChange={(event)=>setCatalogDraft({...catalogDraft,priority:event.target.value})}>{priorities.map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Služba / systém"><select value={catalogDraft.serviceId} onChange={(event)=>setCatalogDraft({...catalogDraft,serviceId:event.target.value})}><option value="">Bez priamej väzby</option>{services.map((service)=><option key={service.id} value={service.id}>{service.name}</option>)}</select></Field><Field label="Poradie"><input type="number" value={catalogDraft.sortOrder} onChange={(event)=>setCatalogDraft({...catalogDraft,sortOrder:Number(event.target.value)||0})}/></Field><label className="sd-config-toggle"><input type="checkbox" checked={catalogDraft.isActive} onChange={(event)=>setCatalogDraft({...catalogDraft,isActive:event.target.checked})}/> Položka je aktívna</label></div><section className="sd-catalog-field-editor"><header><div><span className="eyebrow">Smart formulár</span><h3>Doplňujúce polia</h3><p>Polia sa zobrazia zamestnancovi po výbere služby a uložia sa štruktúrovane pri tickete.</p></div><button className="button button-secondary button-small" onClick={addCatalogField}><Icon name="plus" size={14}/> Pridať pole</button></header><div>{catalogDraft.fields.map((field,index)=><article key={`${field.key}-${index}`}><div className="sd-catalog-field-row"><label>Kľúč<input value={field.key} onChange={(event)=>patchCatalogField(index,{key:event.target.value.replace(/[^A-Za-z0-9_]/g,'')})}/></label><label>Názov<input value={field.label} onChange={(event)=>patchCatalogField(index,{label:event.target.value})}/></label><label>Typ<select value={field.type} onChange={(event)=>patchCatalogField(index,{type:event.target.value as ServiceCatalogField['type']})}><option value="text">Text</option><option value="textarea">Dlhý text</option><option value="select">Výber</option><option value="date">Dátum</option><option value="number">Číslo</option><option value="checkbox">Potvrdenie</option></select></label><label className="sd-config-toggle"><input type="checkbox" checked={field.required} onChange={(event)=>patchCatalogField(index,{required:event.target.checked})}/> Povinné</label><button className="icon-button" onClick={()=>removeCatalogField(index)}><Icon name="trash" size={14}/></button></div><div className="sd-catalog-field-row secondary"><label>Placeholder<input value={field.placeholder} onChange={(event)=>patchCatalogField(index,{placeholder:event.target.value})}/></label><label>Pomocný text<input value={field.helpText} onChange={(event)=>patchCatalogField(index,{helpText:event.target.value})}/></label>{field.type==='select'&&<label>Možnosti (oddelené čiarkou)<input value={field.options.join(', ')} onChange={(event)=>patchCatalogField(index,{options:event.target.value.split(',').map((value)=>value.trim()).filter(Boolean)})}/></label>}</div></article>)}</div>{!catalogDraft.fields.length&&<p className="panel-note">Bez doplňujúcich polí — používateľ vyplní iba názov a popis.</p>}</section>{catalogError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{catalogError}</span></div>}<div className="modal-actions"><button className="button button-ghost" onClick={()=>setCatalogEditorOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={catalogSaving||!catalogDraft.name.trim()||!catalogDraft.id.trim()} onClick={()=>void saveCatalogItem()}><Icon name="check" size={15}/>{catalogSaving?'Ukladám…':'Uložiť službu'}</button></div></div></Modal>}
+
     {notificationsOpen && <Modal title={`Notifikácie ServiceDesku (${unreadNotificationCount} nových)`} onClose={() => setNotificationsOpen(false)}><div className="sd-notification-toolbar"><span>{notificationsError || 'Serverové udalosti, SLA upozornenia a zmeny ticketov.'}</span>{unreadNotificationCount>0&&<button className="button button-secondary button-small" onClick={()=>void markAllNotificationsRead()}><Icon name="check" size={15}/> Označiť všetko ako prečítané</button>}</div><div className="sd-notification-list">{notifications.length ? notifications.map((item) => {const ticket=visibleTickets.find((candidate)=>candidate.id===item.ticketId);return <button key={item.id} className={item.isRead?'is-read':'is-unread'} onClick={()=>{void setNotificationRead(item,true);if(ticket){setNotificationsOpen(false);openTicket(ticket)}}}><span className={`sd-notification-dot sd-notification-${item.severity}`}/><div><header><strong>{item.title}</strong><Badge tone={notificationTone(item.severity)}>{item.kind}</Badge></header><p>{item.message}</p><small>{item.ticketId?`${item.ticketId} · `:''}{formatDate(item.createdAt,true)}{item.emailStatus==='sent'?' · e-mail odoslaný':item.emailStatus==='pending'?' · e-mail čaká na odoslanie':''}</small></div>{ticket&&<Icon name="chevron" size={17}/>}</button>}) : <Empty title="Bez notifikácií" text="ServiceDesk zatiaľ nevytvoril žiadnu notifikáciu pre váš účet." />}</div></Modal>}
 
     {alertsOpen && <Modal title={`Upozornenia ServiceDesku (${alertItems.length})`} onClose={() => setAlertsOpen(false)}><div className="servicedesk-alert-list">{alertItems.length ? alertItems.map(({ ticket, sla }) => <button key={ticket.id} onClick={() => { setAlertsOpen(false); openTicket(ticket) }}><span className={`alert-dot alert-${sla.tone}`} /><div><strong>{ticket.id} · {ticket.title}</strong><small>{sla.label} · {sla.detail}{!ticket.assignee ? ' · bez riešiteľa' : ''}</small></div><Icon name="chevron" size={17} /></button>) : <Empty title="Bez upozornení" text="Žiadny otvorený ticket momentálne nevyžaduje zásah." />}</div></Modal>}
@@ -861,16 +1032,18 @@ export default function Helpdesk({
     {modalOpen && <Modal title={draft.id ? `${draft.id} · ${draft.title}` : 'Nový ticket'} onClose={() => setModalOpen(false)} wide><div className="helpdesk-modal-layout"><div className="helpdesk-form-column">
       <div className="helpdesk-modal-banner"><span className={`ticket-type ticket-type-${draft.type === 'Incident' ? 'incident' : 'request'}`}>{draft.type}</span>{draft.id && <strong>{draft.id}</strong>}<Badge tone={statusTone(draft.status)}>{draft.status}</Badge><Badge tone={slaState(draft).tone}>{slaState(draft).label}</Badge>{draft.linkedTaskId && <Badge tone="purple">Úloha {draft.linkedTaskId}</Badge>}</div>
       {!canOperate&&<div className="helpdesk-selfservice-hint"><Icon name="shield" size={17}/><span><strong>Stačí popísať, čo potrebujete.</strong> Riešiteľskú skupinu, prioritu a SLA priradí ServiceDesk automaticky podľa routing pravidiel.</span></div>}
+      {ticketFormError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{ticketFormError}</span></div>}
+      {selectedCatalogItem&&<div className="sd-selected-catalog"><span className="sd-catalog-card-icon"><Icon name={catalogIcon(selectedCatalogItem.icon)} size={20}/></span><div><strong>{selectedCatalogItem.name}</strong><small>{selectedCatalogItem.group} · {selectedCatalogItem.ticketType} · {selectedCatalogItem.category} / {selectedCatalogItem.subcategory}</small></div><Badge tone="info">katalóg</Badge></div>}
       <div className="form-grid helpdesk-form-grid">
-        <Field label="Typ"><select value={draft.type} disabled={!canCreate || Boolean(draft.id)} onChange={(event) => setDraft({ ...draft, type: event.target.value })}>{ticketTypes.map((value) => <option key={value}>{value}</option>)}</select></Field>
+        {(!selectedCatalogItem||canOperate)&&<Field label="Typ"><select value={draft.type} disabled={!canCreate || Boolean(draft.id)} onChange={(event) => setDraft({ ...draft, type: event.target.value })}>{ticketTypes.map((value) => <option key={value}>{value}</option>)}</select></Field>}
         {canOperate&&<Field label="Stav"><select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>{ticketStatuses.map((value) => <option key={value}>{value}</option>)}</select></Field>}
         {canOperate&&<Field label="Priorita"><select value={draft.priority} onChange={(event) => setDraft(applySla({ ...draft, priority: event.target.value }, slaPolicies, true, supportQueues))}>{priorities.map((value) => <option key={value}>{value}</option>)}</select></Field>}
         <Field label="Názov"><input value={draft.title} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Stručný názov požiadavky alebo incidentu" /></Field>
         <Field label="Popis"><textarea value={draft.description} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Čo sa stalo alebo čo používateľ potrebuje?" /></Field>
         {canOperate&&<Field label="Riešiteľská skupina"><select value={draft.queueId} onChange={(event) => setDraft(applySla({ ...draft, queueId: event.target.value },slaPolicies,true,supportQueues))}><option value="">Bez skupiny</option>{supportQueues.filter((queue) => queue.isActive || queue.id === draft.queueId).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></Field>}
-        <Field label="Služba / systém"><select value={draft.serviceId} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, serviceId: event.target.value })}><option value="">Bez väzby na službu</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></Field>
-        <Field label="Kategória"><select value={draft.category} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, category: event.target.value, subcategory: categories[event.target.value]?.[0] || 'Iné' })}>{Object.keys(categories).map((value) => <option key={value}>{value}</option>)}</select></Field>
-        <Field label="Podkategória"><select value={draft.subcategory} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, subcategory: event.target.value })}>{(categories[draft.category] || ['Iné']).map((value) => <option key={value}>{value}</option>)}</select></Field>
+        {(!selectedCatalogItem||canOperate)&&<Field label="Služba / systém"><select value={draft.serviceId} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, serviceId: event.target.value })}><option value="">Bez väzby na službu</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></Field>}
+        {(!selectedCatalogItem||canOperate)&&<Field label="Kategória"><select value={draft.category} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, category: event.target.value, subcategory: categories[event.target.value]?.[0] || 'Iné' })}>{Object.keys(categories).map((value) => <option key={value}>{value}</option>)}</select></Field>}
+        {(!selectedCatalogItem||canOperate)&&<Field label="Podkategória"><select value={draft.subcategory} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, subcategory: event.target.value })}>{(categories[draft.category] || ['Iné']).map((value) => <option key={value}>{value}</option>)}</select></Field>}
         {canOperate&&<Field label="Riešiteľ"><select value={draft.assignee} onChange={(event) => setDraft({ ...draft, assignee: event.target.value, status: draft.status === 'Nová' && event.target.value ? 'Pridelená' : draft.status })}><option value="">Bez riešiteľa</option>{employees.map((employee) => <option key={employee.id}>{employee.name}</option>)}</select></Field>}
         {canOperate&&<Field label="Dopad"><select value={draft.impact} onChange={(event) => setDraft({ ...draft, impact: event.target.value })}>{impacts.map((value) => <option key={value}>{value}</option>)}</select></Field>}
         <Field label="Naliehavosť"><select value={draft.urgency} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, urgency: event.target.value })}>{urgencies.map((value) => <option key={value}>{value}</option>)}</select></Field>
@@ -880,6 +1053,14 @@ export default function Helpdesk({
         {canOperate&&<Field label="Interná poznámka"><textarea value={draft.internalNote || ''} onChange={(event) => setDraft({ ...draft, internalNote: event.target.value })} /></Field>}
         <Field label="Riešenie / výsledok"><textarea value={draft.resolution || ''} disabled={!canOperate} onChange={(event) => setDraft({ ...draft, resolution: event.target.value })} placeholder={canOperate?'Popis vykonaného riešenia':'Riešenie doplní ServiceDesk'} /></Field>
       </div>
+      {selectedCatalogItem&&selectedCatalogItem.fields.length>0&&<section className="sd-request-data-panel"><div className="helpdesk-activity-heading"><div><span className="eyebrow">Údaje služby</span><h3>{draft.id?'Údaje z formulára':'Doplňujúce údaje'}</h3></div><Badge tone="neutral">{selectedCatalogItem.fields.length} polí</Badge></div><div className="form-grid sd-smart-form-grid">{selectedCatalogItem.fields.map((field)=>{
+        const value=draft.requestData?.[field.key]
+        const disabled=Boolean(draft.id)
+        if(field.type==='textarea')return <Field key={field.key} label={`${field.label}${field.required?' *':''}`} hint={field.helpText}><textarea value={String(value??'')} disabled={disabled} placeholder={field.placeholder} onChange={(event)=>setRequestValue(field.key,event.target.value)}/></Field>
+        if(field.type==='select')return <Field key={field.key} label={`${field.label}${field.required?' *':''}`} hint={field.helpText}><select value={String(value??'')} disabled={disabled} onChange={(event)=>setRequestValue(field.key,event.target.value)}><option value="">Vyberte…</option>{field.options.map((option)=><option key={option}>{option}</option>)}</select></Field>
+        if(field.type==='checkbox')return <label key={field.key} className="sd-smart-checkbox"><input type="checkbox" checked={Boolean(value)} disabled={disabled} onChange={(event)=>setRequestValue(field.key,event.target.checked)}/><span><strong>{field.label}{field.required?' *':''}</strong>{field.helpText&&<small>{field.helpText}</small>}</span></label>
+        return <Field key={field.key} label={`${field.label}${field.required?' *':''}`} hint={field.helpText}><input type={field.type==='number'?'number':field.type==='date'?'date':'text'} value={typeof value==='boolean'?'':String(value??'')} disabled={disabled} placeholder={field.placeholder} onChange={(event)=>setRequestValue(field.key,field.type==='number'?(event.target.value===''?'':Number(event.target.value)):event.target.value)}/></Field>
+      })}</div></section>}
     </div><aside className="helpdesk-activity-column">
       <section className="helpdesk-activity-card sla-detail-card"><div className="helpdesk-activity-heading"><div><span className="eyebrow">SLA</span><h3>Časové ciele</h3></div><Badge tone={slaState(draft).tone}>{slaState(draft).label}</Badge></div><div className="sla-detail-list"><div><span>Prvá reakcia</span><strong>{formatDate(draft.firstResponseDueAt, true)}</strong><small>{draft.firstRespondedAt ? `Reakcia: ${formatDate(draft.firstRespondedAt, true)}` : 'Čaká na prvú reakciu'}</small></div><div><span>Vyriešenie</span><strong>{formatDate(draft.resolutionDueAt, true)}</strong><small>{slaState(draft).detail}</small></div></div></section>
       <section className="helpdesk-activity-card"><div className="helpdesk-activity-heading"><div><span className="eyebrow">Prílohy</span><h3>Súbory</h3></div><Badge tone="neutral">{draft.attachments.length}/5</Badge></div><div className="ticket-attachments">{draft.attachments.map((attachment) => <div key={attachment.id}><button className="attachment-main" onClick={() => downloadAttachment(attachment)} disabled={!attachment.dataUrl}><Icon name="download" size={15} /><span><strong>{attachment.name}</strong><small>{fileSize(attachment.size)} · {attachment.uploadedBy}</small></span></button>{(canOperate||!draft.id) && <button className="attachment-remove" onClick={() => removeAttachment(attachment.id)} aria-label="Odstrániť prílohu"><Icon name="trash" size={14} /></button>}</div>)}{!draft.attachments.length && <p className="helpdesk-empty-copy">Bez príloh.</p>}</div>{canEdit && draft.attachments.length < 5 && <label className="attachment-upload"><Icon name="upload" size={16} /> Pridať prílohy<input type="file" multiple onChange={(event) => void addAttachments(event.target.files)} /></label>}</section>
