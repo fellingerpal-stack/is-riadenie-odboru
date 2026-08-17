@@ -1,0 +1,57 @@
+IS Riadenie odboru v0.47.0 - QA
+Date: 2026-08-16
+
+VERSION / PACKAGE
+[PASS] package.json = 0.47.0
+[PASS] storage CURRENT_VERSION = 0.47.0
+[PASS] seed meta version = 0.47.0
+[PASS] package.json JSON valid
+[PASS] seed.json JSON valid
+
+TYPESCRIPT / SOURCE STRUCTURE
+[PASS] TypeScript transpile syntax: Helpdesk.tsx
+[PASS] TypeScript transpile syntax: helpdeskCloud.ts
+[PASS] TypeScript transpile syntax: types.ts
+[PASS] TypeScript transpile syntax: storage.ts
+[PASS] ServiceCatalogItem / ServiceCatalogField types present
+[PASS] Ticket catalogItemId + requestData fields present
+[PASS] catalog cloud reader/writer/delete functions present
+[PASS] ServiceDesk employee default view = catalog
+[PASS] catalog search + grouped tile UI present
+[PASS] smart request form rendering present
+[PASS] catalog admin editor + field editor present
+[PASS] responsive catalog CSS present and brace-balanced
+
+DATABASE / SECURITY STATIC CHECKS
+[PASS] service_catalog_items table present
+[PASS] service_tickets.catalog_item_code column present
+[PASS] service_tickets.request_data column present
+[PASS] catalog read RPC present
+[PASS] admin/manager catalog upsert/delete RPC present
+[PASS] direct authenticated catalog mutations revoked
+[PASS] employee catalog item existence/active validation present
+[PASS] required smart-field server validation present
+[PASS] employee technical type/category/subcategory/service/priority derived server-side from catalog
+[PASS] routing matrix remains authoritative after catalog mapping
+[PASS] fallback catalog queue and Q-SD-L1 fallback present
+[PASS] existing employee ticket edits remain limited to public comments/attachments
+[PASS] secure ticket reader extended with catalog fields
+[PASS] final SQL readiness SELECT present
+[PASS] 16 initial catalog entries seeded per organization with ServiceDesk queues
+
+REGRESSION STRUCTURE
+[PASS] existing queue/mine/SLA/config views retained
+[PASS] existing support queue/routing/SLA configuration retained
+[PASS] notification center retained
+[PASS] calendar exception configuration retained
+[PASS] inbound e-mail channel configuration retained
+[PASS] v0.46 inbound Edge Function unchanged
+
+BUILD LIMITATION
+[INFO] npm install --no-audit --no-fund --ignore-scripts was attempted once and timed out after 60 seconds.
+[INFO] Full Vite production build therefore could not be completed locally because dependencies are unavailable.
+[INFO] Targeted TypeScript transpile/syntax checks passed and release adds no new npm dependency.
+[REQUIRED] Vercel/CI must successfully run the normal TypeScript + Vite build before production publication.
+[REQUIRED] Run migration_servicedesk_v047.sql before deploying the v0.47 frontend.
+[REQUIRED] Execute employee/admin smoke tests from README_NASADENIE_0.47.txt after deployment.
+[INFO] SQL was statically checked in this environment; it was not executed against the live production Postgres database.

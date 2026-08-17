@@ -1,0 +1,13 @@
+package.json
+src/data/seed.json
+src/types.ts
+src/lib/storage.ts
+src/lib/helpdeskCloud.ts
+src/views/Helpdesk.tsx
+src/views/Helpdesk.css
+supabase/migration_servicedesk_v047.sql
+RELEASE_NOTES_0.47.md
+SERVICE_CATALOG_0.47.md
+README_NASADENIE_0.47.txt
+QA_RESULTS_0.47.txt
+CHANGED_FILES_0.47.txt
