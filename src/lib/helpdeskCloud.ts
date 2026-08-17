@@ -1,4 +1,4 @@
-import type { ServiceCalendarException, ServiceCatalogField, ServiceCatalogItem, ServiceEmailChannel, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
+import type { AppRole, ServiceCalendarException, ServiceCatalogField, ServiceCatalogItem, ServiceEmailChannel, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
 import { supabase } from './supabase'
 
 export type HelpdeskDatabaseState = 'local' | 'loading' | 'synced' | 'saving' | 'error'
@@ -21,6 +21,15 @@ interface ServiceQueueRow {
   sla_warning_minutes: number
   email_notifications: boolean
   sla_policy_code: string
+  is_active: boolean
+}
+
+
+interface ServiceEmployeeQueueRow {
+  id: string
+  code: string
+  name: string
+  description: string
   is_active: boolean
 }
 
@@ -333,7 +342,7 @@ function friendlyHelpdeskError(error: unknown): Error {
   return new Error(message || 'Operácia so ServiceDeskom zlyhala. Server neposlal čitateľný detail chyby.')
 }
 
-export async function loadHelpdeskData(): Promise<{
+export async function loadHelpdeskData(role?: AppRole): Promise<{
   tickets: Ticket[]
   supportQueues: SupportQueue[]
   slaPolicies: SlaPolicy[]
@@ -342,6 +351,42 @@ export async function loadHelpdeskData(): Promise<{
   if (!supabase) return { tickets: [], supportQueues: [], slaPolicies: [], serviceRoutingRules: [] }
 
   try {
+    if (role === 'employee') {
+      const rpcQueues = await supabase.rpc('get_service_employee_queues')
+      let queueData: unknown[] = []
+      if (!rpcQueues.error) {
+        queueData = (rpcQueues.data ?? []) as unknown[]
+      } else if (String(rpcQueues.error.code || '').toUpperCase() === 'PGRST202') {
+        const fallbackQueues = await supabase
+          .from('service_queues')
+          .select('id, code, name, description, is_active')
+          .eq('is_active', true)
+          .order('name')
+        if (fallbackQueues.error) throw fallbackQueues.error
+        queueData = (fallbackQueues.data ?? []) as unknown[]
+      } else {
+        throw rpcQueues.error
+      }
+      const ticketsResult = await supabase.rpc('get_service_tickets')
+      if (ticketsResult.error) throw ticketsResult.error
+      const queueRows = queueData as ServiceEmployeeQueueRow[]
+      const queueCodes = new Map(queueRows.map((row) => [row.id, row.code]))
+      const supportQueues: SupportQueue[] = queueRows.map((row) => ({
+        id: row.code,
+        name: row.name,
+        description: row.description || '',
+        members: [], email: '', lead: '', deputy: '', workingHours: '',
+        businessCalendarEnabled: true, workingDays: [1,2,3,4,5], workdayStart: '08:00', workdayEnd: '16:00',
+        timezone: 'Europe/Bratislava', slaWarningMinutes: 240, emailNotifications: false, slaPolicyId: '', isActive: Boolean(row.is_active),
+      }))
+      return {
+        supportQueues,
+        slaPolicies: [],
+        serviceRoutingRules: [],
+        tickets: ((ticketsResult.data ?? []) as ServiceTicketRow[]).map((row) => ticketFromRow(row, queueCodes)),
+      }
+    }
+
     const [queuesResult, policiesResult, routingResult, ticketsResult] = await Promise.all([
       supabase
         .from('service_queues')
