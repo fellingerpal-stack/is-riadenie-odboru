@@ -1,0 +1,14 @@
+package.json
+src/App.tsx
+src/data/seed.json
+src/lib/accessControl.ts
+src/lib/helpdeskCloud.ts
+src/lib/storage.ts
+src/views/Helpdesk.tsx
+src/views/Roadmap.tsx
+src/views/Users.tsx
+supabase/migration_employee_portal_v0472.sql
+RELEASE_NOTES_0.47.2.md
+README_NASADENIE_0.47.2.txt
+QA_RESULTS_0.47.2.txt
+CHANGED_FILES_0.47.2.txt

@@ -1,0 +1,20 @@
+IS Riadenie odboru v0.47.2 – QA
+
+[PASS] package.json = 0.47.2
+[PASS] storage CURRENT_VERSION = 0.47.2
+[PASS] seed meta version = 0.47.2
+[PASS] employee canAccessView povoľuje iba serviceDesk/helpdesk
+[PASS] employee fallback = serviceDesk
+[PASS] employee globálne hľadanie je vypnuté
+[PASS] employee všeobecný snapshot sync UI je skrytý
+[PASS] employee loadCloud vetva nenačítava app_snapshots/work/IAM
+[PASS] defaultAccessScopes(employee) = none/none/none
+[PASS] normalizeAccessScopes(employee) vynucuje none/none/none
+[PASS] rola employee je v administrácii označená ako Používateľ
+[PASS] employee AccessMatrix je zamknutá
+[PASS] get_service_employee_queues() vracia iba minimálne queue polia
+[PASS] DB policy app_snapshots vylučuje employee
+[PASS] DB policies full queue/SLA/routing read vylučujú employee
+[PASS] existujúce get_service_tickets ostáva zdrojom vlastných ticketov
+[INFO] npm run check nie je v tomto prostredí použiteľný bez node_modules; zlyhanie je iba na chýbajúcich React/Vite typoch/dependencies.
+[REQUIRED] Vercel/CI musí úspešne dokončiť štandardný build.
