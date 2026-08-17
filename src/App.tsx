@@ -154,7 +154,7 @@ function roleLabel(role:AppRole){
   if(role==='admin')return 'Administrátor'
   if(role==='manager')return 'Riaditeľ / manažér'
   if(role==='resolver')return 'Riešiteľ'
-  if(role==='employee')return 'Zamestnanec'
+  if(role==='employee')return 'Používateľ'
   return 'Čitateľ'
 }
 
@@ -290,6 +290,7 @@ export default function App(){
     return 'oris'
   }
   function canAccessView(key:ViewKey){
+    if(role==='employee')return key==='serviceDesk'||key==='helpdesk'
     const item=allNavGroups.flatMap(group=>group.items).find(candidate=>candidate.key===key)
     if(!(item?.roles?.includes(role)??false))return false
     const scope=viewScope(key)
@@ -298,6 +299,7 @@ export default function App(){
     return canReadScope(accessProfile,scope)
   }
   function accessFallback():ViewKey{
+    if(role==='employee')return 'serviceDesk'
     if(canReadOris)return 'dashboard'
     if(canReadOit)return 'oit'
     if(canReadShared)return 'technology'
@@ -378,12 +380,12 @@ export default function App(){
 
   useEffect(()=>{
     const handler=(event:KeyboardEvent)=>{
-      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();setGlobalSearchOpen(true)}
+      if(role!=='employee'&&(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();setGlobalSearchOpen(true)}
       if(event.key==='Escape')setGlobalSearchOpen(false)
     }
     window.addEventListener('keydown',handler)
     return()=>window.removeEventListener('keydown',handler)
-  },[])
+  },[role])
 
   const workspace=view==='portals'||view==='serviceDesk'||view==='helpdesk'||view==='enterprise360'||view==='actionCenter'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'||view==='logs'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
@@ -462,7 +464,7 @@ export default function App(){
     if(!auth.configured){setHelpdeskSync('local');return}
     setHelpdeskSync('loading');setHelpdeskError('')
     try{
-      const helpdesk=await loadHelpdeskData()
+      const helpdesk=await loadHelpdeskData(role)
       setState(current=>({...current,...helpdesk}))
       setHelpdeskSync('synced')
     }catch(e){
@@ -585,6 +587,15 @@ export default function App(){
     if(!auth.configured)return
     setSync('loading');setSyncError('');setWorkSync('loading');setWorkError('');setHelpdeskSync('loading');setHelpdeskError('');setIamSync('loading');setIamError('')
     try{
+      if(role==='employee'){
+        const helpdesk=await loadHelpdeskData(role)
+        const nextState={...stateRef.current,...helpdesk}
+        stateRef.current=nextState
+        setState(nextState)
+        setSnapshot(null);cloudHasSnapshot.current=false
+        setWorkSync('local');setIamSync('local');setHelpdeskSync('synced');setSync('synced')
+        return
+      }
       const loaded=await loadCurrentSnapshot()
       setSnapshot(loaded)
       let nextState=loaded?migrateState(loaded.payload):stateRef.current
@@ -607,7 +618,7 @@ export default function App(){
       }
 
       try{
-        const helpdesk=await loadHelpdeskData()
+        const helpdesk=await loadHelpdeskData(role)
         nextState={...nextState,...helpdesk}
         setHelpdeskSync('synced')
       }catch(helpdeskFailure){
@@ -663,13 +674,13 @@ export default function App(){
     {sidebarOpen&&<button className="sidebar-overlay" onClick={()=>setSidebarOpen(false)} aria-label="Zavrieť menu"/>}
     <div className="app-main">
       <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setSidebarOpen(true)}><Icon name="menu"/></button><div><small>{workspaceName}</small><strong>{currentLabel}</strong></div></div><div className="topbar-right">
-        <button className="top-search-trigger" title="Globálne hľadanie (Ctrl+K)" onClick={()=>setGlobalSearchOpen(true)}><Icon name="search" size={16}/><span>Hľadať</span><kbd>Ctrl K</kbd></button>
-        {auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canSaveSnapshot&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
-        <div className={`data-mode data-mode-${sync}`} title={syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{syncLabel(sync)}</span></div>
-        <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{roleLabel(role)} · {workspace==='oit'?'3.1':workspace==='oris'?'3.2':'Spoločné'} {profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='write'?'W':profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='read'?'R':'—'}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
+        {role!=='employee'&&<button className="top-search-trigger" title="Globálne hľadanie (Ctrl+K)" onClick={()=>setGlobalSearchOpen(true)}><Icon name="search" size={16}/><span>Hľadať</span><kbd>Ctrl K</kbd></button>}
+        {role!=='employee'&&auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canSaveSnapshot&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
+        <div className={`data-mode data-mode-${sync}`} title={role==='employee'?'ServiceDesk je pripojený k databáze.':syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{role==='employee'?'ServiceDesk online':syncLabel(sync)}</span></div>
+        <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{role==='employee'?'Používateľ · ServiceDesk':`${roleLabel(role)} · ${workspace==='oit'?'3.1':workspace==='oris'?'3.2':'Spoločné'} ${profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='write'?'W':profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='read'?'R':'—'}`}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
       </div></header>
       <main className="content">
-        {syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong> {syncError}</span><div className="sync-alert-actions"><button className="button button-secondary button-small" onClick={()=>void saveCloud()}>Skúsiť uložiť znova</button><button className="button button-ghost button-small" onClick={()=>void loadCloud()}>Načítať z DB</button></div></div>}
+        {role!=='employee'&&syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong> {syncError}</span><div className="sync-alert-actions"><button className="button button-secondary button-small" onClick={()=>void saveCloud()}>Skúsiť uložiť znova</button><button className="button button-ghost button-small" onClick={()=>void loadCloud()}>Načítať z DB</button></div></div>}
         {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared}/>}
         {view==='enterprise360'&&<Enterprise360 state={state} go={go} canEdit={canManageShared} currentUser={displayName} onGovernanceChange={enterpriseGovernance=>setState(current=>({...current,enterpriseGovernance}))} onDevelopmentRequestsChange={contractDevelopmentRequests=>setState(current=>({...current,contractDevelopmentRequests}))}/>}
         {view==='actionCenter'&&<ManagementActionCenter state={state} currentUser={displayName} go={go}/>}
@@ -696,10 +707,10 @@ export default function App(){
         {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManageOris} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
         {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManageOris} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
         {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
-        {(view==='serviceDesk'||view==='helpdesk')&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} serviceRoutingRules={Array.isArray(state.serviceRoutingRules)?state.serviceRoutingRules:[]} role={role} canEdit={role!=='viewer'} canConfigure={role==='admin'||role==='manager'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies} onServiceRoutingRulesChange={commitServiceRoutingRules}/>} 
+        {(view==='serviceDesk'||view==='helpdesk')&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={role==='employee'?[]:Array.isArray(state.services)?state.services:[]} employees={role==='employee'?[]:Array.isArray(state.employees)?state.employees:[]} tasks={role==='employee'?[]:Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} serviceRoutingRules={Array.isArray(state.serviceRoutingRules)?state.serviceRoutingRules:[]} role={role} canEdit={role!=='viewer'} canConfigure={role==='admin'||role==='manager'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies} onServiceRoutingRulesChange={commitServiceRoutingRules}/>} 
         {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
         {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
-        {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
+        {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={role==='employee'?[]:Array.isArray(state.services)?state.services:[]} employees={role==='employee'?[]:Array.isArray(state.employees)?state.employees:[]} tasks={role==='employee'?[]:Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
         {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} employees={Array.isArray(state.employees)?state.employees:[]} suppliers={Array.isArray(state.supplierRecords)?state.supplierRecords:[]} role={role} currentUser={displayName} canWriteOit={canWriteOit} canWriteOris={canWriteOris} canWriteShared={canWriteShared} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
         {view==='webs'&&<WebRegistry canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
         {view==='informationSystems'&&<InformationSystems canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
@@ -710,7 +721,7 @@ export default function App(){
         {view==='roadmap'&&role==='admin'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
       </main>
     </div>
-    {globalSearchOpen&&<GlobalSearch state={state} onClose={()=>setGlobalSearchOpen(false)} go={key=>go(key)} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared}/>}
+    {role!=='employee'&&globalSearchOpen&&<GlobalSearch state={state} onClose={()=>setGlobalSearchOpen(false)} go={key=>go(key)} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared}/>}
     {profileOpen&&<AccountProfileModal onClose={()=>setProfileOpen(false)}/>}
   </div>
 }
