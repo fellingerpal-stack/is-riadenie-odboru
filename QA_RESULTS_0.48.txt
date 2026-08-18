@@ -1,0 +1,44 @@
+IS Riadenie odboru v0.48.0 - QA
+Date: 2026-08-18
+
+[PASS] package.json = 0.48.0
+[PASS] seed meta version = 0.48.0 :: 0.48.0
+[PASS] storage CURRENT_VERSION = 0.48.0
+[PASS] package dependencies unchanged vs 0.47.2
+[PASS] src/App.tsx exists
+[PASS] src/app.tsx does not exist
+[PASS] Knowledge tab implemented
+[PASS] Suggestions before ticket implemented
+[PASS] Create KB from closed ticket implemented
+[PASS] Knowledge viewer implemented
+[PASS] Knowledge editor implemented
+[PASS] Knowledge API loader implemented
+[PASS] Knowledge API writer implemented
+[PASS] Knowledge types implemented
+[PASS] Knowledge CSS implemented
+[PASS] KB article table migration
+[PASS] KB feedback table migration
+[PASS] KB reader RPC
+[PASS] KB writer RPC
+[PASS] KB feedback RPC
+[PASS] 42702 root hardening retained
+[PASS] Employee source ticket masking
+[PASS] Resolver publish guard
+[PASS] Direct KB table access revoked
+[PASS] SQL dollar quote count even :: count=14
+[PASS] CSS brace balance :: open=492 close=492
+[PASS] CHANGED_FILES covers actual changes :: missing=[]
+[PASS] Targeted TS typecheck with external stubs passed
+[PASS] Modified TS/TSX parse/transpile passes
+
+BUILD LIMITATION
+[INFO] npm install --no-audit --no-fund was attempted in the workspace and timed out after 120 seconds.
+[INFO] No new npm dependency was introduced in v0.48.0.
+[REQUIRED] Vercel/CI must successfully run the standard `npm run build` after deployment.
+
+SUMMARY: 29/29 checks passed.
+
+PACKAGE INTEGRITY
+[PASS] FULL ZIP integrity test
+[PASS] CHANGES ZIP integrity test
+[PASS] DATABASE ZIP integrity test
