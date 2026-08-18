@@ -1,4 +1,4 @@
-import type { AppRole, ServiceCalendarException, ServiceCatalogField, ServiceCatalogItem, ServiceEmailChannel, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
+import type { AppRole, ServiceCalendarException, ServiceCatalogField, ServiceCatalogItem, ServiceEmailChannel, ServiceKnowledgeArticle, ServiceNotification, ServiceRoutingRule, SlaPolicy, SupportQueue, Ticket, TicketAttachment, TicketComment, TicketHistory } from '../types'
 import { supabase } from './supabase'
 
 export type HelpdeskDatabaseState = 'local' | 'loading' | 'synced' | 'saving' | 'error'
@@ -84,6 +84,32 @@ interface ServiceCatalogItemRow {
   sort_order: number
   form_schema: unknown
   is_active: boolean
+}
+
+interface ServiceKnowledgeArticleRow {
+  id: string
+  code: string
+  title: string
+  summary: string
+  content: string
+  article_type: string
+  status: string
+  service_key: string
+  catalog_item_code: string
+  category: string
+  subcategory: string
+  keywords: unknown
+  symptoms: string
+  workaround: string
+  root_cause: string
+  owner_name: string
+  source_ticket_code: string
+  is_featured: boolean
+  view_count: number
+  helpful_count: number
+  not_helpful_count: number
+  created_at: string
+  updated_at: string
 }
 
 interface ServiceSlaPolicyRow {
@@ -190,6 +216,33 @@ function catalogItemFromRow(row: ServiceCatalogItemRow): ServiceCatalogItem {
     sortOrder: Number(row.sort_order || 0),
     fields,
     isActive: Boolean(row.is_active),
+  }
+}
+
+function knowledgeArticleFromRow(row: ServiceKnowledgeArticleRow): ServiceKnowledgeArticle {
+  return {
+    id: row.code,
+    title: row.title || '',
+    summary: row.summary || '',
+    content: row.content || '',
+    articleType: row.article_type === 'Known Error' ? 'Known Error' : 'Návod',
+    status: row.status === 'Publikované' || row.status === 'Archivované' ? row.status : 'Návrh',
+    serviceId: row.service_key || '',
+    catalogItemId: row.catalog_item_code || '',
+    category: row.category || '',
+    subcategory: row.subcategory || '',
+    keywords: asArray<string>(row.keywords).filter((value): value is string => typeof value === 'string'),
+    symptoms: row.symptoms || '',
+    workaround: row.workaround || '',
+    rootCause: row.root_cause || '',
+    owner: row.owner_name || '',
+    sourceTicketId: row.source_ticket_code || '',
+    isFeatured: Boolean(row.is_featured),
+    viewCount: Number(row.view_count || 0),
+    helpfulCount: Number(row.helpful_count || 0),
+    notHelpfulCount: Number(row.not_helpful_count || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 
@@ -329,12 +382,14 @@ function friendlyHelpdeskError(error: unknown): Error {
     lower.includes('service_email_channels') ||
     lower.includes('service_email_messages') ||
     lower.includes('service_catalog_items') ||
+    lower.includes('service_knowledge_articles') ||
+    lower.includes('service_knowledge_feedback') ||
     lower.includes('service_calendar_exceptions') ||
     lower.includes('schema cache') ||
     lower.includes('could not find the table') ||
     (lower.includes('relation') && lower.includes('does not exist'))
   ) {
-    return new Error(`Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 až v0.47.1.${message ? ` Detail: ${message}` : ''}`)
+    return new Error(`Databázová vrstva ServiceDesku nie je kompletná. Overte migrácie v0.44.0 až v0.48.0.${message ? ` Detail: ${message}` : ''}`)
   }
   if (lower.includes('permission') || lower.includes('row-level security') || lower.includes('oprávnen')) {
     return new Error(`Používateľ nemá oprávnenie vykonať túto operáciu v ServiceDesku.${message ? ` Detail: ${message}` : ''}`)
@@ -438,6 +493,38 @@ export async function upsertServiceCatalogItem(item: ServiceCatalogItem): Promis
 export async function deleteServiceCatalogItem(itemCode: string): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.rpc('delete_service_catalog_item', { p_item_code: itemCode })
+  if (error) throw friendlyHelpdeskError(error)
+}
+
+export async function loadServiceKnowledgeArticles(includeDrafts = false): Promise<ServiceKnowledgeArticle[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('get_service_knowledge_articles', { p_include_drafts: includeDrafts })
+  if (error) throw friendlyHelpdeskError(error)
+  return ((data ?? []) as ServiceKnowledgeArticleRow[]).map(knowledgeArticleFromRow)
+}
+
+export async function upsertServiceKnowledgeArticle(item: ServiceKnowledgeArticle): Promise<string> {
+  if (!supabase) return item.id
+  const { data, error } = await supabase.rpc('upsert_service_knowledge_article', { p_item: item })
+  if (error) throw friendlyHelpdeskError(error)
+  return String(data || item.id)
+}
+
+export async function archiveServiceKnowledgeArticle(articleCode: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('archive_service_knowledge_article', { p_article_code: articleCode })
+  if (error) throw friendlyHelpdeskError(error)
+}
+
+export async function recordServiceKnowledgeView(articleCode: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('record_service_knowledge_view', { p_article_code: articleCode })
+  if (error) throw friendlyHelpdeskError(error)
+}
+
+export async function rateServiceKnowledgeArticle(articleCode: string, helpful: boolean): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.rpc('rate_service_knowledge_article', { p_article_code: articleCode, p_helpful: helpful })
   if (error) throw friendlyHelpdeskError(error)
 }
 
