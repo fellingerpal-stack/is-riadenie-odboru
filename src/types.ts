@@ -271,6 +271,34 @@ export interface ServiceCatalogItem {
   isActive: boolean
 }
 
+export type ServiceKnowledgeArticleType = 'Návod' | 'Known Error'
+export type ServiceKnowledgeStatus = 'Návrh' | 'Publikované' | 'Archivované'
+
+export interface ServiceKnowledgeArticle {
+  id: string
+  title: string
+  summary: string
+  content: string
+  articleType: ServiceKnowledgeArticleType
+  status: ServiceKnowledgeStatus
+  serviceId: string
+  catalogItemId: string
+  category: string
+  subcategory: string
+  keywords: string[]
+  symptoms: string
+  workaround: string
+  rootCause: string
+  owner: string
+  sourceTicketId: string
+  isFeatured: boolean
+  viewCount: number
+  helpfulCount: number
+  notHelpfulCount: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ServiceRoutingRule {
   id: string
   name: string
