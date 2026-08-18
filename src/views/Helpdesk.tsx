@@ -6,6 +6,7 @@ import type {
   ServiceCatalogField,
   ServiceCatalogItem,
   ServiceEmailChannel,
+  ServiceKnowledgeArticle,
   ServiceNotification,
   Service,
   ServiceRoutingRule,
@@ -17,7 +18,7 @@ import type {
   TicketComment,
 } from '../types'
 import { Badge, Empty, Field, Icon, Modal, PageHeader, type IconName } from '../components/UI'
-import { deleteServiceCalendarException, deleteServiceCatalogItem, deleteServiceEmailChannel, loadServiceCalendarExceptions, loadServiceCatalogItems, loadServiceEmailChannels, loadServiceNotifications, markServiceNotificationRead, processServiceSlaEscalations, upsertServiceCalendarException, upsertServiceCatalogItem, upsertServiceEmailChannel, type HelpdeskDatabaseState } from '../lib/helpdeskCloud'
+import { archiveServiceKnowledgeArticle, deleteServiceCalendarException, deleteServiceCatalogItem, deleteServiceEmailChannel, loadServiceCalendarExceptions, loadServiceCatalogItems, loadServiceEmailChannels, loadServiceKnowledgeArticles, loadServiceNotifications, markServiceNotificationRead, processServiceSlaEscalations, rateServiceKnowledgeArticle, recordServiceKnowledgeView, upsertServiceCalendarException, upsertServiceCatalogItem, upsertServiceEmailChannel, upsertServiceKnowledgeArticle, type HelpdeskDatabaseState } from '../lib/helpdeskCloud'
 import './Helpdesk.css'
 
 const ticketTypes = ['Incident', 'Požiadavka']
@@ -73,7 +74,7 @@ function catalogIcon(value: string): IconName {
   return catalogIcons.includes(value as IconName) ? value as IconName : 'helpdesk'
 }
 
-type DeskView = 'catalog' | 'queue' | 'mine' | 'sla' | 'config'
+type DeskView = 'catalog' | 'knowledge' | 'queue' | 'mine' | 'sla' | 'config'
 type SlaTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 
 function databaseStateLabel(state: HelpdeskDatabaseState) {
@@ -250,6 +251,16 @@ function routeTicket(ticket: Ticket, rules: ServiceRoutingRule[], queues: Suppor
   return {...ticket,queueId:rule.queueId,priority:rule.priority||ticket.priority}
 }
 
+function normalizeKnowledgeText(value: unknown) {
+  return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
+function articleTone(article: ServiceKnowledgeArticle) {
+  if (article.articleType === 'Known Error') return 'warning' as const
+  if (article.status === 'Návrh') return 'neutral' as const
+  return 'info' as const
+}
+
 function escapeCsv(value: unknown) {
   return `"${String(value ?? '').replaceAll('"', '""')}"`
 }
@@ -390,6 +401,14 @@ export default function Helpdesk({
   const [catalogSaving, setCatalogSaving] = useState(false)
   const [catalogEditorOpen, setCatalogEditorOpen] = useState(false)
   const [catalogDraft, setCatalogDraft] = useState<ServiceCatalogItem | null>(null)
+  const [knowledgeArticles, setKnowledgeArticles] = useState<ServiceKnowledgeArticle[]>([])
+  const [knowledgeSearch, setKnowledgeSearch] = useState('')
+  const [knowledgeError, setKnowledgeError] = useState('')
+  const [knowledgeSaving, setKnowledgeSaving] = useState(false)
+  const [knowledgeDraft, setKnowledgeDraft] = useState<ServiceKnowledgeArticle | null>(null)
+  const [knowledgeEditorOpen, setKnowledgeEditorOpen] = useState(false)
+  const [knowledgeViewer, setKnowledgeViewer] = useState<ServiceKnowledgeArticle | null>(null)
+  const [knowledgeFeedback, setKnowledgeFeedback] = useState<Record<string, 'helpful' | 'notHelpful'>>({})
   const [ticketFormError, setTicketFormError] = useState('')
   const [commentText, setCommentText] = useState('')
   const [commentInternal, setCommentInternal] = useState(false)
@@ -436,10 +455,21 @@ export default function Helpdesk({
     }
   }
 
+  async function refreshKnowledge() {
+    if (databaseMode !== 'cloud') { setKnowledgeArticles([]); return }
+    try {
+      setKnowledgeArticles(await loadServiceKnowledgeArticles(isResolver))
+      setKnowledgeError('')
+    } catch (error) {
+      setKnowledgeError(error instanceof Error ? error.message : 'Znalostná databáza sa nepodarila načítať.')
+    }
+  }
+
   useEffect(() => {
     if (databaseMode !== 'cloud' || databaseState === 'loading') return
     void refreshNotifications(true)
     void refreshCatalog()
+    void refreshKnowledge()
     if (canConfigure) { void refreshCalendarExceptions(); void refreshEmailChannels() }
     const timer = window.setInterval(() => void refreshNotifications(true), 60_000)
     return () => window.clearInterval(timer)
@@ -585,6 +615,111 @@ export default function Helpdesk({
       if (databaseMode==='cloud') await refreshCatalog()
     } catch (error) {
       setCatalogError(error instanceof Error ? error.message : 'Položku katalógu sa nepodarilo odstrániť.')
+    }
+  }
+
+  const filteredKnowledge = useMemo(() => {
+    const query = normalizeKnowledgeText(knowledgeSearch.trim())
+    return knowledgeArticles
+      .filter((article) => article.status !== 'Archivované')
+      .filter((article) => isResolver || article.status === 'Publikované')
+      .filter((article) => !query || normalizeKnowledgeText(`${article.id} ${article.title} ${article.summary} ${article.content} ${article.symptoms} ${article.workaround} ${article.category} ${article.subcategory} ${article.keywords.join(' ')}`).includes(query))
+      .sort((a,b) => Number(b.isFeatured)-Number(a.isFeatured) || (b.helpfulCount-b.notHelpfulCount)-(a.helpfulCount-a.notHelpfulCount) || b.updatedAt.localeCompare(a.updatedAt))
+  }, [knowledgeArticles, knowledgeSearch, isResolver])
+
+  const suggestedKnowledge = useMemo(() => {
+    if (draft.id) return []
+    const selected = draft.catalogItemId ? catalogItems.find((item)=>item.id===draft.catalogItemId) : undefined
+    const haystack = normalizeKnowledgeText(`${draft.title} ${draft.description} ${selected?.name||''} ${selected?.description||''} ${Object.values(draft.requestData||{}).join(' ')}`)
+    return knowledgeArticles
+      .filter((article)=>article.status==='Publikované')
+      .map((article)=>{
+        let score=article.isFeatured?2:0
+        if (draft.catalogItemId && article.catalogItemId===draft.catalogItemId) score+=12
+        if (draft.serviceId && article.serviceId===draft.serviceId) score+=8
+        if (draft.category && article.category===draft.category) score+=6
+        if (draft.subcategory && article.subcategory===draft.subcategory) score+=4
+        article.keywords.forEach((keyword)=>{if(keyword && haystack.includes(normalizeKnowledgeText(keyword))) score+=3})
+        const titleWords=normalizeKnowledgeText(article.title).split(/\s+/).filter((word)=>word.length>=4)
+        score+=Math.min(6,titleWords.filter((word)=>haystack.includes(word)).length*2)
+        return {article,score}
+      })
+      .filter((item)=>item.score>=4)
+      .sort((a,b)=>b.score-a.score || b.article.helpfulCount-a.article.helpfulCount)
+      .slice(0,4)
+      .map((item)=>item.article)
+  }, [draft, knowledgeArticles, catalogItems])
+
+  function blankKnowledgeArticle(source?: Ticket): ServiceKnowledgeArticle {
+    const now=new Date().toISOString()
+    const sourceCatalog=source?.catalogItemId||''
+    return {
+      id:`KB-${Date.now()}`,
+      title:source?`Riešenie: ${source.title}`:'Nový znalostný článok',
+      summary:source?.description?.slice(0,280)||'',
+      content:source?.resolution ? `Popis problému:\n${source.description}\n\nRiešenie:\n${source.resolution}` : (source?.description||''),
+      articleType:source?.type==='Incident'?'Known Error':'Návod',
+      status:'Návrh',
+      serviceId:source?.serviceId||'',
+      catalogItemId:sourceCatalog,
+      category:source?.category||'',
+      subcategory:source?.subcategory||'',
+      keywords:[source?.category,source?.subcategory].filter((value): value is string=>Boolean(value)),
+      symptoms:source?.description||'',
+      workaround:source?.resolution||'',
+      rootCause:'',
+      owner:currentUser,
+      sourceTicketId:source?.id||'',
+      isFeatured:false,
+      viewCount:0,helpfulCount:0,notHelpfulCount:0,
+      createdAt:now,updatedAt:now,
+    }
+  }
+
+  function editKnowledgeArticle(article?: ServiceKnowledgeArticle, source?: Ticket) {
+    if (!isResolver) return
+    setKnowledgeDraft(structuredClone(article || blankKnowledgeArticle(source)))
+    setKnowledgeEditorOpen(true)
+    setKnowledgeError('')
+  }
+
+  async function saveKnowledgeArticle() {
+    if (!isResolver || !knowledgeDraft || !knowledgeDraft.title.trim() || !knowledgeDraft.summary.trim()) return
+    setKnowledgeSaving(true); setKnowledgeError('')
+    const prepared: ServiceKnowledgeArticle={...knowledgeDraft,status:canConfigure?knowledgeDraft.status:'Návrh',owner:knowledgeDraft.owner||currentUser,updatedAt:new Date().toISOString()}
+    try {
+      if (databaseMode==='cloud') await upsertServiceKnowledgeArticle(prepared)
+      else setKnowledgeArticles((current)=>[...current.filter((item)=>item.id!==prepared.id),prepared])
+      if (databaseMode==='cloud') await refreshKnowledge()
+      setKnowledgeEditorOpen(false)
+    } catch (error) {
+      setKnowledgeError(error instanceof Error ? error.message : 'Znalostný článok sa nepodarilo uložiť.')
+    } finally { setKnowledgeSaving(false) }
+  }
+
+  async function archiveKnowledgeArticle(article: ServiceKnowledgeArticle) {
+    if (!canConfigure || !confirm(`Archivovať článok ${article.id} · ${article.title}?`)) return
+    try {
+      if (databaseMode==='cloud') await archiveServiceKnowledgeArticle(article.id)
+      else setKnowledgeArticles((current)=>current.map((item)=>item.id===article.id?{...item,status:'Archivované'}:item))
+      if (databaseMode==='cloud') await refreshKnowledge()
+      if (knowledgeViewer?.id===article.id) setKnowledgeViewer(null)
+    } catch (error) { setKnowledgeError(error instanceof Error ? error.message : 'Článok sa nepodarilo archivovať.') }
+  }
+
+  function openKnowledgeArticle(article: ServiceKnowledgeArticle) {
+    setKnowledgeViewer(article)
+    if (databaseMode==='cloud' && article.status==='Publikované') {
+      void recordServiceKnowledgeView(article.id).then(()=>setKnowledgeArticles((current)=>current.map((item)=>item.id===article.id?{...item,viewCount:item.viewCount+1}:item))).catch(()=>undefined)
+    }
+  }
+
+  async function rateKnowledge(article: ServiceKnowledgeArticle, helpful: boolean) {
+    if (knowledgeFeedback[article.id]) return
+    setKnowledgeFeedback((current)=>({...current,[article.id]:helpful?'helpful':'notHelpful'}))
+    setKnowledgeArticles((current)=>current.map((item)=>item.id===article.id?{...item,helpfulCount:item.helpfulCount+(helpful?1:0),notHelpfulCount:item.notHelpfulCount+(helpful?0:1)}:item))
+    if (databaseMode==='cloud') {
+      try { await rateServiceKnowledgeArticle(article.id,helpful) } catch (error) { setKnowledgeError(error instanceof Error?error.message:'Hodnotenie sa nepodarilo uložiť.') }
     }
   }
 
@@ -907,6 +1042,7 @@ export default function Helpdesk({
 
     <div className="helpdesk-view-tabs" role="tablist">
       <button className={deskView === 'catalog' ? 'active' : ''} onClick={() => setDeskView('catalog')}><Icon name="services" size={18} /> Katalóg služieb <span>{activeCatalogItems.length}</span></button>
+      <button className={deskView === 'knowledge' ? 'active' : ''} onClick={() => setDeskView('knowledge')}><Icon name="decision" size={18} /> Riešenia a návody <span>{knowledgeArticles.filter((article)=>article.status==='Publikované').length}</span></button>
       {isResolver&&<button className={deskView === 'queue' ? 'active' : ''} onClick={() => setDeskView('queue')}><Icon name="helpdesk" size={18} /> Moja fronta <span>{openTickets.length}</span></button>}
       <button className={deskView === 'mine' ? 'active' : ''} onClick={() => setDeskView('mine')}><Icon name="user" size={18} /> {isEmployee?'Moje požiadavky':'Moje tickety'} <span>{visibleTickets.filter((ticket) => ticket.requester === currentUser || ticket.assignee === currentUser || (currentUserEmail&&ticket.requesterEmail===currentUserEmail)).length}</span></button>
       {isResolver&&<button className={deskView === 'sla' ? 'active' : ''} onClick={() => setDeskView('sla')}><Icon name="capacity" size={18} /> SLA a reporty <span>{breachedCount}</span></button>}
@@ -923,7 +1059,18 @@ export default function Helpdesk({
       {!activeCatalogItems.length&&<Empty title="Nenašla sa služba" text="Skúste iný výraz alebo použite všeobecnú požiadavku."/>}
     </div>}
 
-    {deskView !== 'sla' && deskView !== 'config' && deskView !== 'catalog' && <>
+    {deskView === 'knowledge' && <div className="sd-knowledge-workspace">
+      <section className="panel sd-knowledge-hero">
+        <div><span className="eyebrow">Knowledge Base · Known Errors</span><h2>Riešenia, návody a známe chyby</h2><p>Najprv skúste overené riešenie. Publikované články sú dostupné zamestnancom; návrhy pripravujú riešitelia a publikujú ich admini alebo manažéri.</p></div>
+        <div className="sd-knowledge-hero-actions"><div className="search-box sd-catalog-search"><Icon name="search" size={18}/><input value={knowledgeSearch} onChange={(event)=>setKnowledgeSearch(event.target.value)} placeholder="Hľadať VPN, CRZP, tlač, heslo…"/></div>{isResolver&&<button className="button button-primary" onClick={()=>editKnowledgeArticle()}><Icon name="plus" size={16}/> Nový článok</button>}</div>
+      </section>
+      <div className="sd-knowledge-kpis"><article><small>Publikované</small><strong>{knowledgeArticles.filter((article)=>article.status==='Publikované').length}</strong></article><article><small>Known Errors</small><strong>{knowledgeArticles.filter((article)=>article.status==='Publikované'&&article.articleType==='Known Error').length}</strong></article><article><small>Užitočné hodnotenia</small><strong>{knowledgeArticles.reduce((sum,article)=>sum+article.helpfulCount,0)}</strong></article>{isResolver&&<article><small>Návrhy na publikovanie</small><strong>{knowledgeArticles.filter((article)=>article.status==='Návrh').length}</strong></article>}</div>
+      {knowledgeError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{knowledgeError}</span></div>}
+      <section className="sd-knowledge-grid">{filteredKnowledge.map((article)=>{const catalog=catalogItems.find((item)=>item.id===article.catalogItemId);return <article key={article.id} className={`sd-knowledge-card ${article.articleType==='Known Error'?'is-known-error':''}`}><header><div><Badge tone={articleTone(article)}>{article.articleType}</Badge>{article.isFeatured&&<Badge tone="purple">Odporúčané</Badge>}{article.status!=='Publikované'&&<Badge tone="neutral">{article.status}</Badge>}</div><span>{article.id}</span></header><h3>{article.title}</h3><p>{article.summary}</p><div className="sd-knowledge-tags">{catalog&&<span>{catalog.name}</span>}{article.category&&<span>{article.category}</span>}{article.keywords.slice(0,3).map((keyword)=><span key={keyword}>#{keyword}</span>)}</div><footer><span><Icon name="eye" size={14}/> {article.viewCount}</span><span><Icon name="check" size={14}/> {article.helpfulCount}</span><button className="button button-secondary button-small" onClick={()=>openKnowledgeArticle(article)}>Otvoriť</button>{(canConfigure||article.status==='Návrh')&&<button className="icon-button" onClick={()=>editKnowledgeArticle(article)} title="Upraviť článok"><Icon name="edit" size={15}/></button>}</footer></article>})}</section>
+      {!filteredKnowledge.length&&<Empty title="Zatiaľ bez znalostných článkov" text={isResolver?'Vytvorte prvý článok alebo ho pripravte priamo z vyriešeného ticketu.':'Pre túto oblasť zatiaľ nie je publikovaný návod. Môžete pokračovať vytvorením požiadavky.'}/>}
+    </div>}
+
+    {deskView !== 'sla' && deskView !== 'config' && deskView !== 'catalog' && deskView !== 'knowledge' && <>
       <div className="helpdesk-kpis">
         <button className="helpdesk-kpi is-open" onClick={() => { setStatusFilter('Otvorené'); setTypeFilter('Všetky') }}><span className="helpdesk-kpi-icon"><Icon name="helpdesk" /></span><span><small>Otvorené tickety</small><strong>{openTickets.length}</strong><em>spolu vo fronte</em></span></button>
         <button className="helpdesk-kpi" onClick={() => setTypeFilter('Incident')}><span className="helpdesk-kpi-icon"><Icon name="warning" /></span><span><small>Incidenty</small><strong>{incidentCount}</strong><em>otvorených incidentov</em></span></button>
@@ -974,7 +1121,7 @@ export default function Helpdesk({
 
       <section className="panel sd-lead-panel"><div className="panel-heading"><div><span className="eyebrow">Vedúci skupín</span><h3>Operatívny health front</h3><p>Otvorené, nepridelené a SLA riziká podľa riešiteľskej skupiny.</p></div><Badge tone={breachedCount?'warning':'success'}>{breachedCount?'Vyžaduje pozornosť':'Stabilné'}</Badge></div><div className="sd-lead-grid">{supportQueues.filter((queue)=>queue.isActive).map((queue)=>{const queueTickets=openTickets.filter((ticket)=>ticket.queueId===queue.id);const breached=queueTickets.filter((ticket)=>slaState(ticket).tone==='danger').length;const warning=queueTickets.filter((ticket)=>slaState(ticket).tone==='warning').length;const unassigned=queueTickets.filter((ticket)=>!ticket.assignee).length;return <article key={queue.id}><header><div><strong>{queue.name}</strong><small>{queue.lead||'Vedúci neurčený'}{queue.deputy?` · zástupca ${queue.deputy}`:''}</small></div><Badge tone={breached?'danger':warning?'warning':'success'}>{breached?`${breached} po SLA`:warning?`${warning} v riziku`:'OK'}</Badge></header><div className="sd-lead-metrics"><span><small>Otvorené</small><b>{queueTickets.length}</b></span><span><small>Bez riešiteľa</small><b>{unassigned}</b></span><span><small>SLA riziko</small><b>{warning}</b></span><span><small>Po SLA</small><b>{breached}</b></span></div><footer><span>{queue.businessCalendarEnabled?`${queue.workdayStart}-${queue.workdayEnd} · pracovné dni`:'Kalendárne hodiny'}</span><span>varovanie {Math.round(queue.slaWarningMinutes/60*10)/10} h vopred</span></footer></article>})}</div></section>
 
-      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div><div><Icon name="mail" /><span><strong>Inbound e-mail → Ticket</strong><small>v0.46: nové správy vytvoria ticket, odpovede sa threadujú podľa čísla ticketu v predmete</small></span><Badge tone="info">Webhook</Badge></div><div><Icon name="services" /><span><strong>Katalóg služieb</strong><small>v0.47: smart formuláre, serverová validácia a automatický routing</small></span><Badge tone="success">Aktívne</Badge></div></div></section>
+      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div><div><Icon name="mail" /><span><strong>Inbound e-mail → Ticket</strong><small>v0.46: nové správy vytvoria ticket, odpovede sa threadujú podľa čísla ticketu v predmete</small></span><Badge tone="info">Webhook</Badge></div><div><Icon name="services" /><span><strong>Katalóg služieb</strong><small>v0.47: smart formuláre, serverová validácia a automatický routing</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="decision" /><span><strong>Knowledge Base & Known Errors</strong><small>v0.48: návody, známe chyby a odporúčania pred založením ticketu</small></span><Badge tone="success">Aktívne</Badge></div></div></section>
     </div>}
 
 
@@ -1027,6 +1174,10 @@ export default function Helpdesk({
 
     {catalogEditorOpen&&catalogDraft&&<Modal title={`Katalóg služieb · ${catalogDraft.name}`} onClose={()=>setCatalogEditorOpen(false)} wide><div className="sd-catalog-editor"><div className="form-grid sd-catalog-editor-main"><Field label="Kód"><input value={catalogDraft.id} disabled={!catalogDraft.id.startsWith('CAT-')||catalogItems.some((item)=>item.id===catalogDraft.id)} onChange={(event)=>setCatalogDraft({...catalogDraft,id:event.target.value.toUpperCase().replace(/[^A-Z0-9-_]/g,'')})}/></Field><Field label="Názov"><input value={catalogDraft.name} onChange={(event)=>setCatalogDraft({...catalogDraft,name:event.target.value})}/></Field><Field label="Skupina"><input value={catalogDraft.group} onChange={(event)=>setCatalogDraft({...catalogDraft,group:event.target.value})}/></Field><Field label="Ikona"><select value={catalogDraft.icon} onChange={(event)=>setCatalogDraft({...catalogDraft,icon:event.target.value})}>{catalogIcons.map((icon)=><option key={icon} value={icon}>{icon}</option>)}</select></Field><Field label="Popis"><textarea value={catalogDraft.description} onChange={(event)=>setCatalogDraft({...catalogDraft,description:event.target.value})}/></Field><Field label="Typ"><select value={catalogDraft.ticketType} onChange={(event)=>setCatalogDraft({...catalogDraft,ticketType:event.target.value})}>{ticketTypes.map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Kategória"><select value={catalogDraft.category} onChange={(event)=>setCatalogDraft({...catalogDraft,category:event.target.value,subcategory:categories[event.target.value]?.[0]||'Iné'})}>{Object.keys(categories).map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Podkategória"><select value={catalogDraft.subcategory} onChange={(event)=>setCatalogDraft({...catalogDraft,subcategory:event.target.value})}>{(categories[catalogDraft.category]||['Iné']).map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Predvolená fronta"><select value={catalogDraft.queueId} onChange={(event)=>setCatalogDraft({...catalogDraft,queueId:event.target.value})}><option value="">Iba routing matica</option>{supportQueues.map((queue)=><option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></Field><Field label="Priorita"><select value={catalogDraft.priority} onChange={(event)=>setCatalogDraft({...catalogDraft,priority:event.target.value})}>{priorities.map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Služba / systém"><select value={catalogDraft.serviceId} onChange={(event)=>setCatalogDraft({...catalogDraft,serviceId:event.target.value})}><option value="">Bez priamej väzby</option>{services.map((service)=><option key={service.id} value={service.id}>{service.name}</option>)}</select></Field><Field label="Poradie"><input type="number" value={catalogDraft.sortOrder} onChange={(event)=>setCatalogDraft({...catalogDraft,sortOrder:Number(event.target.value)||0})}/></Field><label className="sd-config-toggle"><input type="checkbox" checked={catalogDraft.isActive} onChange={(event)=>setCatalogDraft({...catalogDraft,isActive:event.target.checked})}/> Položka je aktívna</label></div><section className="sd-catalog-field-editor"><header><div><span className="eyebrow">Smart formulár</span><h3>Doplňujúce polia</h3><p>Polia sa zobrazia zamestnancovi po výbere služby a uložia sa štruktúrovane pri tickete.</p></div><button className="button button-secondary button-small" onClick={addCatalogField}><Icon name="plus" size={14}/> Pridať pole</button></header><div>{catalogDraft.fields.map((field,index)=><article key={`${field.key}-${index}`}><div className="sd-catalog-field-row"><label>Kľúč<input value={field.key} onChange={(event)=>patchCatalogField(index,{key:event.target.value.replace(/[^A-Za-z0-9_]/g,'')})}/></label><label>Názov<input value={field.label} onChange={(event)=>patchCatalogField(index,{label:event.target.value})}/></label><label>Typ<select value={field.type} onChange={(event)=>patchCatalogField(index,{type:event.target.value as ServiceCatalogField['type']})}><option value="text">Text</option><option value="textarea">Dlhý text</option><option value="select">Výber</option><option value="date">Dátum</option><option value="number">Číslo</option><option value="checkbox">Potvrdenie</option></select></label><label className="sd-config-toggle"><input type="checkbox" checked={field.required} onChange={(event)=>patchCatalogField(index,{required:event.target.checked})}/> Povinné</label><button className="icon-button" onClick={()=>removeCatalogField(index)}><Icon name="trash" size={14}/></button></div><div className="sd-catalog-field-row secondary"><label>Placeholder<input value={field.placeholder} onChange={(event)=>patchCatalogField(index,{placeholder:event.target.value})}/></label><label>Pomocný text<input value={field.helpText} onChange={(event)=>patchCatalogField(index,{helpText:event.target.value})}/></label>{field.type==='select'&&<label>Možnosti (oddelené čiarkou)<input value={field.options.join(', ')} onChange={(event)=>patchCatalogField(index,{options:event.target.value.split(',').map((value)=>value.trim()).filter(Boolean)})}/></label>}</div></article>)}</div>{!catalogDraft.fields.length&&<p className="panel-note">Bez doplňujúcich polí — používateľ vyplní iba názov a popis.</p>}</section>{catalogError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{catalogError}</span></div>}<div className="modal-actions"><button className="button button-ghost" onClick={()=>setCatalogEditorOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={catalogSaving||!catalogDraft.name.trim()||!catalogDraft.id.trim()} onClick={()=>void saveCatalogItem()}><Icon name="check" size={15}/>{catalogSaving?'Ukladám…':'Uložiť službu'}</button></div></div></Modal>}
 
+    {knowledgeViewer&&<Modal title={`${knowledgeViewer.id} · ${knowledgeViewer.title}`} onClose={()=>setKnowledgeViewer(null)} wide><article className="sd-knowledge-detail"><header><div><Badge tone={articleTone(knowledgeViewer)}>{knowledgeViewer.articleType}</Badge>{knowledgeViewer.isFeatured&&<Badge tone="purple">Odporúčané</Badge>}<Badge tone={knowledgeViewer.status==='Publikované'?'success':'neutral'}>{knowledgeViewer.status}</Badge></div><small>Vlastník: {knowledgeViewer.owner||'neurčený'} · aktualizované {formatDate(knowledgeViewer.updatedAt,true)}</small></header><p className="sd-knowledge-lead">{knowledgeViewer.summary}</p>{knowledgeViewer.symptoms&&<section><span className="eyebrow">Príznaky / problém</span><p>{knowledgeViewer.symptoms}</p></section>}{knowledgeViewer.articleType==='Known Error'&&knowledgeViewer.rootCause&&<section><span className="eyebrow">Známa príčina</span><p>{knowledgeViewer.rootCause}</p></section>}{knowledgeViewer.workaround&&<section className="sd-knowledge-workaround"><span className="eyebrow">Riešenie / workaround</span><p>{knowledgeViewer.workaround}</p></section>}<section><span className="eyebrow">Postup</span><div className="sd-knowledge-content">{knowledgeViewer.content||'Bez doplňujúceho postupu.'}</div></section><div className="sd-knowledge-detail-tags">{knowledgeViewer.category&&<span>{knowledgeViewer.category}</span>}{knowledgeViewer.subcategory&&<span>{knowledgeViewer.subcategory}</span>}{knowledgeViewer.keywords.map((keyword)=><span key={keyword}>#{keyword}</span>)}{isResolver&&knowledgeViewer.sourceTicketId&&<span>zdroj {knowledgeViewer.sourceTicketId}</span>}</div>{knowledgeViewer.status==='Publikované'&&<footer className="sd-knowledge-feedback"><div><strong>Pomohlo vám toto riešenie?</strong><small>{knowledgeViewer.helpfulCount}× áno · {knowledgeViewer.notHelpfulCount}× nie · {knowledgeViewer.viewCount} zobrazení</small></div><button className="button button-secondary" disabled={Boolean(knowledgeFeedback[knowledgeViewer.id])} onClick={()=>void rateKnowledge(knowledgeViewer,true)}><Icon name="check" size={15}/> Áno, pomohlo</button><button className="button button-ghost" disabled={Boolean(knowledgeFeedback[knowledgeViewer.id])} onClick={()=>void rateKnowledge(knowledgeViewer,false)}>Nie</button></footer>}<div className="modal-actions split-actions"><div>{canConfigure&&<button className="button button-danger" onClick={()=>void archiveKnowledgeArticle(knowledgeViewer)}><Icon name="trash" size={15}/> Archivovať</button>}</div><div>{(canConfigure||knowledgeViewer.status==='Návrh')&&<button className="button button-secondary" onClick={()=>{setKnowledgeViewer(null);editKnowledgeArticle(knowledgeViewer)}}><Icon name="edit" size={15}/> Upraviť</button>}<button className="button button-primary" onClick={()=>setKnowledgeViewer(null)}>Zavrieť</button></div></div></article></Modal>}
+
+    {knowledgeEditorOpen&&knowledgeDraft&&<Modal title={`Knowledge Base · ${knowledgeDraft.id}`} onClose={()=>setKnowledgeEditorOpen(false)} wide><div className="sd-knowledge-editor"><div className="form-grid sd-knowledge-editor-grid"><Field label="Kód"><input value={knowledgeDraft.id} disabled={knowledgeArticles.some((item)=>item.id===knowledgeDraft.id)} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,id:event.target.value.toUpperCase().replace(/[^A-Z0-9-_]/g,'')})}/></Field><Field label="Typ"><select value={knowledgeDraft.articleType} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,articleType:event.target.value as ServiceKnowledgeArticle['articleType']})}><option>Návod</option><option>Known Error</option></select></Field><Field label="Stav" hint={!canConfigure?'Resolver vytvára návrh; publikovať môže admin alebo manager.':undefined}><select value={canConfigure?knowledgeDraft.status:'Návrh'} disabled={!canConfigure} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,status:event.target.value as ServiceKnowledgeArticle['status']})}><option>Návrh</option><option>Publikované</option><option>Archivované</option></select></Field><Field label="Názov"><input value={knowledgeDraft.title} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,title:event.target.value})}/></Field><Field label="Krátke zhrnutie"><textarea value={knowledgeDraft.summary} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,summary:event.target.value})} placeholder="Jednou až dvoma vetami vysvetlite, čo článok rieši."/></Field><Field label="Vlastník"><input value={knowledgeDraft.owner} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,owner:event.target.value})}/></Field><Field label="Katalógová služba"><select value={knowledgeDraft.catalogItemId} onChange={(event)=>{const catalog=catalogItems.find((item)=>item.id===event.target.value);setKnowledgeDraft({...knowledgeDraft,catalogItemId:event.target.value,serviceId:catalog?.serviceId||knowledgeDraft.serviceId,category:catalog?.category||knowledgeDraft.category,subcategory:catalog?.subcategory||knowledgeDraft.subcategory})}}><option value="">Bez väzby</option>{catalogItems.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Služba / systém"><select value={knowledgeDraft.serviceId} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,serviceId:event.target.value})}><option value="">Bez väzby</option>{services.map((service)=><option key={service.id} value={service.id}>{service.name}</option>)}</select></Field><Field label="Kategória"><select value={knowledgeDraft.category} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,category:event.target.value,subcategory:categories[event.target.value]?.[0]||''})}><option value="">Bez kategórie</option>{Object.keys(categories).map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Podkategória"><select value={knowledgeDraft.subcategory} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,subcategory:event.target.value})}><option value="">Bez podkategórie</option>{(categories[knowledgeDraft.category]||[]).map((value)=><option key={value}>{value}</option>)}</select></Field><Field label="Kľúčové slová" hint="Oddeľte čiarkou. Používajú sa pri odporúčaniach pred vytvorením ticketu."><input value={knowledgeDraft.keywords.join(', ')} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,keywords:event.target.value.split(',').map((value)=>value.trim()).filter(Boolean)})}/></Field><Field label="Zdrojový ticket"><input value={knowledgeDraft.sourceTicketId} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,sourceTicketId:event.target.value})}/></Field><label className="sd-config-toggle"><input type="checkbox" checked={knowledgeDraft.isFeatured} disabled={!canConfigure} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,isFeatured:event.target.checked})}/> Odporúčaný článok</label><Field label="Príznaky / problém"><textarea value={knowledgeDraft.symptoms} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,symptoms:event.target.value})}/></Field><Field label="Riešenie / workaround"><textarea value={knowledgeDraft.workaround} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,workaround:event.target.value})}/></Field><Field label="Známa príčina"><textarea value={knowledgeDraft.rootCause} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,rootCause:event.target.value})}/></Field><Field label="Kompletný postup"><textarea className="sd-knowledge-content-input" value={knowledgeDraft.content} onChange={(event)=>setKnowledgeDraft({...knowledgeDraft,content:event.target.value})}/></Field></div>{knowledgeError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{knowledgeError}</span></div>}<div className="modal-actions"><button className="button button-ghost" onClick={()=>setKnowledgeEditorOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={knowledgeSaving||!knowledgeDraft.title.trim()||!knowledgeDraft.summary.trim()} onClick={()=>void saveKnowledgeArticle()}><Icon name="check" size={15}/>{knowledgeSaving?'Ukladám…':'Uložiť článok'}</button></div></div></Modal>}
+
     {notificationsOpen && <Modal title={`Notifikácie ServiceDesku (${unreadNotificationCount} nových)`} onClose={() => setNotificationsOpen(false)}><div className="sd-notification-toolbar"><span>{notificationsError || 'Serverové udalosti, SLA upozornenia a zmeny ticketov.'}</span>{unreadNotificationCount>0&&<button className="button button-secondary button-small" onClick={()=>void markAllNotificationsRead()}><Icon name="check" size={15}/> Označiť všetko ako prečítané</button>}</div><div className="sd-notification-list">{notifications.length ? notifications.map((item) => {const ticket=visibleTickets.find((candidate)=>candidate.id===item.ticketId);return <button key={item.id} className={item.isRead?'is-read':'is-unread'} onClick={()=>{void setNotificationRead(item,true);if(ticket){setNotificationsOpen(false);openTicket(ticket)}}}><span className={`sd-notification-dot sd-notification-${item.severity}`}/><div><header><strong>{item.title}</strong><Badge tone={notificationTone(item.severity)}>{item.kind}</Badge></header><p>{item.message}</p><small>{item.ticketId?`${item.ticketId} · `:''}{formatDate(item.createdAt,true)}{item.emailStatus==='sent'?' · e-mail odoslaný':item.emailStatus==='pending'?' · e-mail čaká na odoslanie':''}</small></div>{ticket&&<Icon name="chevron" size={17}/>}</button>}) : <Empty title="Bez notifikácií" text="ServiceDesk zatiaľ nevytvoril žiadnu notifikáciu pre váš účet." />}</div></Modal>}
 
     {alertsOpen && <Modal title={`Upozornenia ServiceDesku (${alertItems.length})`} onClose={() => setAlertsOpen(false)}><div className="servicedesk-alert-list">{alertItems.length ? alertItems.map(({ ticket, sla }) => <button key={ticket.id} onClick={() => { setAlertsOpen(false); openTicket(ticket) }}><span className={`alert-dot alert-${sla.tone}`} /><div><strong>{ticket.id} · {ticket.title}</strong><small>{sla.label} · {sla.detail}{!ticket.assignee ? ' · bez riešiteľa' : ''}</small></div><Icon name="chevron" size={17} /></button>) : <Empty title="Bez upozornení" text="Žiadny otvorený ticket momentálne nevyžaduje zásah." />}</div></Modal>}
@@ -1036,6 +1187,7 @@ export default function Helpdesk({
       {!canOperate&&<div className="helpdesk-selfservice-hint"><Icon name="shield" size={17}/><span><strong>Stačí popísať, čo potrebujete.</strong> Riešiteľskú skupinu, prioritu a SLA priradí ServiceDesk automaticky podľa routing pravidiel.</span></div>}
       {ticketFormError&&<div className="inline-alert inline-alert-error compact-alert"><Icon name="warning" size={16}/><span>{ticketFormError}</span></div>}
       {selectedCatalogItem&&<div className="sd-selected-catalog"><span className="sd-catalog-card-icon"><Icon name={catalogIcon(selectedCatalogItem.icon)} size={20}/></span><div><strong>{selectedCatalogItem.name}</strong><small>{selectedCatalogItem.group} · {selectedCatalogItem.ticketType} · {selectedCatalogItem.category} / {selectedCatalogItem.subcategory}</small></div><Badge tone="info">katalóg</Badge></div>}
+      {!draft.id&&suggestedKnowledge.length>0&&<section className="sd-ticket-knowledge-suggestions"><header><div><span className="eyebrow">Možno pomôže ešte pred odoslaním</span><h3>Odporúčané riešenia</h3></div><Badge tone="success">{suggestedKnowledge.length} nájdené</Badge></header><div>{suggestedKnowledge.map((article)=><button key={article.id} onClick={()=>openKnowledgeArticle(article)}><span className={`sd-kb-suggestion-icon ${article.articleType==='Known Error'?'is-warning':''}`}><Icon name={article.articleType==='Known Error'?'warning':'decision'} size={18}/></span><div><strong>{article.title}</strong><small>{article.articleType} · {article.summary}</small></div><Icon name="chevron" size={16}/></button>)}</div><p>Ak návod problém vyrieši, ticket nemusíte odosielať.</p></section>}
       <div className="form-grid helpdesk-form-grid">
         {(!selectedCatalogItem||canOperate)&&<Field label="Typ"><select value={draft.type} disabled={!canCreate || Boolean(draft.id)} onChange={(event) => setDraft({ ...draft, type: event.target.value })}>{ticketTypes.map((value) => <option key={value}>{value}</option>)}</select></Field>}
         {canOperate&&<Field label="Stav"><select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>{ticketStatuses.map((value) => <option key={value}>{value}</option>)}</select></Field>}
@@ -1069,6 +1221,7 @@ export default function Helpdesk({
       <section className="helpdesk-activity-card"><div className="helpdesk-activity-heading"><div><span className="eyebrow">Komunikácia</span><h3>Komentáre</h3></div><Badge tone="neutral">{draft.comments.length}</Badge></div><div className="ticket-comments">{draft.comments.length ? [...draft.comments].reverse().map((comment) => <article key={comment.id} className={comment.internal ? 'is-internal' : ''}><header><strong>{comment.author}</strong><span>{formatDate(comment.createdAt, true)}</span></header><p>{comment.text}</p>{comment.internal && canOperate && <small>Interná poznámka</small>}</article>) : <p className="helpdesk-empty-copy">Zatiaľ bez komentárov.</p>}</div>{canEdit && <div className="ticket-comment-editor"><textarea value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Napísať komentár…" />{canOperate&&<label><input type="checkbox" checked={commentInternal} onChange={(event) => setCommentInternal(event.target.checked)} /> Interná poznámka</label>}<button className="button button-secondary" onClick={addComment} disabled={!commentText.trim()}><Icon name="plus" size={17} /> Pridať komentár</button></div>}</section>
       <section className="helpdesk-activity-card"><div className="helpdesk-activity-heading"><div><span className="eyebrow">Audit</span><h3>História</h3></div></div><div className="ticket-history">{[...draft.history].reverse().map((item) => <div key={item.id}><span /><p><strong>{item.action}</strong><small>{item.author} · {formatDate(item.createdAt, true)}</small></p></div>)}{!draft.history.length && <p className="helpdesk-empty-copy">História vznikne po uložení ticketu.</p>}</div></section>
       {draft.id && canOperate && <button className="button button-secondary helpdesk-task-button" onClick={createLinkedTask} disabled={Boolean(draft.linkedTaskId)}><Icon name="tasks" />{draft.linkedTaskId ? `Prepojené s ${draft.linkedTaskId}` : 'Vytvoriť úlohu z ticketu'}</button>}
+      {draft.id && canOperate && isClosed(draft.status) && <button className="button button-secondary helpdesk-task-button" onClick={()=>editKnowledgeArticle(undefined,draft)}><Icon name="decision" /> Vytvoriť návrh KB z riešenia</button>}
     </aside></div><div className="modal-actions split-actions helpdesk-modal-actions"><div>{draft.id && canOperate && <button className="button button-danger" onClick={deleteTicket}><Icon name="trash" /> Odstrániť</button>}</div><div><button className="button button-ghost" onClick={() => setModalOpen(false)}>Zrušiť</button>{canEdit && <button className="button button-primary" onClick={saveTicket} disabled={!draft.title.trim()}><Icon name="check" /> Uložiť ticket</button>}</div></div></Modal>}
   </div>
 }
