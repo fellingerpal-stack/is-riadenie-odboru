@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AccessScope, AppRole, AppState, CloudSnapshot, SyncState } from './types'
+import type { AccessScope, AppRole, AppState, CloudSnapshot, Employee, SyncState } from './types'
 import { exportState, importState, loadRole, loadState, migrateState, resetState, saveRole, saveState } from './lib/storage'
 import { loadCurrentSnapshot, saveCurrentSnapshot } from './lib/cloud'
 import { canReadScope, canWriteScope, defaultAccessScopes, profileAccess } from './lib/accessControl'
@@ -44,6 +44,7 @@ import LogManagement from './views/LogManagement'
 import ManagementActionCenter from './views/ManagementActionCenter'
 import Enterprise360 from './views/Enterprise360'
 import { countManagementActions } from './lib/actionCenter'
+import { oitData } from './data/oitData'
 
 type ViewKey='portals'|'enterprise360'|'actionCenter'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'serviceDesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'logs'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
@@ -214,6 +215,36 @@ function syncLabel(sync:SyncState){
 }
 
 
+function buildServiceDeskEmployees(employees: Employee[]): Employee[] {
+  const merged = new Map<string, Employee>()
+  for (const employee of employees) {
+    if (!employee?.name?.trim()) continue
+    merged.set(employee.name.trim().toLocaleLowerCase('sk-SK'), employee)
+  }
+  for (const person of oitData.people) {
+    const key=person.name.trim().toLocaleLowerCase('sk-SK')
+    if (merged.has(key)) continue
+    merged.set(key,{
+      id:`OIT-${person.id}`,
+      name:person.name,
+      position:person.area,
+      roleType:'3.1 OIT · prevádzka',
+      responsibilities:person.area,
+      systems:'',
+      decides:'',
+      needsApproval:'',
+      outputs:'',
+      manager:'',
+      deputy:'',
+      capacity:'',
+      documentation:'',
+      status:'Aktívny',
+      note:'Zdroj: RACI odboru 3.1 / OIT',
+    })
+  }
+  return Array.from(merged.values()).sort((a,b)=>a.name.localeCompare(b.name,'sk'))
+}
+
 function errorMessage(error:unknown,fallback:string){
   if(error instanceof Error&&error.message.trim())return error.message.trim()
   if(typeof error==='string'&&error.trim())return error.trim()
@@ -261,6 +292,8 @@ export default function App(){
   const iamWriteQueue=useRef<Promise<void>>(Promise.resolve())
   const iamPendingWrites=useRef(0)
   const iamReloadTimer=useRef<number|undefined>(undefined)
+
+  const serviceDeskEmployees=useMemo(()=>buildServiceDeskEmployees(Array.isArray(state.employees)?state.employees:[]),[state.employees])
 
   const role:AppRole=auth.configured?(auth.profile?.role??'viewer'):demoRole
   const canManage=role==='admin'||role==='manager'
@@ -707,7 +740,7 @@ export default function App(){
         {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManageOris} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
         {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManageOris} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
         {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
-        {(view==='serviceDesk'||view==='helpdesk')&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={role==='employee'?[]:Array.isArray(state.services)?state.services:[]} employees={role==='employee'?[]:Array.isArray(state.employees)?state.employees:[]} tasks={role==='employee'?[]:Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} serviceRoutingRules={Array.isArray(state.serviceRoutingRules)?state.serviceRoutingRules:[]} role={role} canEdit={role!=='viewer'} canConfigure={role==='admin'||role==='manager'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies} onServiceRoutingRulesChange={commitServiceRoutingRules}/>} 
+        {(view==='serviceDesk'||view==='helpdesk')&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={role==='employee'?[]:Array.isArray(state.services)?state.services:[]} employees={role==='employee'?[]:serviceDeskEmployees} tasks={role==='employee'?[]:Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} serviceRoutingRules={Array.isArray(state.serviceRoutingRules)?state.serviceRoutingRules:[]} role={role} canEdit={role!=='viewer'} canConfigure={role==='admin'||role==='manager'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies} onServiceRoutingRulesChange={commitServiceRoutingRules}/>} 
         {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
         {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
         {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={role==='employee'?[]:Array.isArray(state.services)?state.services:[]} employees={role==='employee'?[]:Array.isArray(state.employees)?state.employees:[]} tasks={role==='employee'?[]:Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
