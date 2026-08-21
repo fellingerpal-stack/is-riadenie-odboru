@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""CVTI Asset Collector v0.31.0
+"""CVTI Asset Collector v0.31.2
 
 Defensive asset discovery for explicitly configured RFC1918 IPv4 ranges.
 - TCP connect discovery on a small allow-list of ports.
+- Optional unauthenticated enrichment: reverse DNS, HTTP/HTTPS metadata, TLS fingerprint,
+  SSH banner, local neighbor MAC and evidence-based device classification.
 - Optional SNMP Printer-MIB enrichment through local Net-SNMP CLI tools.
 - No vulnerability testing, exploitation, credential guessing or internet-wide scanning.
 - Uploads observations only to the configured Supabase discovery RPC.
@@ -12,6 +14,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
+import html
 import ipaddress
 import json
 import os
@@ -19,6 +23,7 @@ import platform
 import re
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -28,7 +33,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.31.0"
+VERSION = "0.31.2"
 PRIVATE_RANGES = [
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
@@ -46,17 +51,37 @@ SUPPLY_DESC = "1.3.6.1.2.1.43.11.1.1.6"
 SUPPLY_MAX = "1.3.6.1.2.1.43.11.1.1.8"
 SUPPLY_LEVEL = "1.3.6.1.2.1.43.11.1.1.9"
 
-BRANDS = [
-    "Hewlett-Packard", "HP", "Canon", "Xerox", "Ricoh", "Kyocera", "Brother", "Epson", "Lexmark",
-    "Konica Minolta", "Cisco", "Aruba", "Juniper", "Dell", "Lenovo", "Fujitsu", "APC", "Synology", "QNAP",
-]
+BRAND_ALIASES = {
+    "HPE": ["hewlett packard enterprise", "hpe", "proliant", "integrated lights-out", " ilo "],
+    "HP": ["hewlett-packard", "hp laserjet", "hp color laserjet", "hp officejet"],
+    "Dell": ["dell", "poweredge", "idrac"],
+    "Lenovo": ["lenovo", "thinksystem", "thinkcentre", "thinkpad"],
+    "Fujitsu": ["fujitsu", "primergy"],
+    "Cisco": ["cisco", "catalyst"],
+    "Aruba": ["aruba", "procurve"],
+    "Juniper": ["juniper"],
+    "Fortinet": ["fortigate", "fortinet"],
+    "Palo Alto": ["palo alto", "pan-os"],
+    "Synology": ["synology", "diskstation"],
+    "QNAP": ["qnap"],
+    "APC": ["apc", "smart-ups"],
+    "Canon": ["canon", "imagerunner", "imageclass"],
+    "Xerox": ["xerox"],
+    "Ricoh": ["ricoh"],
+    "Kyocera": ["kyocera", "ecosys", "taskalfa"],
+    "Brother": ["brother"],
+    "Epson": ["epson"],
+    "Lexmark": ["lexmark"],
+    "Konica Minolta": ["konica minolta", "bizhub"],
+}
+
 
 @dataclass
 class Device:
     ip_address: str
     mac_address: str = ""
     hostname: str = ""
-    device_type: str = "Neznáme zariadenie"
+    device_type: str = "Nez\u00e1me zariadenie"
     manufacturer: str = ""
     model: str = ""
     serial_number: str = ""
@@ -77,24 +102,23 @@ def load_config(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         config = json.load(handle)
     if not isinstance(config, dict):
-        raise ValueError("Config musí byť JSON objekt.")
+        raise ValueError("Config must be a JSON object.")
     return config
 
 
 def allowed_network(value: str, max_hosts: int) -> ipaddress.IPv4Network:
     network = ipaddress.ip_network(value, strict=False)
     if not isinstance(network, ipaddress.IPv4Network):
-        raise ValueError(f"v0.31 podporuje iba IPv4 CIDR: {value}")
+        raise ValueError(f"v0.31 supports IPv4 CIDR only: {value}")
     if not any(network.subnet_of(parent) for parent in PRIVATE_RANGES):
-        raise ValueError(f"CIDR {value} nie je RFC1918 privátna sieť; collector ho odmietol.")
+        raise ValueError(f"CIDR {value} is not an RFC1918 private network; collector refused it.")
     if network.num_addresses > max_hosts + 2:
-        raise ValueError(f"CIDR {value} má {network.num_addresses} adries; limit collectora je {max_hosts} hostov na rozsah.")
+        raise ValueError(f"CIDR {value} has {network.num_addresses} addresses; collector limit is {max_hosts} hosts per range.")
     return network
 
 
 def tcp_probe(ip: str, port: int, timeout: float) -> bool:
-    family = socket.AF_INET
-    sock = socket.socket(family, socket.SOCK_STREAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
         return sock.connect_ex((ip, port)) == 0
@@ -104,11 +128,12 @@ def tcp_probe(ip: str, port: int, timeout: float) -> bool:
         sock.close()
 
 
-def reverse_dns(ip: str) -> str:
+def reverse_dns_record(ip: str) -> dict[str, str]:
     try:
-        return socket.gethostbyaddr(ip)[0].split(".")[0]
+        fqdn = socket.gethostbyaddr(ip)[0].strip().rstrip(".")
+        return {"ptr": fqdn, "short_hostname": fqdn.split(".")[0] if fqdn else ""}
     except (socket.herror, socket.gaierror, TimeoutError, OSError):
-        return ""
+        return {"ptr": "", "short_hostname": ""}
 
 
 def neighbor_mac(ip: str) -> str:
@@ -119,7 +144,8 @@ def neighbor_mac(ip: str) -> str:
     else:
         if shutil.which("ip"):
             commands.append(["ip", "neigh", "show", ip])
-        commands.append(["arp", "-n", ip])
+        if shutil.which("arp"):
+            commands.append(["arp", "-n", ip])
     for command in commands:
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=1.5, check=False)
@@ -129,6 +155,100 @@ def neighbor_mac(ip: str) -> str:
         if match:
             return match.group(0).replace("-", ":").lower()
     return ""
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req: urllib.request.Request, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        return None
+
+
+def _http_title(body: bytes) -> str:
+    if not body:
+        return ""
+    text = body.decode("utf-8", errors="replace")
+    match = re.search(r"<title[^>]*>(.*?)</title>", text, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    value = re.sub(r"\s+", " ", html.unescape(match.group(1))).strip()
+    return value[:240]
+
+
+def http_fingerprint(ip: str, port: int, timeout: float, max_bytes: int, use_tls: bool) -> dict[str, Any]:
+    scheme = "https" if use_tls else "http"
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    handlers: list[Any] = [NoRedirect()]
+    if use_tls:
+        handlers.append(urllib.request.HTTPSHandler(context=context))
+    opener = urllib.request.build_opener(*handlers)
+    request = urllib.request.Request(
+        f"{scheme}://{ip}:{port}/",
+        method="GET",
+        headers={
+            "User-Agent": f"CVTI-Asset-Collector/{VERSION}",
+            "Accept": "text/html,application/xhtml+xml,*/*;q=0.2",
+            "Connection": "close",
+        },
+    )
+    response: Any = None
+    try:
+        response = opener.open(request, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        response = exc
+    except (urllib.error.URLError, TimeoutError, OSError, ssl.SSLError):
+        return {}
+    try:
+        body = response.read(max_bytes) if response is not None else b""
+        headers = response.headers if response is not None else {}
+        return {
+            "port": port,
+            "scheme": scheme,
+            "status": int(getattr(response, "status", getattr(response, "code", 0)) or 0),
+            "title": _http_title(body),
+            "server": str(headers.get("Server", ""))[:240],
+            "content_type": str(headers.get("Content-Type", ""))[:160],
+            "location": str(headers.get("Location", ""))[:300],
+            "www_authenticate": str(headers.get("WWW-Authenticate", ""))[:240],
+        }
+    except (OSError, ValueError):
+        return {}
+    finally:
+        try:
+            if response is not None:
+                response.close()
+        except Exception:
+            pass
+
+
+def tls_fingerprint(ip: str, port: int, timeout: float) -> dict[str, str]:
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((ip, port), timeout=timeout) as raw:
+            with context.wrap_socket(raw, server_hostname=None) as tls_socket:
+                cert = tls_socket.getpeercert(binary_form=True) or b""
+                cipher = tls_socket.cipher()
+                return {
+                    "port": str(port),
+                    "protocol": str(tls_socket.version() or ""),
+                    "cipher": str(cipher[0] if cipher else ""),
+                    "certificate_sha256": hashlib.sha256(cert).hexdigest() if cert else "",
+                }
+    except (OSError, TimeoutError, ssl.SSLError):
+        return {}
+
+
+def ssh_fingerprint(ip: str, port: int, timeout: float, max_bytes: int) -> dict[str, Any]:
+    try:
+        with socket.create_connection((ip, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            data = sock.recv(max(64, min(max_bytes, 4096)))
+    except (OSError, TimeoutError):
+        return {}
+    banner = data.decode("utf-8", errors="replace").strip().splitlines()[0] if data else ""
+    return {"port": port, "banner": banner[:300]} if banner else {}
 
 
 def clean_snmp_value(value: str) -> str:
@@ -165,39 +285,150 @@ def snmp_walk(ip: str, community: str, binary: str, timeout: float, oid: str) ->
     return [clean_snmp_value(line) for line in result.stdout.splitlines() if clean_snmp_value(line)]
 
 
-def infer_brand(sys_descr: str) -> str:
-    low = sys_descr.lower()
-    for brand in BRANDS:
-        if brand.lower() in low:
-            return "HP" if brand == "Hewlett-Packard" else brand
+def infer_brand(*values: str) -> str:
+    low = " ".join(value for value in values if value).lower()
+    padded = f" {low} "
+    for brand, aliases in BRAND_ALIASES.items():
+        if any(alias in padded for alias in aliases):
+            return brand
     return ""
 
 
-def classify_device(open_ports: list[int], sys_descr: str, printer_name: str, printer_serial: str) -> str:
-    low = sys_descr.lower()
+def base_device_type(open_ports: list[int], signal_text: str, printer_name: str, printer_serial: str) -> str:
+    low = signal_text.lower()
     if printer_name or printer_serial or 9100 in open_ports or 631 in open_ports or 515 in open_ports:
-        if any(word in low for word in ["mfp", "multifunction", "multifunk", "imageclass", "imagerunner", "bizhub"]):
+        if any(word in low for word in ["mfp", "multifunction", "multifunk", "imageclass", "imagerunner", "bizhub", "taskalfa"]):
             return "MFP"
-        return "Tlačiareň"
-    if "firewall" in low or "fortigate" in low or "palo alto" in low:
+        return "Tla\u010diare\u0148"
+    if any(word in low for word in ["fortigate", "fortinet", "palo alto", "pan-os", "firewall"]):
         return "Firewall"
-    if "switch" in low or "catalyst" in low:
+    if any(word in low for word in ["catalyst", "procurve", "switch"]):
         return "Switch"
     if "router" in low:
         return "Router"
-    if "access point" in low or "wireless" in low or "aruba ap" in low:
+    if any(word in low for word in ["access point", "wireless", "aruba ap"]):
         return "Wi-Fi AP"
-    if "ups" in low or "smart-ups" in low:
+    if any(word in low for word in ["smart-ups", " ups "]):
         return "UPS"
-    if "storage" in low or "synology" in low or "qnap" in low:
+    if any(word in low for word in ["synology", "qnap", "storage", "diskstation"]):
         return "Storage"
+    if any(word in low for word in ["vmware esxi", "proxmox"]):
+        return "Hypervisor"
+    if any(word in low for word in ["idrac", "integrated lights-out"]):
+        return "Server management"
     if 3389 in open_ports or 445 in open_ports:
         return "Windows endpoint / server"
     if 22 in open_ports:
         return "Server / appliance"
     if 80 in open_ports or 443 in open_ports:
-        return "Sieťové / embedded zariadenie"
-    return "Neznáme zariadenie"
+        return "Sie\u0165ov\u00e9 / embedded zariadenie"
+    return "Nez\u00e1me zariadenie"
+
+
+def build_classification(
+    open_ports: list[int],
+    hostname: str,
+    signal_text: str,
+    base_type: str,
+) -> dict[str, Any]:
+    low = signal_text.lower()
+    host = hostname.lower()
+    evidence: list[str] = []
+    family = base_type
+    role = ""
+    os_hint = ""
+    confidence = 45
+
+    if 445 in open_ports:
+        evidence.append("SMB/445")
+    if 3389 in open_ports:
+        evidence.append("RDP/3389")
+    if 22 in open_ports:
+        evidence.append("SSH/22")
+    if 80 in open_ports:
+        evidence.append("HTTP/80")
+    if 443 in open_ports:
+        evidence.append("HTTPS/443")
+    if any(port in open_ports for port in (515, 631, 9100)):
+        evidence.append("print service")
+
+    if base_type in {"Tla\u010diare\u0148", "MFP"}:
+        family = base_type
+        role = "Print device"
+        confidence = 92
+    elif base_type in {"Firewall", "Switch", "Router", "Wi-Fi AP", "UPS", "Storage", "Hypervisor", "Server management"}:
+        family = base_type
+        role = base_type
+        confidence = 92
+    elif 445 in open_ports or 3389 in open_ports:
+        family = "Windows endpoint / server"
+        os_hint = "Windows candidate"
+        confidence = 78 if 445 in open_ports and 3389 in open_ports else 68
+    elif 22 in open_ports:
+        family = "Server / appliance"
+        os_hint = "Unix/Linux or appliance candidate"
+        confidence = 62
+    elif 80 in open_ports or 443 in open_ports:
+        family = "Network / embedded device"
+        confidence = 58
+
+    role_rules: list[tuple[str, str, int]] = [
+        (r"(?:^|[-_.])(?:db|dbsql|sql)[a-z0-9]*", "Database server candidate", 92),
+        (r"(?:^|[-_.])(?:web|www|iis)[a-z0-9]*", "Web server candidate", 84),
+        (r"(?:^|[-_.])(?:fs|file)[a-z0-9]*", "File server candidate", 84),
+        (r"(?:^|[-_.])(?:print|prt)[a-z0-9]*", "Print server candidate", 84),
+        (r"(?:^|[-_.])(?:backup|bkp|veeam)[a-z0-9]*", "Backup server candidate", 88),
+        (r"(?:^|[-_.])(?:clu|cluster)[a-z0-9]*", "Cluster node candidate", 86),
+    ]
+    for pattern, label, score in role_rules:
+        if re.search(pattern, host, flags=re.IGNORECASE) or (label.startswith("Database") and "dbsql" in host):
+            role = label
+            confidence = max(confidence, score)
+            evidence.append(f"hostname:{hostname}")
+            break
+
+    if "microsoft-iis" in low:
+        os_hint = "Windows / Microsoft IIS candidate"
+        role = role or "Web server candidate"
+        confidence = max(confidence, 88)
+        evidence.append("HTTP Server: Microsoft-IIS")
+    if "vmware esxi" in low:
+        family = "Hypervisor"
+        role = "VMware ESXi host"
+        confidence = max(confidence, 98)
+        evidence.append("VMware ESXi fingerprint")
+    elif "proxmox" in low:
+        family = "Hypervisor"
+        role = "Proxmox host"
+        confidence = max(confidence, 98)
+        evidence.append("Proxmox fingerprint")
+    if "idrac" in low:
+        family = "Server management"
+        role = "Dell iDRAC management"
+        confidence = max(confidence, 98)
+        evidence.append("iDRAC fingerprint")
+    if "integrated lights-out" in low or " hpe ilo" in f" {low}":
+        family = "Server management"
+        role = "HPE iLO management"
+        confidence = max(confidence, 98)
+        evidence.append("iLO fingerprint")
+    if "fortigate" in low or "fortinet" in low:
+        family = "Firewall"
+        role = "Fortinet firewall"
+        confidence = max(confidence, 98)
+        evidence.append("Fortinet fingerprint")
+    if "openssh" in low and not os_hint:
+        os_hint = "Unix/Linux or network appliance candidate"
+        confidence = max(confidence, 68)
+        evidence.append("OpenSSH banner")
+
+    return {
+        "family": family,
+        "role": role,
+        "confidence": min(99, confidence),
+        "os_hint": os_hint,
+        "evidence": evidence[:12],
+    }
 
 
 def enrich_snmp(ip: str, config: dict[str, Any], open_ports: list[int]) -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
@@ -246,28 +477,94 @@ def enrich_snmp(ip: str, config: dict[str, Any], open_ports: list[int]) -> tuple
     return snmp, details, identity
 
 
+def enrich_network(ip: str, config: dict[str, Any], open_ports: list[int]) -> dict[str, Any]:
+    cfg = config.get("enrichment") if isinstance(config.get("enrichment"), dict) else {}
+    if not cfg or not bool(cfg.get("enabled", False)):
+        return {}
+    timeout = max(0.2, min(3.0, float(cfg.get("timeout_ms", 800)) / 1000.0))
+    max_bytes = max(512, min(int(cfg.get("max_banner_bytes", 4096)), 16384))
+    result: dict[str, Any] = {"version": VERSION}
+
+    if bool(cfg.get("reverse_dns", True)):
+        result["dns"] = reverse_dns_record(ip)
+
+    http_items: list[dict[str, Any]] = []
+    if 80 in open_ports and bool(cfg.get("http", True)):
+        value = http_fingerprint(ip, 80, timeout, max_bytes, False)
+        if value:
+            http_items.append(value)
+    if 443 in open_ports and bool(cfg.get("https", True)):
+        value = http_fingerprint(ip, 443, timeout, max_bytes, True)
+        if value:
+            http_items.append(value)
+    if http_items:
+        result["http"] = http_items
+
+    if 443 in open_ports and bool(cfg.get("tls", True)):
+        value = tls_fingerprint(ip, 443, timeout)
+        if value:
+            result["tls"] = value
+
+    if 22 in open_ports and bool(cfg.get("ssh_banner", True)):
+        value = ssh_fingerprint(ip, 22, timeout, max_bytes)
+        if value:
+            result["ssh"] = value
+
+    if bool(cfg.get("local_neighbor_mac", True)):
+        mac = neighbor_mac(ip)
+        if mac:
+            result["neighbor_mac"] = mac
+    return result
+
+
 def scan_host(ip: str, config: dict[str, Any]) -> Device | None:
     timeout = max(0.1, min(3.0, float(config.get("timeout_ms", 350)) / 1000.0))
     ports = [int(port) for port in config.get("tcp_ports", DEFAULT_PORTS) if 1 <= int(port) <= 65535]
     open_ports = [port for port in ports if tcp_probe(ip, port, timeout)]
-    snmp, details, identity = enrich_snmp(ip, config, open_ports)
+    snmp, snmp_details, identity = enrich_snmp(ip, config, open_ports)
     if not open_ports and not snmp:
         return None
-    hostname = identity.get("hostname") or reverse_dns(ip)
-    sys_descr = identity.get("sys_descr", "")
-    device_type = classify_device(open_ports, sys_descr, identity.get("model", ""), identity.get("serial_number", ""))
+
+    enrichment = enrich_network(ip, config, open_ports)
+    dns = enrichment.get("dns") if isinstance(enrichment.get("dns"), dict) else {}
+    hostname = str(identity.get("hostname") or dns.get("short_hostname") or "")
+    http_items = enrichment.get("http") if isinstance(enrichment.get("http"), list) else []
+    http_text = " ".join(
+        f"{item.get('title', '')} {item.get('server', '')} {item.get('www_authenticate', '')}"
+        for item in http_items if isinstance(item, dict)
+    )
+    ssh = enrichment.get("ssh") if isinstance(enrichment.get("ssh"), dict) else {}
+    ssh_text = str(ssh.get("banner") or "")
+    sys_descr = str(identity.get("sys_descr") or "")
+    signal_text = " ".join([sys_descr, hostname, http_text, ssh_text])
+    device_type = base_device_type(open_ports, signal_text, str(identity.get("model") or ""), str(identity.get("serial_number") or ""))
+    enrichment_cfg = config.get("enrichment") if isinstance(config.get("enrichment"), dict) else {}
+    classification = build_classification(open_ports, hostname, signal_text, device_type) if bool(enrichment_cfg.get("classification", True)) else {"family": device_type, "role": "", "confidence": 0, "os_hint": "", "evidence": []}
+    manufacturer = str(identity.get("manufacturer") or infer_brand(signal_text))
+    mac = str(enrichment.get("neighbor_mac") or "")
+
+    details: dict[str, Any] = {
+        **snmp_details,
+        "services": [PORT_NAMES.get(port, str(port)) for port in open_ports],
+        "classification": classification,
+        "enrichment": {"version": VERSION, "mode": "unauthenticated-network-fingerprint"},
+    }
+    for key in ("dns", "http", "tls", "ssh"):
+        if key in enrichment:
+            details[key] = enrichment[key]
+
     return Device(
         ip_address=ip,
-        mac_address=neighbor_mac(ip),
+        mac_address=mac,
         hostname=hostname,
         device_type=device_type,
-        manufacturer=identity.get("manufacturer", ""),
-        model=identity.get("model", ""),
-        serial_number=identity.get("serial_number", ""),
-        firmware=identity.get("firmware", ""),
+        manufacturer=manufacturer,
+        model=str(identity.get("model") or ""),
+        serial_number=str(identity.get("serial_number") or ""),
+        firmware=str(identity.get("firmware") or ""),
         open_ports=open_ports,
         snmp=snmp,
-        details={**details, "services": [PORT_NAMES.get(port, str(port)) for port in open_ports]},
+        details=details,
     )
 
 
@@ -279,7 +576,7 @@ def post_discovery(config: dict[str, Any], devices: list[Device], cidrs: list[st
     token = os.environ.get(token_env, "")
     anon_key = os.environ.get(anon_env, "")
     if not url or not collector_id or not token or not anon_key:
-        raise RuntimeError(f"Chýba supabase_url, collector_id alebo environment secrets {token_env}/{anon_env}.")
+        raise RuntimeError(f"Missing supabase_url, collector_id or environment secrets {token_env}/{anon_env}.")
     endpoint = f"{url}/rest/v1/rpc/ingest_discovery_batch"
     body = json.dumps({
         "p_collector_id": collector_id,
@@ -303,23 +600,23 @@ def post_discovery(config: dict[str, Any], devices: list[Device], cidrs: list[st
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="CVTI Network Discovery / Asset Collector")
-    parser.add_argument("--config", default="config.json", help="Cesta ku collector JSON configu")
-    parser.add_argument("--dry-run", action="store_true", help="Nesielať do Supabase; vypísať JSON")
-    parser.add_argument("--output", help="Voliteľný JSON súbor pre výsledok dry-run")
+    parser.add_argument("--config", default="config.json", help="Path to collector JSON config")
+    parser.add_argument("--dry-run", action="store_true", help="Do not upload to Supabase; print/write JSON")
+    parser.add_argument("--output", help="Optional JSON output file for dry-run")
     args = parser.parse_args()
 
     config = load_config(Path(args.config))
     max_hosts = max(1, min(int(config.get("max_hosts_per_cidr", 4096)), 4096))
     networks = [allowed_network(str(value), max_hosts) for value in config.get("cidrs", [])]
     if not networks:
-        raise ValueError("Config neobsahuje žiadny CIDR rozsah.")
+        raise ValueError("Config does not contain a CIDR range.")
     all_ips = [str(ip) for network in networks for ip in network.hosts()]
     if len(all_ips) > 10000:
-        raise ValueError("Jeden run môže obsahovať maximálne 10 000 hostov. Rozdeľ discovery do viacerých collectorov/rozsahov.")
+        raise ValueError("One run can contain at most 10,000 hosts. Split discovery into multiple collectors/ranges.")
 
     workers = max(1, min(int(config.get("workers", 48)), 128))
     started = time.time()
-    print(f"CVTI Asset Collector {VERSION}: skenujem {len(all_ips)} hostov v {len(networks)} CIDR rozsahoch, workers={workers}")
+    print(f"CVTI Asset Collector {VERSION}: scanning {len(all_ips)} hosts in {len(networks)} CIDR range(s), workers={workers}")
     devices: list[Device] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         future_map = {executor.submit(scan_host, ip, config): ip for ip in all_ips}
@@ -329,14 +626,24 @@ def main() -> int:
                 device = future.result()
                 if device:
                     devices.append(device)
-                    print(f"  + {ip:15} {device.device_type:28} {device.hostname or device.model}")
-            except Exception as exc:  # collector pokračuje aj pri chybe jedného hosta
+                    classification = device.details.get("classification", {}) if isinstance(device.details, dict) else {}
+                    role = str(classification.get("role") or "") if isinstance(classification, dict) else ""
+                    suffix = role or device.hostname or device.model
+                    print(f"  + {ip:15} {device.device_type:28} {suffix}")
+            except Exception as exc:
                 print(f"  ! {ip}: {exc}", file=sys.stderr)
             if index % 250 == 0:
                 print(f"  ... {index}/{len(all_ips)}")
 
     devices.sort(key=lambda item: tuple(int(part) for part in item.ip_address.split(".")))
-    result = {"version": VERSION, "cidrs": [str(n) for n in networks], "hosts_scanned": len(all_ips), "hosts_found": len(devices), "duration_s": round(time.time()-started, 2), "devices": [d.payload() for d in devices]}
+    result = {
+        "version": VERSION,
+        "cidrs": [str(n) for n in networks],
+        "hosts_scanned": len(all_ips),
+        "hosts_found": len(devices),
+        "duration_s": round(time.time() - started, 2),
+        "devices": [d.payload() for d in devices],
+    }
     if args.output:
         Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     if args.dry_run:
@@ -353,7 +660,7 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        print("Prerušené používateľom.", file=sys.stderr)
+        print("Interrupted by user.", file=sys.stderr)
         raise SystemExit(130)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

@@ -1,58 +1,43 @@
-# CVTI Asset Collector 0.31
+# CVTI Asset Collector 0.31.2
 
-Lokálny discovery collector pre modul **Asset Management → Network Discovery**.
+Collector performs defensive asset discovery only on explicitly configured RFC1918 IPv4 ranges.
 
-## Bezpečnostné hranice
+## Enriched discovery
 
-- skenuje iba explicitne uvedené RFC1918 IPv4 siete (`10/8`, `172.16/12`, `192.168/16`),
-- jeden CIDR je obmedzený na 4096 hostov a jeden run na 10 000 hostov,
-- používa iba TCP connect na nakonfigurované porty a voliteľné read-only SNMP dotazy,
-- nerobí vulnerability scan, exploit, credential guessing ani internetové skenovanie,
-- collector komunikuje do Supabase iba outbound HTTPS,
-- collector token ani SNMP community sa neposielajú v discovery payload-e.
+When `enrichment.enabled=true`, the collector can add evidence without endpoint credentials:
 
-## 1. Vytvor collector
+- reverse DNS / PTR,
+- HTTP and HTTPS status, page title and selected response headers,
+- TLS protocol, cipher and certificate SHA-256 fingerprint,
+- SSH banner,
+- local neighbor MAC when the collector host can see the target at layer 2,
+- evidence-based family / role / OS hints with confidence.
 
-V aplikácii otvor `Asset management → Network Discovery → Collectory → Nový collector`.
-Token sa zobrazí iba raz.
+These are discovery hints, not authoritative CMDB facts. User confirmation remains required before creating or linking an Asset 360 record.
 
-## 2. Config
+## Secrets
 
-Skopíruj `config.example.json` na `config.json` a nastav:
+Do not place keys or collector tokens in `config.json`.
 
-- `supabase_url`,
-- `collector_id`,
-- interné `cidrs`.
+PowerShell example:
 
-Do environment premenných daj:
-
-```text
-CVTI_SUPABASE_ANON_KEY=<Supabase publishable/anon key>
-CVTI_DISCOVERY_TOKEN=<token collectora>
+```powershell
+$env:CVTI_SUPABASE_ANON_KEY="sb_publishable_..."
+$env:CVTI_DISCOVERY_TOKEN="..."
 ```
 
-Pre Print Fleet môžeš voliteľne zapnúť SNMP. Collector používa lokálne CLI `snmpget`/`snmpwalk` z Net-SNMP. Community drž iba v env:
+## Dry run
 
-```text
-CVTI_SNMP_COMMUNITY=<read-only community>
+```powershell
+python .\cvti_asset_collector.py --config .\config.json --dry-run --output .\preview-enriched.json
 ```
 
-Odporúčanie: na produkcii preferuj oddelenú read-only SNMP konfiguráciu a sieťovo povoľ SNMP len z IP collectora.
+## Upload
 
-## 3. Test bez zápisu
-
-```bash
-python cvti_asset_collector.py --config config.json --dry-run --output discovery-preview.json
+```powershell
+python .\cvti_asset_collector.py --config .\config.json
 ```
 
-## 4. Reálny run
+## SNMP
 
-```bash
-python cvti_asset_collector.py --config config.json
-```
-
-## 5. Plánovanie
-
-Collector je stateless. Spúšťaj ho napr. každú hodinu alebo raz denne cez Windows Task Scheduler / cron/systemd timer podľa veľkosti siete.
-
-Pre veľké siete je lepšie mať viac collectorov podľa lokality/VLAN než jeden obrovský rozsah.
+SNMP remains optional and disabled by default. Print Fleet can be enabled later with a dedicated read-only community and ACL. SNMP credentials stay only on the collector host.

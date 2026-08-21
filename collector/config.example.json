@@ -6,10 +6,31 @@
   "cidrs": [
     "10.20.30.0/24"
   ],
-  "tcp_ports": [22, 80, 443, 445, 515, 631, 9100, 3389],
-  "workers": 48,
-  "timeout_ms": 350,
+  "tcp_ports": [
+    22,
+    80,
+    443,
+    445,
+    515,
+    631,
+    9100,
+    3389
+  ],
+  "workers": 16,
+  "timeout_ms": 500,
   "max_hosts_per_cidr": 4096,
+  "enrichment": {
+    "enabled": true,
+    "reverse_dns": true,
+    "http": true,
+    "https": true,
+    "tls": true,
+    "ssh_banner": true,
+    "local_neighbor_mac": true,
+    "classification": true,
+    "max_banner_bytes": 4096,
+    "timeout_ms": 800
+  },
   "snmp": {
     "enabled": false,
     "probe_all": false,
