@@ -1,0 +1,44 @@
+IS Riadenie odboru v0.49.0 – QA
+================================
+
+[PASS] package.json verzia = 0.49.0
+[PASS] src/lib/storage.ts CURRENT_VERSION = 0.49.0
+[PASS] src/data/seed.json meta.version = 0.49.0
+[PASS] V projekte je iba src/App.tsx; src/app.tsx neexistuje.
+[PASS] Microsoft SSO je feature-flagované cez VITE_MICROSOFT_SSO_ENABLED.
+[PASS] Feature flag je v .env.example predvolene false – existujúci login sa po deployi sám nezmení.
+[PASS] Typ VITE_MICROSOFT_SSO_ENABLED je doplnený v src/vite-env.d.ts.
+[PASS] OAuth provider je explicitne `azure`.
+[PASS] OAuth vyžaduje scope `email`.
+[PASS] OAuth redirect používa VITE_APP_URL/getAppUrl a nie hardcoded test URL.
+[PASS] Supabase klient zostáva PKCE + detectSessionInUrl.
+[PASS] Klasické signInWithPassword zostáva zachované.
+[PASS] Login UI obsahuje voliteľné „Prihlásiť cez Microsoft“.
+[PASS] Microsoft tlačidlo sa nezobrazuje v password-recovery režime.
+[PASS] Friendly error pokrýva vypnutý/nepodporovaný OAuth provider.
+[PASS] DB migrácia upravuje default_access_scopes(employee) na none/none/none.
+[PASS] DB migrácia opravuje existujúce employee scope na none/none/none.
+[PASS] DB trigger pri provider=azure vynúti rolu employee bez ohľadu na user metadata.
+[PASS] DB trigger pri Azure vynúti none/none/none access scopes.
+[PASS] DB migrácia obnovuje trigger on_auth_user_created_create_profile.
+[PASS] Existujúce admin/manager/resolver roly sa migráciou neprepisujú.
+[PASS] Diagnostický SQL test_entra_sso_v049.sql kontroluje provider, rolu, scope a aktivitu.
+[PASS] V zmenených frontend konfiguračných súboroch nie je Client Secret ani Service Role key.
+[PASS] TypeScript transpile/syntax kontrola: 72/72 aplikačných .ts/.tsx súborov PASS (bez .d.ts).
+[PASS] package.json a seed.json sú validný JSON.
+[PASS] SQL migrácia má vyvážené $$ bloky a transakciu begin/commit.
+[PASS] Deployment dokument obsahuje rollback cez VITE_MICROSOFT_SSO_ENABLED=false.
+
+[BLOCKED BY ENVIRONMENT] Plný `npm run build` nebolo možné lokálne dokončiť.
+Dôvod: `npm install --no-audit --no-fund` v pracovnom kontajneri vypršal po 180 sekundách a node_modules nevznikol.
+Release nepridáva žiadnu novú npm dependency; používa existujúci @supabase/supabase-js ^2.55.0.
+Produkčný Vercel build musí zostať finálnym build gate.
+
+ODPORÚČANÝ DEPLOYMENT GATE
+1. SQL migration_entra_sso_v049.sql -> TRUE / TRUE / TRUE.
+2. Deploy frontend v0.49.0 s VITE_MICROSOFT_SSO_ENABLED=false.
+3. Overiť pôvodný password login.
+4. Nastaviť Entra App Registration + Supabase Azure provider + Redirect URLs.
+5. Vercel: VITE_MICROSOFT_SSO_ENABLED=true -> redeploy.
+6. SSO pilot s novým bežným CVTI účtom.
+7. Spustiť test_entra_sso_v049.sql a overiť azure / employee / none scopes.
