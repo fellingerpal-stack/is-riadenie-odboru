@@ -6,6 +6,8 @@ import {
   cloudRequired,
   getPasswordRecoveryUrl,
   localDemoEnabled,
+  microsoftSsoEnabled,
+  getAppUrl,
   supabase,
   supabaseConfigured,
   supabaseConfiguration,
@@ -17,6 +19,7 @@ interface AuthContextValue {
   cloudRequired: boolean
   localDemoEnabled: boolean
   configuration: typeof supabaseConfiguration
+  microsoftSsoEnabled: boolean
   loading: boolean
   recoveryMode: boolean
   authEvent: AuthChangeEvent | 'BOOTSTRAP'
@@ -25,6 +28,7 @@ interface AuthContextValue {
   profile: UserProfile | null
   error: string
   signIn: (email: string, password: string) => Promise<void>
+  signInWithMicrosoft: () => Promise<void>
   signOut: () => Promise<void>
   sendPasswordReset: (email: string) => Promise<void>
   updatePassword: (password: string) => Promise<void>
@@ -72,6 +76,8 @@ function friendlyAuthError(error: unknown): string {
   if (lower.includes('invalid login credentials')) return 'Nesprávny e-mail alebo heslo.'
   if (lower.includes('email not confirmed')) return 'E-mail ešte nebol potvrdený.'
   if (lower.includes('user not found')) return 'Používateľský účet neexistuje.'
+  if (lower.includes('provider is not enabled') || lower.includes('unsupported provider')) return 'Microsoft prihlásenie ešte nie je povolené v Supabase Auth. Skontrolujte Authentication → Providers → Azure.'
+  if (lower.includes('oauth') && lower.includes('state')) return 'Microsoft prihlásenie sa nepodarilo dokončiť. Skúste ho spustiť znova z prihlasovacej obrazovky.'
   if (lower.includes('email rate limit') || lower.includes('rate limit')) return 'Bol prekročený limit odosielania e-mailov. Počkajte približne hodinu alebo nastavte vlastné SMTP v Supabase.'
   return message || 'Operáciu prihlásenia sa nepodarilo dokončiť.'
 }
@@ -213,6 +219,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (signInError) throw new Error(friendlyAuthError(signInError))
   }
 
+  async function signInWithMicrosoft() {
+    if (!supabase) throw new Error('Supabase nie je nakonfigurovaný.')
+    if (!microsoftSsoEnabled) throw new Error('Microsoft prihlásenie ešte nie je zapnuté v konfigurácii aplikácie.')
+    setError('')
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        scopes: 'email',
+        redirectTo: `${getAppUrl()}/`,
+      },
+    })
+    if (oauthError) throw new Error(friendlyAuthError(oauthError))
+  }
+
   async function signOut() {
     if (!supabase) return
     const { error: signOutError } = await supabase.auth.signOut()
@@ -247,6 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     cloudRequired,
     localDemoEnabled,
     configuration: supabaseConfiguration,
+    microsoftSsoEnabled,
     loading,
     recoveryMode,
     authEvent,
@@ -255,6 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     error,
     signIn,
+    signInWithMicrosoft,
     signOut,
     sendPasswordReset,
     updatePassword,

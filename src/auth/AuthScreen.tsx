@@ -5,6 +5,8 @@ import { useAuth } from './AuthContext'
 export default function AuthScreen({ resetMode = false }: { resetMode?: boolean }) {
   const {
     signIn,
+    signInWithMicrosoft,
+    microsoftSsoEnabled,
     sendPasswordReset,
     updatePassword,
     finishPasswordRecovery,
@@ -18,6 +20,7 @@ export default function AuthScreen({ resetMode = false }: { resetMode?: boolean 
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [ssoBusy, setSsoBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -46,6 +49,18 @@ export default function AuthScreen({ resetMode = false }: { resetMode?: boolean 
     }
   }
 
+  async function submitMicrosoft() {
+    setSsoBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      await signInWithMicrosoft()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Microsoft prihlásenie sa nepodarilo spustiť.')
+      setSsoBusy(false)
+    }
+  }
+
   const passwordType = showPassword ? 'text' : 'password'
 
   return <div className="auth-page">
@@ -58,6 +73,13 @@ export default function AuthScreen({ resetMode = false }: { resetMode?: boolean 
         <h1>{resetMode ? 'Nastavenie nového hesla' : mode === 'forgot' ? 'Zabudnuté heslo' : 'Prihlásenie'}</h1>
         <p>{resetMode ? 'Zadajte nové heslo k svojmu účtu.' : mode === 'forgot' ? 'Na pracovný e-mail vám odošleme bezpečný odkaz na obnovu hesla.' : 'Prihláste sa pracovným účtom. Dostupné moduly a oprávnenia určuje vaša aplikačná rola.'}</p>
       </div>
+      {!resetMode && mode === 'login' && microsoftSsoEnabled && <>
+        <button type="button" className="auth-microsoft" disabled={ssoBusy || busy} onClick={() => void submitMicrosoft()}>
+          <span className="microsoft-mark" aria-hidden="true"><i/><i/><i/><i/></span>
+          <span>{ssoBusy ? 'Presmerúvam na Microsoft…' : 'Prihlásiť cez Microsoft'}</span>
+        </button>
+        <div className="auth-divider"><span>alebo pracovným e-mailom a heslom</span></div>
+      </>}
       <form className="auth-form" onSubmit={submit}>
         {!resetMode && <label><span>Pracovný e-mail</span><div className="auth-input"><Icon name="user" size={18}/><input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="meno@cvtisr.sk" /></div></label>}
         {(mode === 'login' || resetMode) && <label><span>{resetMode ? 'Nové heslo' : 'Heslo'}</span><div className="auth-input"><Icon name="lock" size={18}/><input type={passwordType} required minLength={8} autoComplete={resetMode ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" /><button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Skryť heslo' : 'Zobraziť heslo'}><Icon name={showPassword ? 'eyeOff' : 'eye'} size={17}/></button></div></label>}
@@ -69,7 +91,7 @@ export default function AuthScreen({ resetMode = false }: { resetMode?: boolean 
       {!resetMode && <button className="auth-link" onClick={() => { setMode(mode === 'login' ? 'forgot' : 'login'); setError(''); setMessage('') }}>{mode === 'login' ? 'Zabudli ste heslo?' : 'Späť na prihlásenie'}</button>}
       {resetMode && <button className="auth-link" onClick={() => void signOut()}>Zrušiť a odhlásiť sa</button>}
       <div className="auth-environment"><Icon name="database" size={14}/><span>{configuration.projectHost || 'Supabase projekt'} · {configuration.keyType === 'publishable' ? 'publishable key' : 'verejný klientsky kľúč'}</span></div>
-      <footer><Icon name="shield" size={14}/><span>Prihlásenie, relácie a heslá zabezpečuje Supabase Auth</span></footer>
+      <footer><Icon name="shield" size={14}/><span>{microsoftSsoEnabled ? 'Firemné SSO zabezpečuje Microsoft Entra ID cez Supabase Auth' : 'Prihlásenie, relácie a heslá zabezpečuje Supabase Auth'}</span></footer>
     </section>
   </div>
 }
