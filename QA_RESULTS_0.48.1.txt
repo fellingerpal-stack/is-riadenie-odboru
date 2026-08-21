@@ -1,0 +1,32 @@
+IS Riadenie odboru v0.48.1 – QA RESULTS
+PASS: 28
+FAIL: 0
+
+[PASS] package version 0.48.1 — 0.48.1
+[PASS] storage version 0.48.1
+[PASS] only uppercase App.tsx
+[PASS] OIT directory merged into ServiceDesk
+[PASS] OIT resolver directory has 13 people — 13
+[PASS] employee portal restriction preserved
+[PASS] employee ServiceDesk gets no internal employee directory
+[PASS] handover note state
+[PASS] queue change tracked
+[PASS] assignee change tracked
+[PASS] handover reason tracked
+[PASS] queue-scoped assignee list
+[PASS] OIT option value keeps exact full name
+[PASS] resolve action
+[PASS] close action
+[PASS] resolution required before close
+[PASS] handover UI styling
+[PASS] membership explanation
+[PASS] handover DB function
+[PASS] handover DB trigger
+[PASS] new queue members notified
+[PASS] requester notified on queue move
+[PASS] migration non-destructive
+[PASS] TS/TSX syntax transpile
+[PASS] RELEASE_NOTES_0.48.1.md exists
+[PASS] README_NASADENIE_0.48.1.txt exists
+[PASS] SERVICEDESK_WORKFLOW_0.48.1.md exists
+[PASS] CHANGED_FILES_0.48.1.txt exists
