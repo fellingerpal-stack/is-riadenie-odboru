@@ -412,6 +412,7 @@ export default function Helpdesk({
   const [ticketFormError, setTicketFormError] = useState('')
   const [commentText, setCommentText] = useState('')
   const [commentInternal, setCommentInternal] = useState(false)
+  const [handoverNote, setHandoverNote] = useState('')
 
   async function refreshNotifications(runEscalation = false) {
     if (databaseMode !== 'cloud') return
@@ -570,6 +571,11 @@ export default function Helpdesk({
 
   const catalogGroups = useMemo(() => Array.from(new Set(activeCatalogItems.map((item)=>item.group))), [activeCatalogItems])
   const selectedCatalogItem = draft.catalogItemId ? catalogItems.find((item)=>item.id===draft.catalogItemId) : undefined
+  const selectedQueue = supportQueues.find((queue)=>queue.id===draft.queueId)
+  const selectedQueueMembers = new Set((selectedQueue?.members||[]).map((name)=>name.trim().toLocaleLowerCase('sk-SK')))
+  const queueAssigneeOptions = selectedQueueMembers.size
+    ? employees.filter((employee)=>selectedQueueMembers.has(employee.name.trim().toLocaleLowerCase('sk-SK'))||employee.name===draft.assignee)
+    : employees
 
   function blankCatalogItem(): ServiceCatalogItem {
     return {id:`CAT-${Date.now()}`,name:'Nová služba',group:'Ostatné',description:'',icon:'helpdesk',ticketType:'Požiadavka',category:'Ostatné',subcategory:'Iné',serviceId:'',queueId:'Q-SD-L1',priority:'Stredná',sortOrder:catalogItems.length?Math.max(...catalogItems.map((item)=>item.sortOrder))+10:10,fields:[],isActive:true}
@@ -813,6 +819,7 @@ export default function Helpdesk({
     setTicketFormError('')
     setCommentText('')
     setCommentInternal(false)
+    setHandoverNote('')
     setModalOpen(true)
   }
 
@@ -823,14 +830,19 @@ export default function Helpdesk({
     setTicketFormError('')
     setCommentText('')
     setCommentInternal(false)
+    setHandoverNote('')
     setModalOpen(true)
   }
 
-  function saveTicket() {
-    if (!draft.title.trim()) return
-    if (!draft.id && selectedCatalogItem) {
+  function saveTicket(candidate: Ticket = draft) {
+    if (!candidate.title.trim()) return
+    if (candidate.id && canOperate && (candidate.status==='Vyriešená'||candidate.status==='Uzatvorená') && !candidate.resolution.trim()) {
+      setTicketFormError('Pred vyriešením alebo uzatvorením ticketu doplňte pole Riešenie / výsledok.')
+      return
+    }
+    if (!candidate.id && selectedCatalogItem) {
       const missing = selectedCatalogItem.fields.filter((field)=>field.required).filter((field)=>{
-        const value=draft.requestData?.[field.key]
+        const value=candidate.requestData?.[field.key]
         return field.type==='checkbox' ? value!==true : String(value ?? '').trim()===''
       })
       if (missing.length) {
@@ -840,27 +852,32 @@ export default function Helpdesk({
     }
     setTicketFormError('')
     const now = new Date().toISOString()
-    if (draft.id) {
-      const original = tickets.find((ticket) => ticket.id === draft.id)
+    if (candidate.id) {
+      const original = tickets.find((ticket) => ticket.id === candidate.id)
       if(!original)return
-      let editable=draft
+      let editable=candidate
       if(!canOperate){
         editable={...original,comments:[...original.comments.filter((comment)=>comment.internal),...draft.comments.filter((comment)=>!comment.internal)],attachments:draft.attachments,updatedAt:now}
       }
       const priorityChanged = original.priority !== editable.priority
       const prepared = applySla(editable, slaPolicies, priorityChanged, supportQueues)
       const changes: string[] = []
+      const originalQueue=supportQueues.find((queue)=>queue.id===original.queueId)?.name||'bez skupiny'
+      const nextQueue=supportQueues.find((queue)=>queue.id===prepared.queueId)?.name||'bez skupiny'
+      const handoverChanged=original.queueId!==prepared.queueId||original.assignee!==prepared.assignee
       if (canOperate&&original.status !== prepared.status) changes.push(`Stav: ${original.status} → ${prepared.status}`)
+      if (canOperate&&original.queueId !== prepared.queueId) changes.push(`Skupina: ${originalQueue} → ${nextQueue}`)
       if (canOperate&&original.assignee !== prepared.assignee) changes.push(`Riešiteľ: ${original.assignee || 'neurčený'} → ${prepared.assignee || 'neurčený'}`)
       if (canOperate&&original.priority !== prepared.priority) changes.push(`Priorita: ${original.priority} → ${prepared.priority}`)
+      if (canOperate&&handoverChanged&&handoverNote.trim()) changes.push(`Dôvod odovzdania: ${handoverNote.trim()}`)
       const history = changes.length
         ? [...prepared.history, { id: `HH-${Date.now()}`, action: changes.join(' · '), author: currentUser, createdAt: now }]
         : prepared.history
       const resolvedAt = isClosed(prepared.status) ? prepared.resolvedAt || now : undefined
       onTicketsChange(tickets.map((ticket) => ticket.id === prepared.id ? { ...prepared, history, resolvedAt, updatedAt: now } : ticket))
     } else {
-      const id = nextTicketId(draft.type, tickets)
-      const routed=routeTicket({...draft,id,requester:currentUser,requesterEmail:currentUserEmail||draft.requesterEmail,status:'Nová',assignee:'',internalNote:'',resolution:''},serviceRoutingRules,supportQueues)
+      const id = nextTicketId(candidate.type, tickets)
+      const routed=routeTicket({...candidate,id,requester:currentUser,requesterEmail:currentUserEmail||draft.requesterEmail,status:'Nová',assignee:'',internalNote:'',resolution:''},serviceRoutingRules,supportQueues)
       const prepared = applySla(routed, slaPolicies, true, supportQueues)
       onTicketsChange([{
         ...prepared,
@@ -869,6 +886,7 @@ export default function Helpdesk({
         history: [{ id: `HH-${Date.now()}`, action: `Ticket vytvorený a zaradený do ${supportQueues.find((queue)=>queue.id===prepared.queueId)?.name||'všeobecnej fronty'}.`, author: currentUser, createdAt: now }],
       }, ...tickets])
     }
+    setHandoverNote('')
     setModalOpen(false)
   }
 
@@ -1121,7 +1139,7 @@ export default function Helpdesk({
 
       <section className="panel sd-lead-panel"><div className="panel-heading"><div><span className="eyebrow">Vedúci skupín</span><h3>Operatívny health front</h3><p>Otvorené, nepridelené a SLA riziká podľa riešiteľskej skupiny.</p></div><Badge tone={breachedCount?'warning':'success'}>{breachedCount?'Vyžaduje pozornosť':'Stabilné'}</Badge></div><div className="sd-lead-grid">{supportQueues.filter((queue)=>queue.isActive).map((queue)=>{const queueTickets=openTickets.filter((ticket)=>ticket.queueId===queue.id);const breached=queueTickets.filter((ticket)=>slaState(ticket).tone==='danger').length;const warning=queueTickets.filter((ticket)=>slaState(ticket).tone==='warning').length;const unassigned=queueTickets.filter((ticket)=>!ticket.assignee).length;return <article key={queue.id}><header><div><strong>{queue.name}</strong><small>{queue.lead||'Vedúci neurčený'}{queue.deputy?` · zástupca ${queue.deputy}`:''}</small></div><Badge tone={breached?'danger':warning?'warning':'success'}>{breached?`${breached} po SLA`:warning?`${warning} v riziku`:'OK'}</Badge></header><div className="sd-lead-metrics"><span><small>Otvorené</small><b>{queueTickets.length}</b></span><span><small>Bez riešiteľa</small><b>{unassigned}</b></span><span><small>SLA riziko</small><b>{warning}</b></span><span><small>Po SLA</small><b>{breached}</b></span></div><footer><span>{queue.businessCalendarEnabled?`${queue.workdayStart}-${queue.workdayEnd} · pracovné dni`:'Kalendárne hodiny'}</span><span>varovanie {Math.round(queue.slaWarningMinutes/60*10)/10} h vopred</span></footer></article>})}</div></section>
 
-      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div><div><Icon name="mail" /><span><strong>Inbound e-mail → Ticket</strong><small>v0.46: nové správy vytvoria ticket, odpovede sa threadujú podľa čísla ticketu v predmete</small></span><Badge tone="info">Webhook</Badge></div><div><Icon name="services" /><span><strong>Katalóg služieb</strong><small>v0.47: smart formuláre, serverová validácia a automatický routing</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="decision" /><span><strong>Knowledge Base & Known Errors</strong><small>v0.48: návody, známe chyby a odporúčania pred založením ticketu</small></span><Badge tone="success">Aktívne</Badge></div></div></section>
+      <section className="panel integration-panel"><div className="panel-heading"><div><span className="eyebrow">Integrácie</span><h3>Pripravenosť ServiceDesku</h3></div></div><div className="integration-list"><div><Icon name="check" /><span><strong>Notifikácie v aplikácii</strong><small>SLA, kritické a nepridelené tickety</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="check" /><span><strong>Prílohy</strong><small>V prototype do 750 kB na súbor</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="database" /><span><strong>Samostatné Supabase tabuľky</strong><small>Tickety, skupiny, routing, SLA a auditná história</small></span><Badge tone={databaseState === 'synced' ? 'success' : databaseState === 'error' ? 'danger' : 'warning'}>{databaseStateLabel(databaseState)}</Badge></div><div><Icon name="check" /><span><strong>E-mailový outbox</strong><small>Pripravený pre Edge Function; stav odoslania je viditeľný pri notifikácii</small></span><Badge tone="info">Pripravené</Badge></div><div><Icon name="mail" /><span><strong>Inbound e-mail → Ticket</strong><small>v0.46: nové správy vytvoria ticket, odpovede sa threadujú podľa čísla ticketu v predmete</small></span><Badge tone="info">Webhook</Badge></div><div><Icon name="services" /><span><strong>Katalóg služieb</strong><small>v0.47: smart formuláre, serverová validácia a automatický routing</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="decision" /><span><strong>Knowledge Base & Known Errors</strong><small>v0.48: návody, známe chyby a odporúčania pred založením ticketu</small></span><Badge tone="success">Aktívne</Badge></div><div><Icon name="substitute" /><span><strong>Workflow & Handover</strong><small>v0.48.1: presun medzi skupinami/riešiteľmi, auditná timeline a rýchle vyriešenie/uzatvorenie</small></span><Badge tone="success">Aktívne</Badge></div></div></section>
     </div>}
 
 
@@ -1143,7 +1161,7 @@ export default function Helpdesk({
 
       <section className="panel sd-config-panel">
         <div className="panel-heading"><div><span className="eyebrow">Matica členstva</span><h3>Ktorý zamestnanec patrí do ktorej skupiny</h3><p>Členstvo určuje resolverom viditeľnosť fronty a pracovné oprávnenia.</p></div></div>
-        <div className="sd-membership-matrix-wrap"><table className="sd-membership-matrix"><thead><tr><th>Zamestnanec</th>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><th key={queue.id}>{queue.name}</th>)}</tr></thead><tbody>{employees.map((employee)=><tr key={employee.id}><td><strong>{employee.name}</strong><small>{employee.position||employee.roleType||''}</small></td>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><td key={queue.id}><label className="sd-matrix-check"><input type="checkbox" checked={queue.members.includes(employee.name)} onChange={()=>toggleQueueMember(queue.id,employee.name)}/><span>{queue.members.includes(employee.name)?'✓':''}</span></label></td>)}</tr>)}</tbody></table></div>
+        <p className="panel-note sd-membership-note">Zoznam spája pracovníkov ORIS a prevádzkových pracovníkov odboru 3.1/OIT. OIT osoby sú doplnené zo zdrojovej RACI matice, aby ich bolo možné zaradiť do riešiteľských skupín.</p><div className="sd-membership-matrix-wrap"><table className="sd-membership-matrix"><thead><tr><th>Zamestnanec</th>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><th key={queue.id}>{queue.name}</th>)}</tr></thead><tbody>{employees.map((employee)=><tr key={employee.id}><td><strong>{employee.name}</strong><small>{employee.position||employee.roleType||''}</small></td>{supportQueues.filter((queue)=>queue.isActive).map((queue)=><td key={queue.id}><label className="sd-matrix-check"><input type="checkbox" checked={queue.members.includes(employee.name)} onChange={()=>toggleQueueMember(queue.id,employee.name)}/><span>{queue.members.includes(employee.name)?'✓':''}</span></label></td>)}</tr>)}</tbody></table></div>
       </section>
 
       <section className="panel sd-config-panel sd-email-channel-panel">
@@ -1194,11 +1212,11 @@ export default function Helpdesk({
         {canOperate&&<Field label="Priorita"><select value={draft.priority} onChange={(event) => setDraft(applySla({ ...draft, priority: event.target.value }, slaPolicies, true, supportQueues))}>{priorities.map((value) => <option key={value}>{value}</option>)}</select></Field>}
         <Field label="Názov"><input value={draft.title} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Stručný názov požiadavky alebo incidentu" /></Field>
         <Field label="Popis"><textarea value={draft.description} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Čo sa stalo alebo čo používateľ potrebuje?" /></Field>
-        {canOperate&&<Field label="Riešiteľská skupina"><select value={draft.queueId} onChange={(event) => setDraft(applySla({ ...draft, queueId: event.target.value },slaPolicies,true,supportQueues))}><option value="">Bez skupiny</option>{supportQueues.filter((queue) => queue.isActive || queue.id === draft.queueId).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></Field>}
+        {canOperate&&<Field label="Riešiteľská skupina / presun"><select value={draft.queueId} onChange={(event) => {const queueId=event.target.value;const queue=supportQueues.find((item)=>item.id===queueId);const memberNames=new Set((queue?.members||[]).map((name)=>name.toLocaleLowerCase('sk-SK')));const assignee=draft.assignee&&memberNames.has(draft.assignee.toLocaleLowerCase('sk-SK'))?draft.assignee:'';setDraft(applySla({ ...draft, queueId, assignee },slaPolicies,true,supportQueues))}}><option value="">Bez skupiny</option>{supportQueues.filter((queue) => queue.isActive || queue.id === draft.queueId).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></Field>}
         {(!selectedCatalogItem||canOperate)&&<Field label="Služba / systém"><select value={draft.serviceId} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, serviceId: event.target.value })}><option value="">Bez väzby na službu</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></Field>}
         {(!selectedCatalogItem||canOperate)&&<Field label="Kategória"><select value={draft.category} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, category: event.target.value, subcategory: categories[event.target.value]?.[0] || 'Iné' })}>{Object.keys(categories).map((value) => <option key={value}>{value}</option>)}</select></Field>}
         {(!selectedCatalogItem||canOperate)&&<Field label="Podkategória"><select value={draft.subcategory} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, subcategory: event.target.value })}>{(categories[draft.category] || ['Iné']).map((value) => <option key={value}>{value}</option>)}</select></Field>}
-        {canOperate&&<Field label="Riešiteľ"><select value={draft.assignee} onChange={(event) => setDraft({ ...draft, assignee: event.target.value, status: draft.status === 'Nová' && event.target.value ? 'Pridelená' : draft.status })}><option value="">Bez riešiteľa</option>{employees.map((employee) => <option key={employee.id}>{employee.name}</option>)}</select></Field>}
+        {canOperate&&<Field label="Riešiteľ / odovzdanie" hint={selectedQueueMembers.size?`Zobrazení sú členovia skupiny ${selectedQueue?.name||''}.`:'Skupina zatiaľ nemá nastavených členov – zobrazujú sa všetci dostupní riešitelia.'}><select value={draft.assignee} onChange={(event) => setDraft({ ...draft, assignee: event.target.value, status: draft.status === 'Nová' && event.target.value ? 'Pridelená' : draft.status })}><option value="">Bez riešiteľa</option>{queueAssigneeOptions.map((employee) => <option key={employee.id} value={employee.name}>{employee.name}{employee.roleType?.includes('3.1 OIT')?' · OIT':''}</option>)}</select></Field>}
         {canOperate&&<Field label="Dopad"><select value={draft.impact} onChange={(event) => setDraft({ ...draft, impact: event.target.value })}>{impacts.map((value) => <option key={value}>{value}</option>)}</select></Field>}
         <Field label="Naliehavosť"><select value={draft.urgency} disabled={!canCreate || (!canOperate&&Boolean(draft.id))} onChange={(event) => setDraft({ ...draft, urgency: event.target.value })}>{urgencies.map((value) => <option key={value}>{value}</option>)}</select></Field>
         {canOperate&&<Field label="Kanál"><select value={draft.channel} onChange={(event) => setDraft({ ...draft, channel: event.target.value })}>{channels.map((value) => <option key={value}>{value}</option>)}</select></Field>}
@@ -1207,6 +1225,7 @@ export default function Helpdesk({
         {canOperate&&<Field label="Interná poznámka"><textarea value={draft.internalNote || ''} onChange={(event) => setDraft({ ...draft, internalNote: event.target.value })} /></Field>}
         <Field label="Riešenie / výsledok"><textarea value={draft.resolution || ''} disabled={!canOperate} onChange={(event) => setDraft({ ...draft, resolution: event.target.value })} placeholder={canOperate?'Popis vykonaného riešenia':'Riešenie doplní ServiceDesk'} /></Field>
       </div>
+      {draft.id&&canOperate&&<section className="sd-handover-panel"><div className="sd-handover-icon"><Icon name="substitute" size={20}/></div><div><strong>Odovzdanie a tracking</strong><p>Pri zmene skupiny alebo riešiteľa sa presun automaticky zapíše do histórie ticketu. Voliteľne doplňte dôvod presunu.</p><textarea value={handoverNote} onChange={(event)=>setHandoverNote(event.target.value)} placeholder="napr. presun na infraštruktúru – potrebná kontrola servera / siete"/></div></section>}
       {selectedCatalogItem&&selectedCatalogItem.fields.length>0&&<section className="sd-request-data-panel"><div className="helpdesk-activity-heading"><div><span className="eyebrow">Údaje služby</span><h3>{draft.id?'Údaje z formulára':'Doplňujúce údaje'}</h3></div><Badge tone="neutral">{selectedCatalogItem.fields.length} polí</Badge></div><div className="form-grid sd-smart-form-grid">{selectedCatalogItem.fields.map((field)=>{
         const value=draft.requestData?.[field.key]
         const disabled=Boolean(draft.id)
@@ -1222,7 +1241,7 @@ export default function Helpdesk({
       <section className="helpdesk-activity-card"><div className="helpdesk-activity-heading"><div><span className="eyebrow">Audit</span><h3>História</h3></div></div><div className="ticket-history">{[...draft.history].reverse().map((item) => <div key={item.id}><span /><p><strong>{item.action}</strong><small>{item.author} · {formatDate(item.createdAt, true)}</small></p></div>)}{!draft.history.length && <p className="helpdesk-empty-copy">História vznikne po uložení ticketu.</p>}</div></section>
       {draft.id && canOperate && <button className="button button-secondary helpdesk-task-button" onClick={createLinkedTask} disabled={Boolean(draft.linkedTaskId)}><Icon name="tasks" />{draft.linkedTaskId ? `Prepojené s ${draft.linkedTaskId}` : 'Vytvoriť úlohu z ticketu'}</button>}
       {draft.id && canOperate && isClosed(draft.status) && <button className="button button-secondary helpdesk-task-button" onClick={()=>editKnowledgeArticle(undefined,draft)}><Icon name="decision" /> Vytvoriť návrh KB z riešenia</button>}
-    </aside></div><div className="modal-actions split-actions helpdesk-modal-actions"><div>{draft.id && canOperate && <button className="button button-danger" onClick={deleteTicket}><Icon name="trash" /> Odstrániť</button>}</div><div><button className="button button-ghost" onClick={() => setModalOpen(false)}>Zrušiť</button>{canEdit && <button className="button button-primary" onClick={saveTicket} disabled={!draft.title.trim()}><Icon name="check" /> Uložiť ticket</button>}</div></div></Modal>}
+    </aside></div><div className="modal-actions split-actions helpdesk-modal-actions"><div>{draft.id && canOperate && <button className="button button-danger" onClick={deleteTicket}><Icon name="trash" /> Odstrániť</button>}</div><div>{draft.id&&canOperate&&!isClosed(draft.status)&&<button className="button button-secondary" onClick={()=>saveTicket({...draft,status:'Vyriešená'})}><Icon name="check" /> Vyriešiť</button>}{draft.id&&canOperate&&draft.status==='Vyriešená'&&<button className="button button-secondary" onClick={()=>saveTicket({...draft,status:'Uzatvorená'})}><Icon name="shield" /> Uzatvoriť</button>}<button className="button button-ghost" onClick={() => setModalOpen(false)}>Zrušiť</button>{canEdit && <button className="button button-primary" onClick={()=>saveTicket()} disabled={!draft.title.trim()}><Icon name="check" /> Uložiť ticket</button>}</div></div></Modal>}
   </div>
 }
 
