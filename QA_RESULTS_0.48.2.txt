@@ -1,0 +1,14 @@
+IS Riadenie odboru v0.48.2 – QA RESULTS
+========================================
+
+[PASS] package.json version = 0.48.2
+[PASS] storage CURRENT_VERSION = 0.48.2
+[PASS] TS18048 source fixed: candidate.resolution is null-safe before trim()
+[PASS] no duplicate src/app.tsx exists; only src/App.tsx
+[PASS] no database change required
+[PASS] v0.48.1 workflow functionality retained
+
+LOCAL BUILD NOTE
+[INFO] Full project tsc cannot be reproduced in this workspace because project npm dependencies/react type declarations are not installed locally.
+[INFO] A global TypeScript invocation therefore reports missing React/Vite modules before it can represent the Vercel dependency environment.
+[REQUIRED] Final authoritative build is Vercel/CI `npm run build` with installed project dependencies.

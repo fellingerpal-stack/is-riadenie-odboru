@@ -1,0 +1,8 @@
+src/views/Helpdesk.tsx
+src/lib/storage.ts
+package.json
+RELEASE_NOTES_0.48.2.md
+README_NASADENIE_0.48.2.txt
+QA_RESULTS_0.48.2.txt
+CHANGED_FILES_0.48.2.txt
+README_DATABASE_0.48.2.txt
