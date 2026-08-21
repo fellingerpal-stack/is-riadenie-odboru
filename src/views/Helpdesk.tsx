@@ -836,7 +836,7 @@ export default function Helpdesk({
 
   function saveTicket(candidate: Ticket = draft) {
     if (!candidate.title.trim()) return
-    if (candidate.id && canOperate && (candidate.status==='Vyriešená'||candidate.status==='Uzatvorená') && !candidate.resolution.trim()) {
+    if (candidate.id && canOperate && (candidate.status==='Vyriešená'||candidate.status==='Uzatvorená') && !(candidate.resolution ?? '').trim()) {
       setTicketFormError('Pred vyriešením alebo uzatvorením ticketu doplňte pole Riešenie / výsledok.')
       return
     }
