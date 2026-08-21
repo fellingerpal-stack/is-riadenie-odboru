@@ -14,11 +14,15 @@ export const supabaseConfigured = Boolean(supabaseUrl && supabasePublicKey)
 export const cloudRequired = appMode === 'cloud'
 export const localDemoEnabled = appMode === 'local' || (appMode === 'auto' && !supabaseConfigured)
 
+const rawMicrosoftSsoEnabled = String(import.meta.env.VITE_MICROSOFT_SSO_ENABLED ?? 'false').trim().toLowerCase()
+export const microsoftSsoEnabled = rawMicrosoftSsoEnabled === 'true' || rawMicrosoftSsoEnabled === '1' || rawMicrosoftSsoEnabled === 'yes'
+
 export const supabaseConfiguration = {
   mode: appMode,
   urlConfigured: Boolean(supabaseUrl),
   keyConfigured: Boolean(supabasePublicKey),
   keyType: publishableKey ? 'publishable' : legacyAnonKey ? 'anon' : 'missing',
+  microsoftSsoEnabled,
   projectHost: (() => {
     try {
       return supabaseUrl ? new URL(supabaseUrl).host : ''
@@ -35,11 +39,6 @@ export const supabase = supabaseConfigured
         autoRefreshToken: true,
         detectSessionInUrl: true,
         flowType: 'pkce',
-      },
-      global: {
-        headers: {
-          'x-application-name': 'is-riadenie-odboru',
-        },
       },
     })
   : null
