@@ -10,8 +10,8 @@ for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
   if (!entry.name.endsWith('.ts')) continue
   if (keep.has(entry.name)) continue
   rmSync(join(srcDir.pathname, entry.name), { force: true })
-  console.log(`[v0.51.2 prebuild] removed legacy duplicate src/${entry.name}`)
+  console.log(`[v0.52.0 prebuild] removed legacy duplicate src/${entry.name}`)
   removed += 1
 }
 
-console.log(`[v0.51.2 prebuild] legacy cleanup complete; removed=${removed}`)
+console.log(`[v0.52.0 prebuild] legacy cleanup complete; removed=${removed}`)
