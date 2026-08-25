@@ -1,0 +1,12 @@
+package.json
+src/data/seed.json
+src/lib/storage.ts
+src/views/ProjectManagement.tsx
+src/views/ProjectManagement.css
+scripts/prebuild-cleanup.mjs
+scripts/verify-release.mjs
+supabase/migration_project_capacity_v052.sql
+supabase/test_project_capacity_v052.sql
+RELEASE_NOTES_0.52.0.md
+README_NASADENIE_0.52.0.txt
+QA_RESULTS_0.52.0.txt

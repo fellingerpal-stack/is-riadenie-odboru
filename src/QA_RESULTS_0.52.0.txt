@@ -1,0 +1,46 @@
+IS RIADENIE ODBORU v0.52.0 – QA
+
+PASS  Version consistency
+- package.json = 0.52.0
+- src/data/seed.json meta.version = 0.52.0
+- src/lib/storage.ts CURRENT_VERSION = 0.52.0
+- prebuild/verify skripty = v0.52.0
+
+PASS  Project card UX
+- klik na projekt volá openProject(project.id)
+- otvorí sa samostatná Karta projektu
+- karta má návrat do portfólia
+- interné záložky: Karta projektu, Delivery a úlohy, Tím a kapacity, Financovanie, Väzby
+- Admin/PM majú editáciu projektu a správu členov
+- project_member zostáva bez manažérskych editácií
+
+PASS  Capacity planning
+- portfóliová záložka Kapacity
+- filter mesiaca cez validFrom/validTo
+- agregácia allocationPercent naprieč projektmi
+- >100 % = preťaženie, 80–100 % = vysoké vyťaženie
+- Admin/PM vidia kapacity v projektoch, ktoré server vráti
+- project_member UI filtruje kapacity iba na vlastnú identitu
+- z kapacitného riadku sa dá otvoriť konkrétna karta projektu
+
+PASS  Server-side project scope design
+- migration_project_capacity_v052.sql definuje project_can_manage(uuid)
+- project_manager read scope je odvodený od priradenia PM
+- server-side trigger guard chráni work_projects, work_tasks, project_members,
+  project_funding, project_milestones a project_links
+- Admin nie je guardom obmedzený
+- project_member task pravidlá z v0.51.0 ostávajú zachované
+
+PASS  Source structure/import verification
+- scripts/verify-release.mjs: OK
+- 74 TS/TSX súborov prešlo TypeScript transpile syntax kontrolou
+- relatívne importy: verify-release OK
+
+PASS  SQL static check
+- $$ delimiter count je párny
+- migration obsahuje BEGIN/COMMIT, project_can_manage, project_can_read a project_scope_guard_v052
+
+LIMITATION
+- SQL migrácia nebola spustená proti produkčnej Supabase databáze.
+- Plný npm/Vite build nebol v tomto prostredí dokončený, pretože npm install nemal dostupné dependencies v časovom limite.
+- Finálny build gate je Vercel; v0.52.0 zachováva prebuild cleanup + verify mechanizmus z funkčnej v0.51.2.
