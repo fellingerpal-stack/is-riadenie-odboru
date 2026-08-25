@@ -6,6 +6,9 @@ import type {
   ProjectLink,
   ProjectMember,
   ProjectMilestone,
+  ProjectRaidItem,
+  ProjectStatusReport,
+  ProjectDecision,
   ProjectPortfolioData,
   Task,
 } from '../types'
@@ -16,6 +19,9 @@ import {
   deleteProjectLink,
   deleteProjectMember,
   deleteProjectMilestone,
+  deleteProjectRaidItem,
+  deleteProjectStatusReport,
+  deleteProjectDecision,
   loadProjectPortfolio,
   savePortfolioProject,
   savePortfolioTask,
@@ -23,14 +29,17 @@ import {
   saveProjectLink,
   saveProjectMember,
   saveProjectMilestone,
+  saveProjectRaidItem,
+  saveProjectStatusReport,
+  saveProjectDecision,
   subscribeToProjectPortfolio,
   type ProjectDatabaseState,
 } from '../lib/projectCloud'
 import { Badge, Empty, Field, Icon, Modal, PageHeader, Progress } from '../components/UI'
 import './ProjectManagement.css'
 
-type PortfolioTab = 'overview' | 'projects' | 'capacity' | 'assignments'
-type ProjectDetailTab = 'overview' | 'delivery' | 'team' | 'finance' | 'links'
+type PortfolioTab = 'overview' | 'control' | 'projects' | 'capacity' | 'assignments'
+type ProjectDetailTab = 'overview' | 'delivery' | 'governance' | 'team' | 'finance' | 'links'
 type CapacityView = 'bi' | 'heatmap' | 'chart' | 'detail'
 
 type ProjectManagementProps = {
@@ -57,8 +66,13 @@ const milestoneStatuses = ['Plánované', 'Prebieha', 'Splnené', 'Blokované', 
 const linkTypes = ['Informačný systém', 'Služba', 'Zmluva', 'Dodávateľ', 'Asset', 'Riziko', 'Change', 'Iné']
 const taskStatuses = ['Návrh', 'Plánované', 'Prebieha', 'Blokované', 'Hotovo']
 const priorities = ['Kritická', 'Vysoká', 'Stredná', 'Nízka']
+const raidTypes = ['Riziko', 'Problém', 'Závislosť', 'Predpoklad']
+const raidStatuses = ['Otvorené', 'Sleduje sa', 'Rieši sa', 'Akceptované', 'Uzavreté']
+const severityStates = ['Nízka', 'Stredná', 'Vysoká', 'Kritická']
+const probabilityStates = ['Nízka', 'Stredná', 'Vysoká']
+const decisionStatuses = ['Čaká na rozhodnutie', 'Rozhodnuté', 'Odložené', 'Zrušené']
 
-const emptyPortfolio = (): ProjectPortfolioData => ({ projects: [], tasks: [], members: [], funding: [], milestones: [], links: [], references: [] })
+const emptyPortfolio = (): ProjectPortfolioData => ({ projects: [], tasks: [], members: [], funding: [], milestones: [], links: [], raidItems: [], statusReports: [], decisions: [], references: [] })
 const today = () => new Date().toISOString().slice(0, 10)
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 const normalize = (value: string) => value.trim().toLocaleLowerCase('sk-SK')
@@ -86,6 +100,15 @@ function blankLink(projectId = ''): ProjectLink {
 }
 function blankTask(projectId = ''): Task {
   return { id: '', title: '', projectId, owner: '', priority: 'Stredná', status: 'Návrh', start: today(), due: '', description: '', source: 'Riadenie projektov', type: 'Úloha', estimateHours: 0, spentHours: 0, progress: 0, dependency: '', note: '' }
+}
+function blankRaidItem(projectId = ''): ProjectRaidItem {
+  return { id: '', projectId, itemType: 'Riziko', title: '', description: '', category: '', probability: 'Stredná', impact: 'Stredná', severity: 'Stredná', owner: '', due: '', status: 'Otvorené', response: '', dependencyProjectId: '', note: '' }
+}
+function blankStatusReport(projectId = '', authorName = '', authorEmail = ''): ProjectStatusReport {
+  return { id: '', projectId, period: new Date().toISOString().slice(0, 7), reportDate: today(), overallStatus: 'Zelený', summary: '', achievements: '', nextSteps: '', risks: '', blockers: '', decisionsNeeded: '', progressPercent: 0, authorName, authorEmail, note: '' }
+}
+function blankDecision(projectId = ''): ProjectDecision {
+  return { id: '', projectId, title: '', decision: '', decisionMaker: '', status: 'Čaká na rozhodnutie', decisionDate: '', due: '', reason: '', impact: '', note: '' }
 }
 
 function healthTone(value?: string): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -159,6 +182,9 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const [milestoneDraft, setMilestoneDraft] = useState<ProjectMilestone | null>(null)
   const [linkDraft, setLinkDraft] = useState<ProjectLink | null>(null)
   const [taskDraft, setTaskDraft] = useState<Task | null>(null)
+  const [raidDraft, setRaidDraft] = useState<ProjectRaidItem | null>(null)
+  const [statusReportDraft, setStatusReportDraft] = useState<ProjectStatusReport | null>(null)
+  const [decisionDraft, setDecisionDraft] = useState<ProjectDecision | null>(null)
   const [busy, setBusy] = useState(false)
 
   const canManagePortfolio = role === 'admin' || role === 'project_manager'
@@ -226,15 +252,50 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const projectFunding = selectedProject ? data.funding.filter((item) => item.projectId === selectedProject.id) : []
   const projectMilestones = selectedProject ? data.milestones.filter((item) => item.projectId === selectedProject.id) : []
   const projectLinks = selectedProject ? data.links.filter((item) => item.projectId === selectedProject.id) : []
+  const projectRaidItems = selectedProject ? data.raidItems.filter((item) => item.projectId === selectedProject.id) : []
+  const projectStatusReports = selectedProject ? data.statusReports.filter((item) => item.projectId === selectedProject.id) : []
+  const projectDecisions = selectedProject ? data.decisions.filter((item) => item.projectId === selectedProject.id) : []
+
+  const healthByProject = useMemo(() => {
+    const map = new Map<string, { health: 'Zelený' | 'Oranžový' | 'Červený'; score: number; reasons: string[] }>()
+    const currentMonth = new Date().toISOString().slice(0, 7)
+    for (const project of data.projects) {
+      let score = 0
+      const reasons: string[] = []
+      const openRaid = data.raidItems.filter((item) => item.projectId === project.id && !['Uzavreté', 'Akceptované'].includes(item.status))
+      const critical = openRaid.filter((item) => item.severity === 'Kritická')
+      const high = openRaid.filter((item) => item.severity === 'Vysoká')
+      const overdueMilestones = data.milestones.filter((item) => item.projectId === project.id && item.status !== 'Splnené' && item.due && item.due < today())
+      const funding = data.funding.filter((item) => item.projectId === project.id)
+      const budget = funding.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+      const spent = funding.reduce((sum, item) => sum + Number(item.spent || 0), 0)
+      const pendingDecisions = data.decisions.filter((item) => item.projectId === project.id && item.status === 'Čaká na rozhodnutie')
+      const overdueDecisions = pendingDecisions.filter((item) => item.due && item.due < today())
+      const latestReport = data.statusReports.filter((item) => item.projectId === project.id).sort((a, b) => b.period.localeCompare(a.period))[0]
+      if (project.status === 'Ohrozený' || project.health === 'Červený') { score += 4; reasons.push('projekt je označený ako ohrozený') }
+      if (critical.length) { score += 4; reasons.push(`${critical.length} kritické RAID položky`) }
+      if (high.length) { score += 2; reasons.push(`${high.length} vysoké RAID položky`) }
+      if (overdueMilestones.length) { score += overdueMilestones.length > 1 ? 3 : 2; reasons.push(`${overdueMilestones.length} míľniky po termíne`) }
+      if (budget > 0 && spent > budget * 1.05) { score += 4; reasons.push('čerpanie je nad rozpočtom') }
+      else if (budget > 0 && spent >= budget * .9) { score += 1; reasons.push('čerpanie je nad 90 % rozpočtu') }
+      if (overdueDecisions.length) { score += 3; reasons.push(`${overdueDecisions.length} rozhodnutia po termíne`) }
+      else if (pendingDecisions.length) { score += 1; reasons.push(`${pendingDecisions.length} čakajúce rozhodnutia`) }
+      if (!['Ukončený', 'Ukončené'].includes(project.status) && (!latestReport || latestReport.period < currentMonth)) { score += 1; reasons.push('chýba aktuálny status report') }
+      if (project.due && project.due < today() && !['Ukončený', 'Ukončené'].includes(project.status)) { score += 4; reasons.push('projekt je po plánovanom termíne') }
+      const health: 'Zelený' | 'Oranžový' | 'Červený' = score >= 4 ? 'Červený' : score >= 1 ? 'Oranžový' : 'Zelený'
+      map.set(project.id, { health, score, reasons })
+    }
+    return map
+  }, [data.projects, data.raidItems, data.milestones, data.funding, data.decisions, data.statusReports])
 
   const kpis = useMemo(() => {
     const active = data.projects.filter((p) => !['Ukončený', 'Ukončené'].includes(p.status)).length
-    const atRisk = data.projects.filter((p) => p.health === 'Červený' || p.status === 'Ohrozený').length
+    const atRisk = data.projects.filter((p) => healthByProject.get(p.id)?.health === 'Červený').length
     const budget = data.funding.reduce((sum, item) => sum + Number(item.amount || 0), 0)
     const spent = data.funding.reduce((sum, item) => sum + Number(item.spent || 0), 0)
     const overdueMilestones = data.milestones.filter((m) => m.status !== 'Splnené' && m.due && m.due < today()).length
     return { active, atRisk, budget, spent, overdueMilestones }
-  }, [data])
+  }, [data, healthByProject])
 
   const capacityRows = useMemo(() => {
     const { start, end } = monthBounds(capacityMonth)
@@ -371,6 +432,22 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       .sort((a, b) => a.member.name.localeCompare(b.member.name, 'sk') || a.project.name.localeCompare(b.project.name, 'sk'))
   }, [assignmentQuery, data.members, data.projects])
 
+  const controlCenter = useMemo(() => {
+    const currentMonth = new Date().toISOString().slice(0, 7)
+    const governedProjects = role === 'project_manager' ? data.projects.filter((project) => canManageProject(project)) : data.projects
+    const governedIds = new Set(governedProjects.map((project) => project.id))
+    const activeProjects = governedProjects.filter((project) => !['Ukončený', 'Ukončené'].includes(project.status))
+    const criticalProjects = activeProjects
+      .map((project) => ({ project, auto: healthByProject.get(project.id) }))
+      .filter((row) => row.auto && row.auto.health !== 'Zelený')
+      .sort((a, b) => (b.auto?.score || 0) - (a.auto?.score || 0))
+    const openRaid = data.raidItems.filter((item) => governedIds.has(item.projectId) && !['Uzavreté', 'Akceptované'].includes(item.status))
+    const pendingDecisions = data.decisions.filter((item) => governedIds.has(item.projectId) && item.status === 'Čaká na rozhodnutie').sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'))
+    const missingReports = activeProjects.filter((project) => !data.statusReports.some((report) => report.projectId === project.id && report.period >= currentMonth))
+    const overdueMilestones = data.milestones.filter((item) => governedIds.has(item.projectId) && item.status !== 'Splnené' && item.due && item.due < today())
+    return { criticalProjects, openRaid, pendingDecisions, missingReports, overdueMilestones }
+  }, [data.projects, data.members, data.raidItems, data.decisions, data.statusReports, data.milestones, healthByProject, role, currentUserId, currentUserEmail, currentUser])
+
   function canEditTask(task: Task) {
     const project = data.projects.find((item) => item.id === task.projectId)
     if (project && canManageProject(project)) return true
@@ -479,6 +556,24 @@ export default function ProjectManagement(props: ProjectManagementProps) {
     await runSave(() => saveProjectLink(draft))
     setLinkDraft(null)
   }
+  async function persistRaid() {
+    if (!raidDraft?.title.trim() || !raidDraft.projectId) return
+    const draft = { ...raidDraft, id: raidDraft.id || uid('RAID') }
+    await runSave(() => saveProjectRaidItem(draft))
+    setRaidDraft(null)
+  }
+  async function persistStatusReport() {
+    if (!statusReportDraft?.projectId || !statusReportDraft.period) return
+    const draft = { ...statusReportDraft, id: statusReportDraft.id || uid('SR'), authorName: statusReportDraft.authorName || currentUser, authorEmail: statusReportDraft.authorEmail || currentUserEmail }
+    await runSave(() => saveProjectStatusReport(draft))
+    setStatusReportDraft(null)
+  }
+  async function persistDecision() {
+    if (!decisionDraft?.title.trim() || !decisionDraft.projectId) return
+    const draft = { ...decisionDraft, id: decisionDraft.id || uid('DEC') }
+    await runSave(() => saveProjectDecision(draft))
+    setDecisionDraft(null)
+  }
 
   const stateLabel = dbState === 'loading' ? 'Načítavam' : dbState === 'saving' ? 'Ukladám' : dbState === 'synced' ? 'Synchronizované' : dbState === 'error' ? 'Chyba' : 'Lokálny režim'
 
@@ -506,7 +601,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       </section>
 
       <div className="project-tabs">
-        {([['overview','Prehľad'],['projects','Projekty'],['capacity',isProjectMemberRole ? 'Moje kapacity' : 'Kapacity'],...(role === 'admin' ? [['assignments','Zaradenia']] : [])] as [PortfolioTab,string][]).map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}
+        {([['overview','Prehľad'],...(!isProjectMemberRole ? [['control','Control Center']] : []),['projects','Projekty'],['capacity',isProjectMemberRole ? 'Moje kapacity' : 'Kapacity'],...(role === 'admin' ? [['assignments','Zaradenia']] : [])] as [PortfolioTab,string][]).map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}
       </div>
 
       {(tab === 'overview' || tab === 'projects') && <>
@@ -516,7 +611,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
           const memberCount = data.members.filter((member) => member.projectId === project.id && member.isActive).length
           const funding = data.funding.filter((item) => item.projectId === project.id).reduce((sum,item) => sum + Number(item.amount || 0), 0)
           return <article key={project.id} className="project-card" onClick={() => openProject(project.id)} tabIndex={0} role="button" onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openProject(project.id) }}>
-            <div className="project-card-top"><div><span className="project-code">{project.id}</span><h3>{project.name}</h3></div><Badge tone={healthTone(project.health)}>{project.health || 'Bez health'}</Badge></div>
+            <div className="project-card-top"><div><span className="project-code">{project.id}</span><h3>{project.name}</h3></div><Badge tone={healthTone(healthByProject.get(project.id)?.health)}>{healthByProject.get(project.id)?.health || 'Bez health'}</Badge></div>
             <div className="project-card-meta"><span><Icon name="roadmap" size={14}/>{project.phase || 'Neurčená fáza'}</span><span><Icon name="user" size={14}/>{project.managerName || project.owner || 'Bez PM'}</span></div>
             <p>{project.objective || project.description || 'Bez definovaného cieľa.'}</p>
             <Progress value={Number(project.progress || 0)} label="Delivery"/>
@@ -526,6 +621,24 @@ export default function ProjectManagement(props: ProjectManagementProps) {
           </article>
         })}</section>}
       </>}
+
+      {tab === 'control' && !isProjectMemberRole && <section className="governance-control-center">
+        <div className="project-section-title"><div><span>PROJECT GOVERNANCE & CONTROL</span><h3>Manažérsky Control Center</h3><p className="project-section-help">Jedna obrazovka pre projekty, ktoré vyžadujú zásah: automatický health, RAID, rozhodnutia, status reporting a míľniky po termíne.</p></div></div>
+        <section className="governance-kpi-grid">
+          <article><span>Červený auto health</span><strong>{controlCenter.criticalProjects.filter((row) => row.auto?.health === 'Červený').length}</strong><small>kritické projekty</small></article>
+          <article><span>Otvorený RAID</span><strong>{controlCenter.openRaid.length}</strong><small>riziká, problémy, závislosti</small></article>
+          <article><span>Čaká na rozhodnutie</span><strong>{controlCenter.pendingDecisions.length}</strong><small>decision log</small></article>
+          <article><span>Chýba status report</span><strong>{controlCenter.missingReports.length}</strong><small>za aktuálny mesiac</small></article>
+          <article><span>Míľniky po termíne</span><strong>{controlCenter.overdueMilestones.length}</strong><small>otvorené delivery body</small></article>
+        </section>
+        <div className="governance-control-grid">
+          <section className="governance-panel governance-panel-wide"><div className="governance-panel-head"><div><span>AUTOMATICKÝ PROJECT HEALTH</span><h4>Projekty vyžadujúce pozornosť</h4></div><Badge tone={controlCenter.criticalProjects.some((row) => row.auto?.health === 'Červený') ? 'danger' : 'success'}>{controlCenter.criticalProjects.length} upozornení</Badge></div>
+            {controlCenter.criticalProjects.length ? <div className="governance-project-list">{controlCenter.criticalProjects.slice(0,8).map(({project,auto}) => <button key={project.id} onClick={() => openProject(project.id)}><span className={`health-dot ${auto?.health === 'Červený' ? 'red' : 'orange'}`}/><div><strong>{project.id} · {project.name}</strong><small>{auto?.reasons.slice(0,3).join(' · ') || 'Vyžaduje kontrolu'}</small></div><Badge tone={healthTone(auto?.health)}>{auto?.health}</Badge></button>)}</div> : <div className="governance-good"><Icon name="check" size={18}/><div><strong>Portfólio bez kritických signálov</strong><span>Automatický health momentálne neidentifikuje projekt vyžadujúci eskaláciu.</span></div></div>}
+          </section>
+          <section className="governance-panel"><div className="governance-panel-head"><div><span>DECISION LOG</span><h4>Čakajúce rozhodnutia</h4></div></div>{controlCenter.pendingDecisions.length ? <div className="governance-compact-list">{controlCenter.pendingDecisions.slice(0,6).map((item) => <button key={item.id} onClick={() => openProject(item.projectId)}><strong>{item.title}</strong><span>{item.projectId} · termín {dateLabel(item.due)}</span></button>)}</div> : <p className="capacity-muted">Žiadne otvorené rozhodnutia.</p>}</section>
+          <section className="governance-panel"><div className="governance-panel-head"><div><span>STATUS REPORTING</span><h4>Chýbajúce reporty</h4></div></div>{controlCenter.missingReports.length ? <div className="governance-compact-list">{controlCenter.missingReports.slice(0,6).map((project) => <button key={project.id} onClick={() => { openProject(project.id); setDetailTab('governance') }}><strong>{project.id} · {project.name}</strong><span>PM: {project.managerName || project.owner || '—'}</span></button>)}</div> : <div className="governance-good small"><Icon name="check" size={16}/><span>Status reporting je aktuálny.</span></div>}</section>
+        </div>
+      </section>}
 
       {tab === 'capacity' && <section className="capacity-shell capacity-intelligence-shell">
         <div className="project-section-title"><div><span>PROJECT CAPACITY INTELLIGENCE</span><h3>{isProjectMemberRole ? 'Moje vyťaženie a kapacitný plán' : 'BI pohľad na kapacity projektových tímov'}</h3><p className="project-section-help">Prepínajte medzi manažérskym BI, časovou heatmapou, grafom alokácií a detailným rozpadom. Všetky pohľady vychádzajú z rovnakých projektových členstiev a platnosti alokácií.</p></div></div>
@@ -606,12 +719,12 @@ export default function ProjectManagement(props: ProjectManagementProps) {
 
     {detailOpen && selectedProject && <section className="project-detail-shell project-detail-page">
       <div className="project-detail-toolbar"><button className="button button-secondary button-small" onClick={closeProject}><Icon name="arrow" size={15}/>Späť na projekty</button><span>Karta projektu</span></div>
-      <header className="project-detail-head"><div><span>{selectedProject.id} · {selectedProject.type}</span><h2>{selectedProject.name}</h2><p>{selectedProject.objective || selectedProject.description}</p></div><div className="project-detail-actions"><Badge tone={healthTone(selectedProject.health)}>{selectedProject.health || 'Health neurčený'}</Badge><Badge tone={statusTone(selectedProject.status)}>{selectedProject.status}</Badge>{canManageSelectedProject && <><button className="button button-secondary button-small" onClick={() => setProjectDraft({ ...blankProject(), ...selectedProject })}><Icon name="edit" size={15}/>Upraviť projekt</button><button className="button button-primary button-small" onClick={() => setMemberDraft(blankMember(selectedProject.id))}><Icon name="plus" size={15}/>Pridať člena</button><button className="button button-ghost button-small" onClick={() => void removeProject(selectedProject)}><Icon name="trash" size={15}/>Odstrániť</button></>}</div></header>
+      <header className="project-detail-head"><div><span>{selectedProject.id} · {selectedProject.type}</span><h2>{selectedProject.name}</h2><p>{selectedProject.objective || selectedProject.description}</p></div><div className="project-detail-actions"><Badge tone={healthTone(healthByProject.get(selectedProject.id)?.health)}>{healthByProject.get(selectedProject.id)?.health || 'Health neurčený'} · auto</Badge><Badge tone={statusTone(selectedProject.status)}>{selectedProject.status}</Badge>{canManageSelectedProject && <><button className="button button-secondary button-small" onClick={() => setProjectDraft({ ...blankProject(), ...selectedProject })}><Icon name="edit" size={15}/>Upraviť projekt</button><button className="button button-primary button-small" onClick={() => setMemberDraft(blankMember(selectedProject.id))}><Icon name="plus" size={15}/>Pridať člena</button><button className="button button-ghost button-small" onClick={() => void removeProject(selectedProject)}><Icon name="trash" size={15}/>Odstrániť</button></>}</div></header>
 
       {role === 'project_manager' && !canManageSelectedProject && <div className="inline-alert inline-alert-info"><Icon name="decision" size={17}/><span><strong>Projekt máte sprístupnený ako člen tímu.</strong> Projektovú kartu môžete čítať; riadiace zmeny vykonáva projektový manažér projektu alebo Admin.</span></div>}
 
       <div className="project-tabs project-detail-tabs">
-        {([['overview','Karta projektu'],['delivery','Delivery a úlohy'],['team','Tím a kapacity'],['finance','Financovanie'],['links','Väzby']] as [ProjectDetailTab,string][]).map(([key,label]) => <button key={key} className={detailTab === key ? 'active' : ''} onClick={() => setDetailTab(key)}>{label}</button>)}
+        {([['overview','Karta projektu'],['delivery','Delivery a úlohy'],['governance','Governance'],['team','Tím a kapacity'],['finance','Financovanie'],['links','Väzby']] as [ProjectDetailTab,string][]).map(([key,label]) => <button key={key} className={detailTab === key ? 'active' : ''} onClick={() => setDetailTab(key)}>{label}</button>)}
       </div>
 
       {detailTab === 'overview' && <>
@@ -632,6 +745,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
           <button onClick={() => setDetailTab('team')}><Icon name="people" size={19}/><div><strong>Tím a kapacity</strong><span>{projectMembers.length} členov projektu</span></div><Icon name="chevron" size={16}/></button>
           <button onClick={() => setDetailTab('finance')}><Icon name="capacity" size={19}/><div><strong>Financovanie</strong><span>{projectFunding.length} zdrojov financovania</span></div><Icon name="chevron" size={16}/></button>
           <button onClick={() => setDetailTab('links')}><Icon name="systems" size={19}/><div><strong>Väzby</strong><span>{projectLinks.length} väzieb na registre</span></div><Icon name="chevron" size={16}/></button>
+          <button onClick={() => setDetailTab('governance')}><Icon name="decision" size={19}/><div><strong>Governance</strong><span>{projectRaidItems.filter((item) => !['Uzavreté','Akceptované'].includes(item.status)).length} otvorených RAID · {projectDecisions.filter((item) => item.status === 'Čaká na rozhodnutie').length} rozhodnutí</span></div><Icon name="chevron" size={16}/></button>
         </div></section>
       </>}
 
@@ -642,6 +756,26 @@ export default function ProjectManagement(props: ProjectManagementProps) {
         <section><div className="project-section-title"><div><span>PRÁCA</span><h3>Úlohy projektu</h3></div>{canManageSelectedProject && <button className="button button-secondary button-small" onClick={() => setTaskDraft(blankTask(selectedProject.id))}><Icon name="plus" size={14}/>Úloha</button>}</div>
           <div className="project-task-list">{projectTasks.length ? projectTasks.map((task) => <article key={task.id}><div><strong>{task.title}</strong><span>{task.owner || 'Bez vlastníka'} · {dateLabel(task.due)}</span></div><Progress value={task.status === 'Hotovo' ? 100 : Number(task.progress || 0)}/><Badge tone={statusTone(task.status)}>{task.status}</Badge>{canEditTask(task) && <button onClick={() => setTaskDraft({ ...blankTask(selectedProject.id), ...task })}><Icon name="edit" size={14}/></button>}</article>) : <Empty title="Bez úloh" text="Projekt zatiaľ nemá evidované úlohy."/>}</div>
         </section>
+      </div>}
+
+      {detailTab === 'governance' && <div className="project-governance-space">
+        <section className="governance-health-card">
+          <div className="governance-health-main"><span>AUTOMATICKÝ PROJECT HEALTH</span><div><strong>{healthByProject.get(selectedProject.id)?.health || 'Zelený'}</strong><Badge tone={healthTone(healthByProject.get(selectedProject.id)?.health)}>{healthByProject.get(selectedProject.id)?.score || 0} bodov rizika</Badge></div><p>{healthByProject.get(selectedProject.id)?.reasons.join(' · ') || 'Bez identifikovaných varovných signálov.'}</p></div>
+          <div className="governance-health-metrics"><article><span>Otvorený RAID</span><strong>{projectRaidItems.filter((item) => !['Uzavreté','Akceptované'].includes(item.status)).length}</strong></article><article><span>Čaká na rozhodnutie</span><strong>{projectDecisions.filter((item) => item.status === 'Čaká na rozhodnutie').length}</strong></article><article><span>Status reporty</span><strong>{projectStatusReports.length}</strong></article><article><span>Posledný report</span><strong>{projectStatusReports.sort((a,b) => b.period.localeCompare(a.period))[0]?.period || '—'}</strong></article></div>
+        </section>
+
+        <section><div className="project-section-title"><div><span>RAID REGISTER</span><h3>Riziká, problémy, závislosti a predpoklady</h3></div>{canManageSelectedProject && <button className="button button-primary button-small" onClick={() => setRaidDraft(blankRaidItem(selectedProject.id))}><Icon name="plus" size={14}/>RAID položka</button>}</div>
+          <div className="project-table-wrap"><table className="project-table governance-table"><thead><tr><th>Typ</th><th>Položka</th><th>Závažnosť</th><th>Vlastník</th><th>Termín</th><th>Stav</th><th></th></tr></thead><tbody>{[...projectRaidItems].sort((a,b) => (a.status === 'Uzavreté' ? 1 : 0) - (b.status === 'Uzavreté' ? 1 : 0) || severityStates.indexOf(b.severity) - severityStates.indexOf(a.severity)).map((item) => <tr key={item.id}><td><Badge tone={item.itemType === 'Problém' ? 'danger' : item.itemType === 'Riziko' ? 'warning' : 'info'}>{item.itemType}</Badge></td><td><strong>{item.title}</strong><small>{item.description || item.response || '—'}</small></td><td><Badge tone={item.severity === 'Kritická' ? 'danger' : item.severity === 'Vysoká' ? 'warning' : 'neutral'}>{item.severity}</Badge></td><td>{item.owner || '—'}</td><td>{dateLabel(item.due)}</td><td>{item.status}</td><td>{canManageSelectedProject && <div className="row-actions"><button onClick={() => setRaidDraft({ ...item })}><Icon name="edit" size={14}/></button><button onClick={() => confirm('Odstrániť RAID položku?') && void runSave(() => deleteProjectRaidItem(item.id))}><Icon name="trash" size={14}/></button></div>}</td></tr>)}</tbody></table>{!projectRaidItems.length && <Empty title="RAID register je prázdny" text="Evidujte riziká, problémy, závislosti a predpoklady projektu."/>}</div>
+        </section>
+
+        <div className="project-two-column governance-two-column">
+          <section><div className="project-section-title"><div><span>STATUS REPORT</span><h3>Pravidelný manažérsky reporting</h3></div>{canManageSelectedProject && <button className="button button-secondary button-small" onClick={() => setStatusReportDraft({ ...blankStatusReport(selectedProject.id, currentUser, currentUserEmail), progressPercent: Number(selectedProject.progress || 0), overallStatus: healthByProject.get(selectedProject.id)?.health || 'Zelený' })}><Icon name="plus" size={14}/>Status report</button>}</div>
+            <div className="status-report-list">{[...projectStatusReports].sort((a,b) => b.period.localeCompare(a.period)).map((report) => <article key={report.id}><div className="status-report-head"><div><strong>{report.period}</strong><span>{dateLabel(report.reportDate)} · {report.authorName || '—'}</span></div><Badge tone={healthTone(report.overallStatus)}>{report.overallStatus}</Badge></div><p>{report.summary || 'Bez manažérskeho zhrnutia.'}</p><div className="status-report-meta"><span>Progress <b>{report.progressPercent}%</b></span>{report.decisionsNeeded && <span>Rozhodnutie: <b>{report.decisionsNeeded}</b></span>}</div>{canManageSelectedProject && <div className="row-actions"><button onClick={() => setStatusReportDraft({ ...report })}><Icon name="edit" size={14}/></button><button onClick={() => confirm('Odstrániť status report?') && void runSave(() => deleteProjectStatusReport(report.id))}><Icon name="trash" size={14}/></button></div>}</article>)}{!projectStatusReports.length && <Empty title="Bez status reportu" text="PM môže vytvoriť pravidelný mesačný report projektu."/>}</div>
+          </section>
+          <section><div className="project-section-title"><div><span>DECISION LOG</span><h3>Rozhodnutia a požiadavky na vedenie</h3></div>{canManageSelectedProject && <button className="button button-secondary button-small" onClick={() => setDecisionDraft(blankDecision(selectedProject.id))}><Icon name="plus" size={14}/>Rozhodnutie</button>}</div>
+            <div className="decision-list">{[...projectDecisions].sort((a,b) => (a.status === 'Čaká na rozhodnutie' ? 0 : 1) - (b.status === 'Čaká na rozhodnutie' ? 0 : 1) || (a.due || '9999').localeCompare(b.due || '9999')).map((item) => <article key={item.id}><div><strong>{item.title}</strong><span>{item.decisionMaker || 'Bez rozhodovateľa'} · {dateLabel(item.due)}</span><p>{item.decision || item.reason || 'Čaká na rozhodnutie.'}</p></div><Badge tone={item.status === 'Rozhodnuté' ? 'success' : item.status === 'Čaká na rozhodnutie' ? 'warning' : 'neutral'}>{item.status}</Badge>{canManageSelectedProject && <div className="row-actions"><button onClick={() => setDecisionDraft({ ...item })}><Icon name="edit" size={14}/></button><button onClick={() => confirm('Odstrániť rozhodnutie?') && void runSave(() => deleteProjectDecision(item.id))}><Icon name="trash" size={14}/></button></div>}</article>)}{!projectDecisions.length && <Empty title="Decision log je prázdny" text="Evidujte rozhodnutia, ktoré ovplyvňujú scope, termín, rozpočet alebo delivery."/>}</div>
+          </section>
+        </div>
       </div>}
 
       {detailTab === 'team' && <section><div className="project-section-title"><div><span>ĽUDIA A ZODPOVEDNOSTI</span><h3>Projektový tím a plánované kapacity</h3></div>{canManageSelectedProject && <button className="button button-primary button-small" onClick={() => setMemberDraft(blankMember(selectedProject.id))}><Icon name="plus" size={14}/>Člen tímu</button>}</div>
@@ -712,6 +846,31 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       <Field label="Kód / identifikátor"><input value={linkDraft.targetKey} onChange={(e) => setLinkDraft({ ...linkDraft, targetKey: e.target.value })}/></Field><Field label="Názov"><input value={linkDraft.targetName} onChange={(e) => setLinkDraft({ ...linkDraft, targetName: e.target.value })}/></Field>
       <Field label="Vzťah k projektu"><input value={linkDraft.relation} onChange={(e) => setLinkDraft({ ...linkDraft, relation: e.target.value })}/></Field><Field label="Poznámka"><textarea rows={3} value={linkDraft.note} onChange={(e) => setLinkDraft({ ...linkDraft, note: e.target.value })}/></Field>
     </div><div className="modal-actions"><button className="button button-secondary" onClick={() => setLinkDraft(null)}>Zrušiť</button><button className="button button-primary" disabled={busy || !linkDraft.targetName.trim()} onClick={() => void persistLink()}>Uložiť</button></div></Modal>}
+
+    {raidDraft && <Modal title={raidDraft.id ? 'Upraviť RAID položku' : 'Nová RAID položka'} onClose={() => setRaidDraft(null)}><div className="form-grid">
+      <Field label="Typ"><select value={raidDraft.itemType} onChange={(e) => setRaidDraft({ ...raidDraft, itemType: e.target.value })}>{raidTypes.map((x) => <option key={x}>{x}</option>)}</select></Field><Field label="Názov"><input value={raidDraft.title} onChange={(e) => setRaidDraft({ ...raidDraft, title: e.target.value })}/></Field>
+      <Field label="Kategória"><input value={raidDraft.category} onChange={(e) => setRaidDraft({ ...raidDraft, category: e.target.value })} placeholder="Technické, kapacitné, finančné…"/></Field><Field label="Vlastník"><input value={raidDraft.owner} onChange={(e) => setRaidDraft({ ...raidDraft, owner: e.target.value })}/></Field>
+      <Field label="Pravdepodobnosť"><select value={raidDraft.probability} onChange={(e) => setRaidDraft({ ...raidDraft, probability: e.target.value })}>{probabilityStates.map((x) => <option key={x}>{x}</option>)}</select></Field><Field label="Dopad"><select value={raidDraft.impact} onChange={(e) => setRaidDraft({ ...raidDraft, impact: e.target.value })}>{severityStates.filter((x) => x !== 'Kritická').map((x) => <option key={x}>{x}</option>)}</select></Field>
+      <Field label="Závažnosť"><select value={raidDraft.severity} onChange={(e) => setRaidDraft({ ...raidDraft, severity: e.target.value })}>{severityStates.map((x) => <option key={x}>{x}</option>)}</select></Field><Field label="Stav"><select value={raidDraft.status} onChange={(e) => setRaidDraft({ ...raidDraft, status: e.target.value })}>{raidStatuses.map((x) => <option key={x}>{x}</option>)}</select></Field>
+      <Field label="Termín"><input type="date" value={raidDraft.due} onChange={(e) => setRaidDraft({ ...raidDraft, due: e.target.value })}/></Field><Field label="Závislý projekt"><select value={raidDraft.dependencyProjectId} onChange={(e) => setRaidDraft({ ...raidDraft, dependencyProjectId: e.target.value })}><option value="">— bez väzby —</option>{data.projects.filter((project) => project.id !== raidDraft.projectId).map((project) => <option key={project.id} value={project.id}>{project.id} · {project.name}</option>)}</select></Field>
+      <Field label="Popis"><textarea rows={3} value={raidDraft.description} onChange={(e) => setRaidDraft({ ...raidDraft, description: e.target.value })}/></Field><Field label="Mitigácia / reakcia"><textarea rows={3} value={raidDraft.response} onChange={(e) => setRaidDraft({ ...raidDraft, response: e.target.value })}/></Field><Field label="Poznámka"><textarea rows={3} value={raidDraft.note} onChange={(e) => setRaidDraft({ ...raidDraft, note: e.target.value })}/></Field>
+    </div><div className="modal-actions"><button className="button button-secondary" onClick={() => setRaidDraft(null)}>Zrušiť</button><button className="button button-primary" disabled={busy || !raidDraft.title.trim()} onClick={() => void persistRaid()}>Uložiť</button></div></Modal>}
+
+    {statusReportDraft && <Modal title={statusReportDraft.id ? 'Upraviť status report' : 'Nový status report'} onClose={() => setStatusReportDraft(null)}><div className="form-grid">
+      <Field label="Obdobie"><input type="month" value={statusReportDraft.period} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, period: e.target.value })}/></Field><Field label="Dátum reportu"><input type="date" value={statusReportDraft.reportDate} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, reportDate: e.target.value })}/></Field>
+      <Field label="Celkový stav"><select value={statusReportDraft.overallStatus} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, overallStatus: e.target.value })}>{healthStates.map((x) => <option key={x}>{x}</option>)}</select></Field><Field label="Progress %"><input type="number" min="0" max="100" value={statusReportDraft.progressPercent} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, progressPercent: Number(e.target.value) })}/></Field>
+      <Field label="Manažérske zhrnutie"><textarea rows={3} value={statusReportDraft.summary} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, summary: e.target.value })}/></Field><Field label="Čo sa podarilo"><textarea rows={3} value={statusReportDraft.achievements} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, achievements: e.target.value })}/></Field>
+      <Field label="Plán na ďalšie obdobie"><textarea rows={3} value={statusReportDraft.nextSteps} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, nextSteps: e.target.value })}/></Field><Field label="Riziká"><textarea rows={3} value={statusReportDraft.risks} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, risks: e.target.value })}/></Field>
+      <Field label="Blokátory"><textarea rows={3} value={statusReportDraft.blockers} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, blockers: e.target.value })}/></Field><Field label="Rozhodnutia potrebné od vedenia"><textarea rows={3} value={statusReportDraft.decisionsNeeded} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, decisionsNeeded: e.target.value })}/></Field>
+      <Field label="Poznámka"><textarea rows={3} value={statusReportDraft.note} onChange={(e) => setStatusReportDraft({ ...statusReportDraft, note: e.target.value })}/></Field>
+    </div><div className="modal-actions"><button className="button button-secondary" onClick={() => setStatusReportDraft(null)}>Zrušiť</button><button className="button button-primary" disabled={busy || !statusReportDraft.period} onClick={() => void persistStatusReport()}>Uložiť report</button></div></Modal>}
+
+    {decisionDraft && <Modal title={decisionDraft.id ? 'Upraviť rozhodnutie' : 'Nové rozhodnutie'} onClose={() => setDecisionDraft(null)}><div className="form-grid">
+      <Field label="Téma / názov"><input value={decisionDraft.title} onChange={(e) => setDecisionDraft({ ...decisionDraft, title: e.target.value })}/></Field><Field label="Stav"><select value={decisionDraft.status} onChange={(e) => setDecisionDraft({ ...decisionDraft, status: e.target.value, decisionDate: e.target.value === 'Rozhodnuté' ? (decisionDraft.decisionDate || today()) : decisionDraft.decisionDate })}>{decisionStatuses.map((x) => <option key={x}>{x}</option>)}</select></Field>
+      <Field label="Rozhodovateľ"><input value={decisionDraft.decisionMaker} onChange={(e) => setDecisionDraft({ ...decisionDraft, decisionMaker: e.target.value })}/></Field><Field label="Termín rozhodnutia"><input type="date" value={decisionDraft.due} onChange={(e) => setDecisionDraft({ ...decisionDraft, due: e.target.value })}/></Field>
+      <Field label="Dátum rozhodnutia"><input type="date" value={decisionDraft.decisionDate} onChange={(e) => setDecisionDraft({ ...decisionDraft, decisionDate: e.target.value })}/></Field><Field label="Rozhodnutie"><textarea rows={3} value={decisionDraft.decision} onChange={(e) => setDecisionDraft({ ...decisionDraft, decision: e.target.value })}/></Field>
+      <Field label="Dôvod"><textarea rows={3} value={decisionDraft.reason} onChange={(e) => setDecisionDraft({ ...decisionDraft, reason: e.target.value })}/></Field><Field label="Dopad"><textarea rows={3} value={decisionDraft.impact} onChange={(e) => setDecisionDraft({ ...decisionDraft, impact: e.target.value })}/></Field><Field label="Poznámka"><textarea rows={3} value={decisionDraft.note} onChange={(e) => setDecisionDraft({ ...decisionDraft, note: e.target.value })}/></Field>
+    </div><div className="modal-actions"><button className="button button-secondary" onClick={() => setDecisionDraft(null)}>Zrušiť</button><button className="button button-primary" disabled={busy || !decisionDraft.title.trim()} onClick={() => void persistDecision()}>Uložiť</button></div></Modal>}
 
     {taskDraft && <Modal title={taskDraft.id ? 'Upraviť úlohu' : 'Nová projektová úloha'} onClose={() => setTaskDraft(null)}><div className="form-grid">
       <Field label="Názov"><input value={taskDraft.title} onChange={(e) => setTaskDraft({ ...taskDraft, title: e.target.value })}/></Field><Field label="Vlastník"><input value={taskDraft.owner} onChange={(e) => setTaskDraft({ ...taskDraft, owner: e.target.value })} disabled={isProjectMemberRole}/></Field>
