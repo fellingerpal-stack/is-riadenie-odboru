@@ -28,8 +28,10 @@ import { Badge, Field, Icon, Modal, PageHeader } from '../components/UI'
 const roles: { value: AppRole; label: string; description: string }[] = [
   { value: 'admin', label: 'Administrátor', description: 'Úplná správa aplikácie, používateľov a nastavení.' },
   { value: 'manager', label: 'Riaditeľ / manažér', description: 'Riadenie, schvaľovanie, reporty a editácia manažérskych modulov.' },
-  { value: 'resolver', label: 'Riešiteľ', description: 'Správa pridelených úloh, ticketov, problémov, zmien a aktív.' },
-  { value: 'employee', label: 'Používateľ', description: 'Self-service prístup iba do ServiceDesku, ku katalógu a vlastným ticketom.' },
+  { value: 'resolver', label: 'Riešiteľ', description: 'Správa pridelených úloh, problémov, zmien a aktív.' },
+  { value: 'project_manager', label: 'Projektový manažér', description: 'Riadi projektové portfólio, delivery, tím, financovanie, míľniky a väzby.' },
+  { value: 'project_member', label: 'Člen projektu', description: 'Vidí projekty, do ktorých je zaradený, a aktualizuje svoju projektovú prácu.' },
+  { value: 'employee', label: 'Používateľ', description: 'Základný portálový účet bez prístupu do interných riadiacich modulov; ServiceDesk je dočasne iba pre admina.' },
   { value: 'viewer', label: 'Čitateľ', description: 'Prístup iba na čítanie povolených informácií.' },
 ]
 
@@ -60,13 +62,15 @@ type UserTab = 'users' | 'onboarding' | 'audit'
 const INVITE_WINDOW_HOURS = 24
 
 function roleInfo(role: AppRole) {
-  return roles.find((item) => item.value === role) ?? roles[4]
+  return roles.find((item) => item.value === role) ?? roles[roles.length - 1]
 }
 
 function roleTone(role: AppRole): 'danger' | 'purple' | 'info' | 'success' | 'neutral' {
   if (role === 'admin') return 'danger'
   if (role === 'manager') return 'purple'
   if (role === 'resolver') return 'info'
+  if (role === 'project_manager') return 'purple'
+  if (role === 'project_member') return 'info'
   if (role === 'employee') return 'success'
   return 'neutral'
 }
@@ -390,7 +394,7 @@ export default function Users({ currentUserId, currentUserName, configured }: { 
       <Field label="Pracovná pozícia"><input value={invite.jobTitle} onChange={(event) => setInvite({ ...invite, jobTitle: event.target.value })} placeholder="Názov pozície"/></Field>
       <Field label="Telefón"><input value={invite.phone} onChange={(event) => setInvite({ ...invite, phone: event.target.value })} placeholder="+421…"/></Field>
       <Field label="Aplikačná rola" hint={roleInfo(invite.role).description}><select value={invite.role} onChange={(event) => { const role=event.target.value as AppRole; setInvite({ ...invite, role, accessScopes: defaultAccessScopes(role, invite.department) }) }}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
-    </div><AccessMatrix value={invite.accessScopes} disabled={invite.role==='admin'||invite.role==='employee'} onChange={(accessScopes)=>setInvite({...invite,accessScopes})}/><div className="invite-note"><Icon name="calendar" size={17}/><div><strong>Prístupový odkaz je určený na prvotné nastavenie hesla.</strong><span>Ak používateľ odkaz neotvorí včas, v záložke Onboarding mu odošlete nový.</span></div></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setInviteOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={busy || !invite.email || !invite.fullName} onClick={() => void sendInvite()}>{busy ? 'Spracúvam…' : configured ? 'Odoslať pozvanie' : 'Vytvoriť demo účet'}</button></div></Modal>}
+    </div><AccessMatrix value={invite.accessScopes} disabled={invite.role==='admin'||invite.role==='employee'||invite.role==='project_manager'||invite.role==='project_member'} onChange={(accessScopes)=>setInvite({...invite,accessScopes})}/><div className="invite-note"><Icon name="calendar" size={17}/><div><strong>Prístupový odkaz je určený na prvotné nastavenie hesla.</strong><span>Ak používateľ odkaz neotvorí včas, v záložke Onboarding mu odošlete nový.</span></div></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setInviteOpen(false)}>Zrušiť</button><button className="button button-primary" disabled={busy || !invite.email || !invite.fullName} onClick={() => void sendInvite()}>{busy ? 'Spracúvam…' : configured ? 'Odoslať pozvanie' : 'Vytvoriť demo účet'}</button></div></Modal>}
 
     {editProfile && <UserEditModal profile={editProfile} current={editProfile.id === currentUserId} cloud={configured} busy={busy} onClose={() => setEditProfile(null)} onSave={save} onOwnPassword={() => { setEditProfile(null); setPasswordOpen(true) }} onSetPassword={() => { setEditProfile(null); setAdminPasswordProfile(editProfile) }}/>} 
     {detailProfile && <UserDetailModal profile={profiles.find((item) => item.id === detailProfile.id) ?? detailProfile} audit={audit.filter((entry) => entry.targetUserId === detailProfile.id || entry.targetUserName === detailProfile.fullName)} current={detailProfile.id === currentUserId} cloud={configured} busy={busy} onClose={() => setDetailProfile(null)} onEdit={() => { setDetailProfile(null); setEditProfile(detailProfile) }} onReset={() => void resetPassword(detailProfile)} onResend={() => void resendAccess(detailProfile)} onCancel={() => void cancelInvitation(detailProfile)} onOwnPassword={() => { setDetailProfile(null); setPasswordOpen(true) }} onSetPassword={() => { setDetailProfile(null); setAdminPasswordProfile(detailProfile) }}/>} 
@@ -439,7 +443,7 @@ function UserEditModal({ profile, current, cloud, busy, onClose, onSave, onOwnPa
     <Field label="Telefón"><input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })}/></Field>
     <Field label="Aplikačná rola" hint={roleInfo(draft.role).description}><select value={draft.role} disabled={current} onChange={(event) => { const role=event.target.value as AppRole; setDraft({ ...draft, role, accessScopes: defaultAccessScopes(role, draft.department) }) }}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field>
     <Field label="Stav účtu" hint={current ? 'Vlastný účet nemožno deaktivovať.' : 'Deaktivovaný používateľ sa neprihlási.'}><label className="account-status-switch"><input type="checkbox" checked={draft.isActive} disabled={current} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })}/><span>{draft.isActive ? 'Prístup povolený' : 'Prístup zablokovaný'}</span></label></Field>
-  </div><AccessMatrix value={draft.accessScopes} disabled={current || draft.role==='admin'||draft.role==='employee'} onChange={(accessScopes)=>setDraft({...draft,accessScopes})}/>{cloud&&<div className="password-guidance"><Icon name="lock" size={20}/><div><strong>{current?'Zmena vlastného hesla':'Správa hesla používateľa'}</strong><span>{current?'Heslo zmeníte priamo bez e-mailu a bez SMTP.':'Administrátor môže nastaviť nové heslo priamo v Supabase Auth. Používateľovi ho odovzdajte bezpečným kanálom.'}</span><button className="button button-secondary button-small" type="button" onClick={current?onOwnPassword:onSetPassword}><Icon name="lock" size={16}/> {current?'Zmeniť moje heslo':'Nastaviť nové heslo'}</button></div></div>}<div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !draft.fullName.trim()} onClick={() => void onSave(draft)}>{busy ? 'Ukladám…' : 'Uložiť zmeny'}</button></div></Modal>
+  </div><AccessMatrix value={draft.accessScopes} disabled={current || draft.role==='admin'||draft.role==='employee'||draft.role==='project_manager'||draft.role==='project_member'} onChange={(accessScopes)=>setDraft({...draft,accessScopes})}/>{cloud&&<div className="password-guidance"><Icon name="lock" size={20}/><div><strong>{current?'Zmena vlastného hesla':'Správa hesla používateľa'}</strong><span>{current?'Heslo zmeníte priamo bez e-mailu a bez SMTP.':'Administrátor môže nastaviť nové heslo priamo v Supabase Auth. Používateľovi ho odovzdajte bezpečným kanálom.'}</span><button className="button button-secondary button-small" type="button" onClick={current?onOwnPassword:onSetPassword}><Icon name="lock" size={16}/> {current?'Zmeniť moje heslo':'Nastaviť nové heslo'}</button></div></div>}<div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Zrušiť</button><button className="button button-primary" disabled={busy || !draft.fullName.trim()} onClick={() => void onSave(draft)}>{busy ? 'Ukladám…' : 'Uložiť zmeny'}</button></div></Modal>
 }
 
 function UserDetailModal({ profile, audit, current, cloud, busy, onClose, onEdit, onReset, onResend, onCancel, onOwnPassword, onSetPassword }: { profile: UserProfile; audit: UserAuditEntry[]; current: boolean; cloud: boolean; busy: boolean; onClose: () => void; onEdit: () => void; onReset: () => void; onResend: () => void; onCancel: () => void; onOwnPassword: () => void; onSetPassword: () => void }) {

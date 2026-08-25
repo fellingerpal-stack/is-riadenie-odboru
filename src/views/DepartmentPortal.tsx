@@ -10,7 +10,7 @@ type PortalCardProps = {
   description: string
   tags: string[]
   buttonLabel: string
-  icon: 'dashboard' | 'systems' | 'shield' | 'capacity' | 'cmdb' | 'helpdesk'
+  icon: 'dashboard' | 'systems' | 'shield' | 'capacity' | 'cmdb' | 'helpdesk' | 'projects'
   disabled?: boolean
   onOpen: () => void
 }
@@ -47,8 +47,8 @@ function SectionHeading({ eyebrow, title, note }: { eyebrow: string; title: stri
   </div>
 }
 
-export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=true}:{go:Go;canOit?:boolean;canOris?:boolean;canShared?:boolean}){
-  const availableModules = 1 + Number(canOris) + Number(canOit) + (canShared ? 5 : 0)
+export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=true,canServiceDesk=false,canProjects=false}:{go:Go;canOit?:boolean;canOris?:boolean;canShared?:boolean;canServiceDesk?:boolean;canProjects?:boolean}){
+  const availableModules = 1 + Number(canOris) + Number(canOit) + (canShared ? 5 : 0) + Number(canServiceDesk) + Number(canProjects)
 
   return <div className="department-portal portal-launch portal-launch-vb">
     <section className="portal-launch-hero">
@@ -64,24 +64,43 @@ export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=
       </div>
     </section>
 
-    <section className="portal-launch-supermodule" aria-label="ServiceDesk CVTI SR">
+    {canProjects && <section className="portal-launch-supermodule" aria-label="Riadenie projektov CVTI SR">
+      <article className="portal-launch-card portal-launch-supercard portal-launch-projects">
+        <div className="portal-launch-card-accent" aria-hidden="true" />
+        <div className="portal-launch-supercopy">
+          <span className="portal-launch-card-icon"><Icon name="projects" size={26}/></span>
+          <div className="portal-launch-card-body">
+            <span className="portal-launch-card-eyebrow">NOVÝ MODUL · PROJECT PORTFOLIO & DELIVERY</span>
+            <h2>Riadenie projektov · jeden register od zámeru po prevádzku</h2>
+            <p>Stav a fáza projektu, projektový tím, financovanie, úlohy, míľniky a väzby na informačné systémy, služby, zmluvy a dodávateľov v jednom projektovom obraze.</p>
+            <div className="portal-launch-tags"><span>Project portfolio</span><span>Delivery lifecycle</span><span>Tím a roly</span><span>Financovanie</span><span>Cross-module väzby</span></div>
+          </div>
+        </div>
+        <div className="portal-launch-super-action">
+          <button className="portal-launch-enter" onClick={()=>go('projectManagement')}><span>Otvoriť Riadenie projektov</span><Icon name="arrow" size={18}/></button>
+          <small>Prístup: administrátor, projektový manažér a člen projektu podľa pridelenia.</small>
+        </div>
+      </article>
+    </section>}
+
+    {canServiceDesk && <section className="portal-launch-supermodule" aria-label="ServiceDesk CVTI SR">
       <article className="portal-launch-card portal-launch-supercard portal-launch-servicedesk">
         <div className="portal-launch-card-accent" aria-hidden="true" />
         <div className="portal-launch-supercopy">
           <span className="portal-launch-card-icon"><Icon name="helpdesk" size={26}/></span>
           <div className="portal-launch-card-body">
-            <span className="portal-launch-card-eyebrow">SAMOSTATNÝ PRODUKČNÝ MODUL · ITSM</span>
-            <h2>ServiceDesk CVTI SR · jeden vstup pre zamestnancov aj IT</h2>
-            <p>Zamestnanci nahlásia incident alebo požiadavku, routing matica ju automaticky pošle správnej riešiteľskej skupine a IT pracuje s frontami, SLA, komentármi a auditnou históriou.</p>
-            <div className="portal-launch-tags"><span>Self-service</span><span>Riešiteľské skupiny</span><span>Routing matica</span><span>SLA &amp; Control Tower</span></div>
+            <span className="portal-launch-card-eyebrow">ADMIN MODUL · ITSM · DOČASNE NEAKTÍVNY PRE POUŽÍVATEĽOV</span>
+            <h2>ServiceDesk CVTI SR</h2>
+            <p>ServiceDesk zostáva v aplikácii zachovaný, ale v tejto fáze je dostupný iba administrátorovi. Dáta a konfigurácia sa nemenia.</p>
+            <div className="portal-launch-tags"><span>Admin only</span><span>Zachované dáta</span><span>Pripravené na neskoršiu aktiváciu</span></div>
           </div>
         </div>
         <div className="portal-launch-super-action">
           <button className="portal-launch-enter" onClick={()=>go('serviceDesk')}><span>Otvoriť ServiceDesk</span><Icon name="arrow" size={18}/></button>
-          <small>Samostatný workspace s produkčnými rolami a databázovými oprávneniami.</small>
+          <small>Modul nie je momentálne publikovaný bežným používateľom ani riešiteľom.</small>
         </div>
       </article>
-    </section>
+    </section>}
 
     {canShared && <section className="portal-launch-supermodule" aria-label="CVTI 360 Enterprise Intelligence">
       <article className="portal-launch-card portal-launch-supercard portal-launch-cvti360">
@@ -102,6 +121,7 @@ export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=
       </article>
     </section>}
 
+    {(canOris || canOit) && <>
     <SectionHeading
       eyebrow="HLAVNÉ PRACOVNÉ PRIESTORY"
       title="Odbory 3.2 a 3.1"
@@ -134,6 +154,8 @@ export default function DepartmentPortal({go,canOit=true,canOris=true,canShared=
         onOpen={()=>go('oit')}
       />
     </section>
+
+    </>}
 
     {canShared && <>
       <SectionHeading

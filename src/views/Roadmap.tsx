@@ -15,6 +15,8 @@ function roleLabel(role: AppRole) {
   if (role === 'admin') return 'Administrátor'
   if (role === 'manager') return 'Riaditeľ / manažér'
   if (role === 'resolver') return 'Riešiteľ'
+  if (role === 'project_manager') return 'Projektový manažér'
+  if (role === 'project_member') return 'Člen projektu'
   if (role === 'employee') return 'Používateľ'
   return 'Čitateľ'
 }
@@ -110,7 +112,7 @@ export default function Roadmap({
           <div className="panel-heading"><div><span className="eyebrow">Testovanie oprávnení</span><h3>Demo rola</h3></div></div>
           <p className="muted-copy">Supabase zatiaľ nie je nakonfigurovaný. Rolu je možné prepínať iba na overenie používateľského rozhrania.</p>
           <select value={role} onChange={(event) => onRoleChange(event.target.value as AppRole)}>
-            <option value="admin">Administrátor</option><option value="manager">Riaditeľ / manažér</option><option value="resolver">Riešiteľ</option><option value="employee">Používateľ</option><option value="viewer">Čitateľ</option>
+            <option value="admin">Administrátor</option><option value="manager">Riaditeľ / manažér</option><option value="resolver">Riešiteľ</option><option value="project_manager">Projektový manažér</option><option value="project_member">Člen projektu</option><option value="employee">Používateľ</option><option value="viewer">Čitateľ</option>
           </select>
           <div className="role-info"><Icon name={role === 'viewer' ? 'lock' : role === 'employee' ? 'user' : 'edit'} size={18}/><span>{role === 'viewer' ? 'Režim iba na čítanie.' : role === 'employee' ? 'Používateľský prístup k vlastným požiadavkám.' : role === 'resolver' ? 'Prevádzkové a riešiteľské moduly možno upravovať.' : 'Manažérske údaje možno upravovať.'}</span></div>
         </article>}
