@@ -1,0 +1,45 @@
+IS RIADENIE ODBORU v0.53.0 – QA
+
+PASS  Version consistency
+      package.json = 0.53.0
+      src/lib/storage.ts CURRENT_VERSION = 0.53.0
+      src/data/seed.json meta.version = 0.53.0
+
+PASS  Release structure / relative imports
+      scripts/verify-release.mjs
+      result: [v0.53.0 verify] OK
+      sourceFiles = 74
+
+PASS  TypeScript/TSX syntax
+      TypeScript transpileModule syntax validation over 74 TS/TSX files
+      failed = 0
+
+PASS  Project membership frontend
+      - admin global tab Zaradenia
+      - project/user/role/capacity/validity editing
+      - UUID link indicator
+      - PM per-project manage/read-only distinction
+      - project member visibility remains server scoped
+
+PASS  Project synchronization UI
+      - project module publishes its own ProjectDatabaseState to App
+      - top indicator uses project state while Project Management is open
+      - sidebar footer uses project state while Project Management is open
+      - restricted project roles no longer overwrite sync to DB bez dát via global snapshot effect
+
+PASS  SQL static checks
+      - preflight delimiter pair present
+      - dollar quote count even
+      - transaction begin/commit present
+      - project_member_resolve_user_v053 present
+      - project_member_is_current_user present
+      - project_can_read/project_can_manage present
+      - project_portfolio_upsert_member present
+
+NOT RUN  Live Supabase execution
+         SQL migration was not executed against the production database in this environment.
+         Final migration gate is the readiness SELECT at the end of migration_project_membership_v053.sql.
+
+NOT RUN  Full npm/Vite production build
+         npm dependency installation timed out in the isolated build environment.
+         Final production build gate remains Vercel. The prebuild verifier is included in the package.

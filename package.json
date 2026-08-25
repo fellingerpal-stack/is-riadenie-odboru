@@ -1,13 +1,14 @@
 {
   "name": "is-riadenie-odboru",
   "private": true,
-  "version": "0.51.1",
+  "version": "0.53.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "check": "tsc -b --pretty false"
+    "check": "tsc -b --pretty false",
+    "prebuild": "node scripts/prebuild-cleanup.mjs && node scripts/verify-release.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.55.0",
