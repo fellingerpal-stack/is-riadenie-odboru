@@ -1,0 +1,31 @@
+IS Riadenie odboru v0.51.0 – zmenené/pridané súbory
+
+Frontend:
+- package.json
+- src/App.tsx
+- src/types.ts
+- src/styles.css
+- src/auth/AuthContext.tsx
+- src/lib/accessControl.ts
+- src/lib/cloud.ts
+- src/lib/localUsers.ts
+- src/lib/projectCloud.ts [NEW]
+- src/lib/storage.ts
+- src/views/DepartmentPortal.tsx
+- src/views/ProjectManagement.tsx [NEW]
+- src/views/ProjectManagement.css [NEW]
+- src/views/Users.tsx
+- src/views/Roadmap.tsx
+- src/data/seed.json
+
+Supabase:
+- supabase/migration_project_management_v051.sql [NEW]
+- supabase/test_project_management_v051.sql [NEW]
+- supabase/functions/invite-user/index.ts
+
+Root deployment/database copies:
+- IS_Riadenie_odboru_v0.51.0_PROJECT_MANAGEMENT.sql [NEW]
+- test_project_management_v051.sql [NEW]
+- RELEASE_NOTES_0.51.0.md [NEW]
+- README_NASADENIE_0.51.0.txt [NEW]
+- README_DATABASE_0.51.0.txt [NEW]

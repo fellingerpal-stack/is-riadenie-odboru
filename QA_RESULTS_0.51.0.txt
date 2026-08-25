@@ -1,0 +1,70 @@
+IS Riadenie odboru v0.51.0 - QA
+Date: 2026-08-25
+
+VERSION / PACKAGE
+[PASS] package.json = 0.51.0
+[PASS] seed meta version = 0.51.0
+[PASS] storage CURRENT_VERSION = 0.51.0
+
+TYPESCRIPT / TSX SYNTAX
+[PASS] src/App.tsx syntax diagnostics = 0
+[PASS] src/types.ts syntax diagnostics = 0
+[PASS] src/auth/AuthContext.tsx syntax diagnostics = 0
+[PASS] src/lib/accessControl.ts syntax diagnostics = 0
+[PASS] src/lib/cloud.ts syntax diagnostics = 0
+[PASS] src/lib/localUsers.ts syntax diagnostics = 0
+[PASS] src/lib/projectCloud.ts syntax diagnostics = 0
+[PASS] src/lib/storage.ts syntax diagnostics = 0
+[PASS] src/views/DepartmentPortal.tsx syntax diagnostics = 0
+[PASS] src/views/ProjectManagement.tsx syntax diagnostics = 0
+[PASS] src/views/Users.tsx syntax diagnostics = 0
+[PASS] src/views/Roadmap.tsx syntax diagnostics = 0
+[PASS] supabase/functions/invite-user/index.ts syntax diagnostics = 0
+
+CSS / IMPORT STRUCTURE
+[PASS] src/styles.css PostCSS parse
+[PASS] src/views/ProjectManagement.css PostCSS parse
+[PASS] local import audit; missing = 0
+
+ROLE / ACCESS MODEL
+[PASS] AppRole includes project_manager
+[PASS] AppRole includes project_member
+[PASS] ServiceDesk nav is admin-only
+[PASS] ServiceDesk render is admin-only
+[PASS] project roles are restricted to portal/project module
+[PASS] project manager role available in Users
+[PASS] project member role available in Users
+[PASS] project roles have zero general scope
+[PASS] invite-user accepts project roles
+
+PROJECT MODULE STRUCTURE
+[PASS] portfolio tabs overview/projects/delivery/team/finance/links
+[PASS] project functions include Analyst/Tester/Gestor
+[PASS] funding types include state task/EU/Recovery
+[PASS] delivery phases include Analysis/Test/Pilot/Go-live/Operations
+[PASS] cloud reader RPC wired
+[PASS] project members table
+[PASS] project funding table
+[PASS] project milestones table
+[PASS] project links table
+[PASS] project member scoped read helper
+[PASS] project member task update restriction
+[PASS] cross-module information-system references
+[PASS] curated user references for team assignment
+
+SQL STATIC STRUCTURE
+[PASS] dollar-quote pairs balanced
+[PASS] single BEGIN/COMMIT transaction
+[PASS] v0.50 not required
+[PASS] five readiness flags present
+[PASS] ServiceDesk tables are not dropped
+
+FULL BUILD LIMITATION
+[INFO] npm run check was attempted.
+[INFO] The container does not have project npm dependencies installed and offline npm cache is incomplete (@supabase/supabase-js missing).
+[INFO] Full project tsc/Vite build therefore cannot be completed in this container.
+[PASS] Targeted TypeScript/TSX syntax transpilation passed for all changed source files.
+[PASS] PostCSS parsing passed for modified CSS.
+[REQUIRED] Vercel CI must complete tsc -b && vite build before production publication.
+[REQUIRED] Execute migration_project_management_v051.sql before deploying frontend v0.51.0.
+[REQUIRED] Redeploy supabase/functions/invite-user/index.ts after SQL migration.
