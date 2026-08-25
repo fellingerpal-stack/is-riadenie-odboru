@@ -223,6 +223,59 @@ export interface ProjectLink {
   note: string
 }
 
+export interface ProjectRaidItem {
+  id: string
+  projectId: string
+  itemType: string
+  title: string
+  description: string
+  category: string
+  probability: string
+  impact: string
+  severity: string
+  owner: string
+  due: string
+  status: string
+  response: string
+  dependencyProjectId: string
+  note: string
+  updatedAt?: string
+}
+
+export interface ProjectStatusReport {
+  id: string
+  projectId: string
+  period: string
+  reportDate: string
+  overallStatus: string
+  summary: string
+  achievements: string
+  nextSteps: string
+  risks: string
+  blockers: string
+  decisionsNeeded: string
+  progressPercent: number
+  authorName: string
+  authorEmail: string
+  note: string
+  updatedAt?: string
+}
+
+export interface ProjectDecision {
+  id: string
+  projectId: string
+  title: string
+  decision: string
+  decisionMaker: string
+  status: string
+  decisionDate: string
+  due: string
+  reason: string
+  impact: string
+  note: string
+  updatedAt?: string
+}
+
 export interface ProjectReferenceItem {
   type: string
   key: string
@@ -237,6 +290,9 @@ export interface ProjectPortfolioData {
   funding: ProjectFunding[]
   milestones: ProjectMilestone[]
   links: ProjectLink[]
+  raidItems: ProjectRaidItem[]
+  statusReports: ProjectStatusReport[]
+  decisions: ProjectDecision[]
   references: ProjectReferenceItem[]
 }
 
