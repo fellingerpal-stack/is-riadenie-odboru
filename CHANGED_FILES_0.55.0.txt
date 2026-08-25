@@ -1,0 +1,16 @@
+package.json
+scripts/prebuild-cleanup.mjs
+scripts/verify-release.mjs
+src/lib/storage.ts
+src/data/seed.json
+src/types.ts
+src/lib/projectCloud.ts
+src/views/ProjectManagement.tsx
+src/views/ProjectManagement.css
+supabase/migration_project_governance_v055.sql
+supabase/test_project_governance_v055.sql
+RELEASE_NOTES_0.55.0.md
+README_NASADENIE_0.55.0.txt
+README_DATABASE_0.55.0.txt
+QA_RESULTS_0.55.0.txt
+CHANGED_FILES_0.55.0.txt

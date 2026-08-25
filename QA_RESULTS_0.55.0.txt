@@ -1,0 +1,25 @@
+IS RIADENIE ODBORU v0.55.0 - QA
+================================
+
+PASS - package.json version = 0.55.0
+PASS - storage CURRENT_VERSION = 0.55.0
+PASS - seed meta.version = 0.55.0
+PASS - prebuild/verify log verzia = 0.55.0
+PASS - ProjectPortfolioData obsahuje RAID, statusReports a decisions
+PASS - projectCloud nacitava project_portfolio_read + project_governance_read
+PASS - projectCloud save/delete RPC pre vsetky 3 governance oblasti
+PASS - realtime subscription obsahuje governance tabulky
+PASS - Control Center je skryty pre project_member
+PASS - PM Control Center filtruje iba projekty, ktore PM skutocne riadi
+PASS - projektovy clen vidi governance iba cez uz existujuci project_can_read scope
+PASS - automaticky health: RAID + milniky + rozpocet + decision log + report + termin
+PASS - Project detail obsahuje Governance tab
+PASS - RAID / Status report / Decision modaly a CRUD workflow
+PASS - TypeScript transpile syntax check zmenenych TS/TSX: 0 chyb
+PASS - izolovany semantic TS check zmeneneho projektoveho modulu: 0 chyb (externé baliky nahradene QA stubmi)
+PASS - scripts/verify-release.mjs: OK; sourceFiles=74
+PASS - SQL delimiter/static check: parne $$ a 2x $preflight$
+PASS - SQL readiness obsahuje 7 governance kontrol
+
+LIMITATION - migracia nebola spustena proti produkcnej Supabase DB. Produkcny SQL Editor je finalny DB gate.
+LIMITATION - plny `npm run build` nebol lokalne dokonceny, pretoze npm instalacia dependencies v izolovanom prostredi timeoutla. Vercel je finalny build gate.
