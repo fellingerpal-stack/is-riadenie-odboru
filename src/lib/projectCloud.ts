@@ -4,6 +4,9 @@ import type {
   ProjectLink,
   ProjectMember,
   ProjectMilestone,
+  ProjectRaidItem,
+  ProjectStatusReport,
+  ProjectDecision,
   ProjectPortfolioData,
   ProjectReferenceItem,
   Task,
@@ -19,6 +22,9 @@ const emptyPortfolio = (): ProjectPortfolioData => ({
   funding: [],
   milestones: [],
   links: [],
+  raidItems: [],
+  statusReports: [],
+  decisions: [],
   references: [],
 })
 
@@ -29,8 +35,11 @@ function array<T>(value: unknown): T[] {
 function friendlyProjectError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error ?? '')
   const lower = message.toLowerCase()
+  if (lower.includes('project_governance')) {
+    return new Error('Project Governance ešte nie je pripravený v databáze. Spustite migráciu v0.55.0.')
+  }
   if (lower.includes('project_portfolio') || lower.includes('project_members') || lower.includes('project_funding')) {
-    return new Error('Modul Riadenie projektov ešte nie je pripravený v databáze. Spustite migráciu v0.51.0.')
+    return new Error('Modul Riadenie projektov ešte nie je pripravený v databáze. Spustite projektové migrácie.')
   }
   if (lower.includes('permission') || lower.includes('denied') || lower.includes('opravnen')) {
     return new Error('Na túto operáciu v Riadení projektov nemáte oprávnenie.')
@@ -48,6 +57,9 @@ function normalizePortfolio(value: unknown): ProjectPortfolioData {
     funding: array<ProjectFunding>(row.funding),
     milestones: array<ProjectMilestone>(row.milestones),
     links: array<ProjectLink>(row.links),
+    raidItems: array<ProjectRaidItem>(row.raidItems),
+    statusReports: array<ProjectStatusReport>(row.statusReports),
+    decisions: array<ProjectDecision>(row.decisions),
     references: array<ProjectReferenceItem>(row.references),
   }
 }
@@ -55,9 +67,20 @@ function normalizePortfolio(value: unknown): ProjectPortfolioData {
 export async function loadProjectPortfolio(): Promise<ProjectPortfolioData> {
   if (!supabase) return emptyPortfolio()
   try {
-    const { data, error } = await supabase.rpc('project_portfolio_read')
+    const [{ data, error }, governance] = await Promise.all([
+      supabase.rpc('project_portfolio_read'),
+      supabase.rpc('project_governance_read'),
+    ])
     if (error) throw error
-    return normalizePortfolio(data)
+    if (governance.error) throw governance.error
+    const portfolio = normalizePortfolio(data)
+    const governanceData = governance.data && typeof governance.data === 'object' && !Array.isArray(governance.data) ? governance.data as Record<string, unknown> : {}
+    return {
+      ...portfolio,
+      raidItems: array<ProjectRaidItem>(governanceData.raidItems),
+      statusReports: array<ProjectStatusReport>(governanceData.statusReports),
+      decisions: array<ProjectDecision>(governanceData.decisions),
+    }
   } catch (error) {
     throw friendlyProjectError(error)
   }
@@ -121,10 +144,35 @@ export async function deleteProjectLink(itemId: string): Promise<void> {
   return invoke('project_portfolio_delete_link', { p_item_id: itemId })
 }
 
+
+export async function saveProjectRaidItem(item: ProjectRaidItem): Promise<void> {
+  return invoke('project_portfolio_upsert_raid', { p_item: item })
+}
+
+export async function deleteProjectRaidItem(itemId: string): Promise<void> {
+  return invoke('project_portfolio_delete_raid', { p_item_id: itemId })
+}
+
+export async function saveProjectStatusReport(item: ProjectStatusReport): Promise<void> {
+  return invoke('project_portfolio_upsert_status_report', { p_item: item })
+}
+
+export async function deleteProjectStatusReport(itemId: string): Promise<void> {
+  return invoke('project_portfolio_delete_status_report', { p_item_id: itemId })
+}
+
+export async function saveProjectDecision(item: ProjectDecision): Promise<void> {
+  return invoke('project_portfolio_upsert_decision', { p_item: item })
+}
+
+export async function deleteProjectDecision(itemId: string): Promise<void> {
+  return invoke('project_portfolio_delete_decision', { p_item_id: itemId })
+}
+
 export function subscribeToProjectPortfolio(organizationId: string, onChange: () => void): () => void {
   if (!supabase || !organizationId) return () => undefined
   const client = supabase
-  const tables = ['work_projects', 'work_tasks', 'project_members', 'project_funding', 'project_milestones', 'project_links']
+  const tables = ['work_projects', 'work_tasks', 'project_members', 'project_funding', 'project_milestones', 'project_links', 'project_raid_items', 'project_status_reports', 'project_decisions']
   let channel = client.channel(`project-portfolio-${organizationId}`)
   for (const table of tables) {
     channel = channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `organization_id=eq.${organizationId}` }, onChange)
