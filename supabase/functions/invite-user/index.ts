@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 }
 
-type AppRole = 'admin' | 'manager' | 'resolver' | 'employee' | 'viewer'
+type AppRole = 'admin' | 'manager' | 'resolver' | 'project_manager' | 'project_member' | 'employee' | 'viewer'
 type AccessLevel = 'none' | 'read' | 'write'
 type AccessScopes = { oit: AccessLevel; oris: AccessLevel; shared: AccessLevel }
 
@@ -28,13 +28,14 @@ function json(body: unknown, status = 200) {
 }
 
 function normalizeRole(value: unknown): AppRole {
-  return value === 'admin' || value === 'manager' || value === 'resolver' || value === 'employee'
+  return value === 'admin' || value === 'manager' || value === 'resolver' || value === 'project_manager' || value === 'project_member' || value === 'employee'
     ? value
     : 'viewer'
 }
 
 function defaultAccessScopes(role: AppRole, department: string): AccessScopes {
   if (role === 'admin') return { oit: 'write', oris: 'write', shared: 'write' }
+  if (role === 'employee' || role === 'project_manager' || role === 'project_member') return { oit: 'none', oris: 'none', shared: 'none' }
   const dept = department.toLowerCase()
   const homeWrite = role !== 'viewer'
   if (dept.includes('3.1') || dept.includes('oit')) return { oit: homeWrite ? 'write' : 'read', oris: 'read', shared: homeWrite ? 'write' : 'read' }
