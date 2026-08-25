@@ -31,6 +31,7 @@ import './ProjectManagement.css'
 
 type PortfolioTab = 'overview' | 'projects' | 'capacity' | 'assignments'
 type ProjectDetailTab = 'overview' | 'delivery' | 'team' | 'finance' | 'links'
+type CapacityView = 'bi' | 'heatmap' | 'chart' | 'detail'
 
 type ProjectManagementProps = {
   role: AppRole
@@ -109,6 +110,33 @@ function dateLabel(value?: string) {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString('sk-SK')
 }
 
+function monthKeyOffset(base: string, offset: number) {
+  const [yearText, monthText] = base.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const date = new Date(Date.UTC(year, Math.max(0, month - 1) + offset, 1))
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+}
+function monthBounds(monthKey: string) {
+  const [yearText, monthText] = monthKey.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  return { start: `${monthKey}-01`, end: `${monthKey}-${String(lastDay || 31).padStart(2, '0')}` }
+}
+function monthCaption(monthKey: string) {
+  const [yearText, monthText] = monthKey.split('-')
+  const date = new Date(Date.UTC(Number(yearText), Number(monthText) - 1, 1))
+  return new Intl.DateTimeFormat('sk-SK', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(date)
+}
+function memberActiveInMonth(member: ProjectMember, monthKey: string) {
+  if (!member.isActive) return false
+  const { start, end } = monthBounds(monthKey)
+  if (member.validFrom && member.validFrom > end) return false
+  if (member.validTo && member.validTo < start) return false
+  return true
+}
+
 export default function ProjectManagement(props: ProjectManagementProps) {
   const { role, currentUserId, currentUser, currentUserEmail, organizationId, databaseMode, fallbackProjects, fallbackTasks, onFallbackProjectsChange, onFallbackTasksChange, onDatabaseStateChange } = props
   const [data, setData] = useState<ProjectPortfolioData>(() => ({ ...emptyPortfolio(), projects: fallbackProjects, tasks: fallbackTasks }))
@@ -121,6 +149,9 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const [capacityQuery, setCapacityQuery] = useState('')
   const [assignmentQuery, setAssignmentQuery] = useState('')
   const [capacityMonth, setCapacityMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [capacityView, setCapacityView] = useState<CapacityView>('bi')
+  const [capacityHorizon, setCapacityHorizon] = useState<3 | 6 | 12>(6)
+  const [capacityFocus, setCapacityFocus] = useState<{ personKey: string; month: string } | null>(null)
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [projectDraft, setProjectDraft] = useState<Project | null>(null)
   const [memberDraft, setMemberDraft] = useState<ProjectMember | null>(null)
@@ -206,12 +237,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   }, [data])
 
   const capacityRows = useMemo(() => {
-    const [yearText, monthText] = capacityMonth.split('-')
-    const year = Number(yearText)
-    const month = Number(monthText)
-    const start = `${capacityMonth}-01`
-    const endDate = new Date(year, month, 0)
-    const end = Number.isNaN(endDate.getTime()) ? `${capacityMonth}-31` : endDate.toISOString().slice(0, 10)
+    const { start, end } = monthBounds(capacityMonth)
     const currentKeys = new Set([currentUserId, normalize(currentUserEmail), normalize(currentUser)].filter(Boolean))
     const activeMembers = data.members.filter((member) => {
       if (!member.isActive) return false
@@ -246,6 +272,95 @@ export default function ProjectManagement(props: ProjectManagementProps) {
     const average = capacityRows.length ? Math.round(total / capacityRows.length) : 0
     return { people: capacityRows.length, overloaded, high, average }
   }, [capacityRows])
+
+  const capacityMonths = useMemo(() => Array.from({ length: capacityHorizon }, (_, index) => monthKeyOffset(capacityMonth, index)), [capacityHorizon, capacityMonth])
+
+  const capacityMatrixRows = useMemo(() => {
+    const currentKeys = new Set([currentUserId, normalize(currentUserEmail), normalize(currentUser)].filter(Boolean))
+    const byPerson = new Map<string, {
+      key: string
+      name: string
+      email: string
+      months: Record<string, number>
+      assignments: Record<string, { member: ProjectMember; project: Project }[]>
+    }>()
+    for (const member of data.members) {
+      if (!member.isActive) continue
+      if (isProjectMemberRole) {
+        const keys = [member.userId, normalize(member.email), normalize(member.name)].filter(Boolean)
+        if (!keys.some((key) => currentKeys.has(key))) continue
+      }
+      const project = data.projects.find((item) => item.id === member.projectId)
+      if (!project) continue
+      const key = member.userId || normalize(member.email) || normalize(member.name) || member.id
+      const row = byPerson.get(key) ?? { key, name: member.name || member.email || 'Neznámy člen', email: member.email || '', months: {}, assignments: {} }
+      let activeInHorizon = false
+      for (const monthKey of capacityMonths) {
+        if (!memberActiveInMonth(member, monthKey)) continue
+        activeInHorizon = true
+        row.months[monthKey] = Number(row.months[monthKey] || 0) + Number(member.allocationPercent || 0)
+        row.assignments[monthKey] = [...(row.assignments[monthKey] || []), { member, project }]
+      }
+      if (activeInHorizon || byPerson.has(key)) byPerson.set(key, row)
+    }
+    const q = normalize(capacityQuery)
+    return [...byPerson.values()]
+      .filter((row) => !q || normalize(`${row.name} ${row.email} ${Object.values(row.assignments).flat().map((x) => `${x.project.id} ${x.project.name} ${x.member.projectRole}`).join(' ')}`).includes(q))
+      .sort((a, b) => Math.max(...capacityMonths.map((monthKey) => Number(b.months[monthKey] || 0)), 0) - Math.max(...capacityMonths.map((monthKey) => Number(a.months[monthKey] || 0)), 0) || a.name.localeCompare(b.name, 'sk'))
+  }, [capacityHorizon, capacityMonths, capacityQuery, currentUser, currentUserEmail, currentUserId, data.members, data.projects, isProjectMemberRole])
+
+  const capacityDistribution = useMemo(() => ({
+    free: capacityRows.filter((row) => row.total < 50).length,
+    balanced: capacityRows.filter((row) => row.total >= 50 && row.total < 80).length,
+    high: capacityRows.filter((row) => row.total >= 80 && row.total <= 100).length,
+    over: capacityRows.filter((row) => row.total > 100).length,
+    allocatedFte: capacityRows.reduce((sum, row) => sum + row.total, 0) / 100,
+    freeFte: capacityRows.reduce((sum, row) => sum + Math.max(0, 100 - row.total), 0) / 100,
+  }), [capacityRows])
+
+  const projectCapacitySummary = useMemo(() => {
+    const byProject = new Map<string, { project: Project; total: number; people: Set<string> }>()
+    for (const row of capacityRows) for (const assignment of row.assignments) {
+      const key = assignment.project.id
+      const item = byProject.get(key) ?? { project: assignment.project, total: 0, people: new Set<string>() }
+      item.total += Number(assignment.member.allocationPercent || 0)
+      item.people.add(row.key)
+      byProject.set(key, item)
+    }
+    return [...byProject.values()].map((item) => ({ project: item.project, total: item.total, people: item.people.size })).sort((a, b) => b.total - a.total).slice(0, 8)
+  }, [capacityRows])
+
+  const roleCapacitySummary = useMemo(() => {
+    const byRole = new Map<string, { total: number; people: Set<string> }>()
+    for (const row of capacityRows) for (const assignment of row.assignments) {
+      const key = assignment.member.projectRole || 'Iné'
+      const item = byRole.get(key) ?? { total: 0, people: new Set<string>() }
+      item.total += Number(assignment.member.allocationPercent || 0)
+      item.people.add(row.key)
+      byRole.set(key, item)
+    }
+    return [...byRole.entries()].map(([roleName, value]) => ({ roleName, total: value.total, people: value.people.size })).sort((a, b) => b.total - a.total).slice(0, 6)
+  }, [capacityRows])
+
+  const capacityRisks = useMemo(() => {
+    const risks: { tone: 'danger' | 'warning' | 'info'; title: string; text: string; personKey?: string }[] = []
+    for (const row of capacityRows.filter((item) => item.total > 100).slice(0, 5)) risks.push({ tone: 'danger', title: `${row.name} je preťažený`, text: `${row.total}% alokácie · ${row.total - 100}% nad plánovanú kapacitu.`, personKey: row.key })
+    for (const row of capacityRows.filter((item) => item.total <= 100 && item.assignments.length >= 3).slice(0, 4)) risks.push({ tone: 'warning', title: `${row.name} je na ${row.assignments.length} projektoch`, text: `${row.total}% celkové vyťaženie · zvýšené riziko kontextového prepínania.`, personKey: row.key })
+    const { end } = monthBounds(capacityMonth)
+    for (const row of capacityRows) {
+      const ending = row.assignments.filter(({ member }) => member.validTo && member.validTo <= end && member.validTo >= `${capacityMonth}-01`)
+      if (ending.length) risks.push({ tone: 'info', title: `${row.name} – končí alokácia`, text: `${ending.map(({ project }) => project.id).join(', ')} · skontrolovať nadväzujúce obdobie.`, personKey: row.key })
+      if (risks.length >= 10) break
+    }
+    return risks
+  }, [capacityMonth, capacityRows])
+
+  const capacityFocusRow = useMemo(() => {
+    if (!capacityFocus) return null
+    const row = capacityMatrixRows.find((item) => item.key === capacityFocus.personKey)
+    if (!row) return null
+    return { row, month: capacityFocus.month, total: Number(row.months[capacityFocus.month] || 0), assignments: row.assignments[capacityFocus.month] || [] }
+  }, [capacityFocus, capacityMatrixRows])
 
   const assignmentRows = useMemo(() => {
     const q = normalize(assignmentQuery)
@@ -412,19 +527,65 @@ export default function ProjectManagement(props: ProjectManagementProps) {
         })}</section>}
       </>}
 
-      {tab === 'capacity' && <section className="capacity-shell">
-        <div className="project-section-title"><div><span>KAPACITY ĽUDÍ</span><h3>{isProjectMemberRole ? 'Moje vyťaženie v projektoch' : 'Vyťaženie zamestnancov v projektoch'}</h3></div></div>
-        <div className="capacity-toolbar">
+      {tab === 'capacity' && <section className="capacity-shell capacity-intelligence-shell">
+        <div className="project-section-title"><div><span>PROJECT CAPACITY INTELLIGENCE</span><h3>{isProjectMemberRole ? 'Moje vyťaženie a kapacitný plán' : 'BI pohľad na kapacity projektových tímov'}</h3><p className="project-section-help">Prepínajte medzi manažérskym BI, časovou heatmapou, grafom alokácií a detailným rozpadom. Všetky pohľady vychádzajú z rovnakých projektových členstiev a platnosti alokácií.</p></div></div>
+        <div className="capacity-toolbar capacity-intelligence-toolbar">
           <div className="project-search"><Icon name="search" size={17}/><input value={capacityQuery} onChange={(e) => setCapacityQuery(e.target.value)} placeholder={isProjectMemberRole ? 'Hľadať v mojich projektoch…' : 'Hľadať zamestnanca, projekt alebo rolu…'}/></div>
-          <label className="capacity-month"><span>Mesiac</span><input type="month" value={capacityMonth} onChange={(e) => setCapacityMonth(e.target.value)}/></label>
+          <div className="capacity-period-controls">
+            <label className="capacity-month"><span>Referenčný mesiac</span><input type="month" value={capacityMonth} onChange={(e) => { setCapacityMonth(e.target.value); setCapacityFocus(null) }}/></label>
+            <label className="capacity-month"><span>Horizont</span><select value={capacityHorizon} onChange={(e) => setCapacityHorizon(Number(e.target.value) as 3 | 6 | 12)}><option value={3}>3 mesiace</option><option value={6}>6 mesiacov</option><option value={12}>12 mesiacov</option></select></label>
+          </div>
         </div>
-        <section className="capacity-kpi-grid">
+        <div className="capacity-view-switch" role="tablist" aria-label="Pohľad na kapacity">
+          {([['bi','BI prehľad'],['heatmap','Heatmapa'],['chart','Graf'],['detail','Detail']] as [CapacityView,string][]).map(([key,label]) => <button key={key} className={capacityView === key ? 'active' : ''} onClick={() => setCapacityView(key)}>{key === 'bi' && <Icon name="dashboard" size={15}/>} {key === 'heatmap' && <Icon name="matrix" size={15}/>} {key === 'chart' && <Icon name="capacity" size={15}/>} {key === 'detail' && <Icon name="people" size={15}/>}<span>{label}</span></button>)}
+        </div>
+        <section className="capacity-kpi-grid capacity-kpi-grid-six">
           <article><span>{isProjectMemberRole ? 'Osoba' : 'Ľudia v projektoch'}</span><strong>{capacityKpis.people}</strong><small>aktívne alokácie v mesiaci</small></article>
+          <article><span>Plánované FTE</span><strong>{capacityDistribution.allocatedFte.toLocaleString('sk-SK', { maximumFractionDigits: 1 })}</strong><small>súčet projektových alokácií / 100</small></article>
+          <article><span>Voľná kapacita</span><strong>{capacityDistribution.freeFte.toLocaleString('sk-SK', { maximumFractionDigits: 1 })} FTE</strong><small>rezerva do 100 % na osobu</small></article>
           <article><span>Preťažení nad 100 %</span><strong>{capacityKpis.overloaded}</strong><small>vyžaduje preplánovanie</small></article>
           <article><span>Vyťažení 80–100 %</span><strong>{capacityKpis.high}</strong><small>malá voľná rezerva</small></article>
-          <article><span>Priemerné vyťaženie</span><strong>{capacityKpis.average}%</strong><small>súčet projektových alokácií</small></article>
+          <article><span>Priemerné vyťaženie</span><strong>{capacityKpis.average}%</strong><small>za referenčný mesiac</small></article>
         </section>
-        {capacityRows.length ? <div className="capacity-list">{capacityRows.map((row) => <article key={row.key} className="capacity-person-card">
+
+        {capacityView === 'bi' && <div className="capacity-bi-grid">
+          <section className="capacity-bi-panel capacity-bi-wide">
+            <div className="capacity-bi-heading"><div><span>ROZLOŽENIE KAPACITY</span><h4>Vyťaženosť tímu · {monthCaption(capacityMonth)}</h4></div><Badge tone={capacityKpis.overloaded ? 'danger' : 'success'}>{capacityKpis.overloaded ? `${capacityKpis.overloaded} preťažených` : 'Bez preťaženia'}</Badge></div>
+            <div className="capacity-distribution-grid">
+              {[{label:'Voľná kapacita',value:capacityDistribution.free,range:'< 50 %',cls:'free'},{label:'Vyvážené',value:capacityDistribution.balanced,range:'50–79 %',cls:'balanced'},{label:'Vysoké vyťaženie',value:capacityDistribution.high,range:'80–100 %',cls:'high'},{label:'Preťaženie',value:capacityDistribution.over,range:'> 100 %',cls:'over'}].map((item) => <article key={item.label} className={`capacity-distribution-card ${item.cls}`}><div><strong>{item.value}</strong><span>{item.label}</span></div><small>{item.range}</small><div className="capacity-dist-track"><span style={{width:`${capacityKpis.people ? Math.round((item.value / capacityKpis.people) * 100) : 0}%`}}/></div></article>)}
+            </div>
+            <div className="capacity-bi-note"><Icon name="decision" size={16}/><span>BI počíta vyťaženie zo súčtu aktívnych alokácií v projektoch. 100 % predstavuje plnú plánovanú projektovú kapacitu človeka.</span></div>
+          </section>
+
+          <section className="capacity-bi-panel">
+            <div className="capacity-bi-heading"><div><span>PROJEKTOVÝ TLAK</span><h4>Najväčšie kapacitné projekty</h4></div></div>
+            <div className="capacity-ranking">{projectCapacitySummary.length ? projectCapacitySummary.map((item) => <button key={item.project.id} className="capacity-ranking-row" onClick={() => openProject(item.project.id)}><div><strong>{item.project.id} · {item.project.name}</strong><small>{item.people} ľudí · {(item.total / 100).toLocaleString('sk-SK', { maximumFractionDigits: 1 })} FTE</small></div><div className="capacity-ranking-meter"><span style={{width:`${Math.min(100, (item.total / Math.max(100, projectCapacitySummary[0]?.total || 100)) * 100)}%`}}/></div><b>{item.total}%</b></button>) : <Empty title="Bez projektových alokácií" text="V referenčnom mesiaci nie sú aktívne kapacity."/>}</div>
+          </section>
+
+          <section className="capacity-bi-panel">
+            <div className="capacity-bi-heading"><div><span>ROLE A KOMPETENCIE</span><h4>Kde je sústredená kapacita</h4></div></div>
+            <div className="capacity-role-list">{roleCapacitySummary.length ? roleCapacitySummary.map((item) => <div key={item.roleName} className="capacity-role-row"><div><strong>{item.roleName}</strong><small>{item.people} ľudí</small></div><div className="capacity-role-meter"><span style={{width:`${Math.min(100, (item.total / Math.max(100, roleCapacitySummary[0]?.total || 100)) * 100)}%`}}/></div><b>{item.total}%</b></div>) : <p className="capacity-muted">Bez údajov o projektových rolách.</p>}</div>
+          </section>
+
+          <section className="capacity-bi-panel capacity-bi-wide">
+            <div className="capacity-bi-heading"><div><span>RIZIKÁ KAPACÍT</span><h4>Čo si vyžaduje manažérsku pozornosť</h4></div><Badge tone={capacityRisks.some((item) => item.tone === 'danger') ? 'danger' : capacityRisks.length ? 'warning' : 'success'}>{capacityRisks.length ? `${capacityRisks.length} signálov` : 'Bez signálov'}</Badge></div>
+            {capacityRisks.length ? <div className="capacity-risk-list">{capacityRisks.map((risk, index) => <button key={`${risk.title}-${index}`} className={`capacity-risk-row ${risk.tone}`} onClick={() => { if (risk.personKey) { setCapacityFocus({ personKey: risk.personKey, month: capacityMonth }); setCapacityView('heatmap') } }}><span className="capacity-risk-icon"><Icon name={risk.tone === 'danger' ? 'warning' : risk.tone === 'warning' ? 'risk' : 'calendar'} size={17}/></span><div><strong>{risk.title}</strong><small>{risk.text}</small></div><Icon name="chevron" size={15}/></button>)}</div> : <div className="capacity-empty-good"><Icon name="check" size={22}/><div><strong>Kapacitný plán je bez kritických signálov</strong><span>V referenčnom mesiaci nie je evidované preťaženie ani končiaca alokácia.</span></div></div>}
+          </section>
+        </div>}
+
+        {capacityView === 'heatmap' && <section className="capacity-visual-panel">
+          <div className="capacity-bi-heading"><div><span>ČASOVÁ HEATMAPA</span><h4>Vývoj vyťaženia po mesiacoch</h4><p>Kliknutím na bunku otvoríte rozpad človeka na konkrétne projekty.</p></div><div className="heatmap-legend"><span className="heat-free">&lt;50</span><span className="heat-balanced">50–79</span><span className="heat-high">80–100</span><span className="heat-over">&gt;100</span></div></div>
+          {capacityMatrixRows.length ? <div className="capacity-heatmap-wrap"><table className="capacity-heatmap"><thead><tr><th>Zamestnanec</th>{capacityMonths.map((monthKey) => <th key={monthKey}>{monthCaption(monthKey)}</th>)}</tr></thead><tbody>{capacityMatrixRows.map((row) => <tr key={row.key}><th><strong>{row.name}</strong><small>{row.email || 'Bez e-mailu'}</small></th>{capacityMonths.map((monthKey) => { const total = Number(row.months[monthKey] || 0); const tone = total > 100 ? 'over' : total >= 80 ? 'high' : total >= 50 ? 'balanced' : total > 0 ? 'free' : 'empty'; return <td key={monthKey}><button className={`capacity-heat-cell ${tone} ${capacityFocus?.personKey === row.key && capacityFocus.month === monthKey ? 'selected' : ''}`} onClick={() => setCapacityFocus({ personKey: row.key, month: monthKey })} title={`${row.name} · ${monthCaption(monthKey)} · ${total}%`}>{total ? `${total}%` : '—'}</button></td>})}</tr>)}</tbody></table></div> : <Empty title="Bez údajov pre heatmapu" text="V zvolenom horizonte nie sú aktívne projektové alokácie."/>}
+          {capacityFocusRow && <div className="capacity-focus-panel"><div className="capacity-focus-head"><div><span>DRILL-DOWN</span><h4>{capacityFocusRow.row.name} · {monthCaption(capacityFocusRow.month)}</h4><small>{capacityFocusRow.total}% celkové vyťaženie</small></div><button className="icon-button" onClick={() => setCapacityFocus(null)} aria-label="Zavrieť detail"><Icon name="close" size={16}/></button></div><div className="capacity-focus-assignments">{capacityFocusRow.assignments.length ? capacityFocusRow.assignments.sort((a,b) => Number(b.member.allocationPercent || 0) - Number(a.member.allocationPercent || 0)).map(({member,project}) => <button key={member.id} onClick={() => openProject(project.id)}><div><strong>{project.id} · {project.name}</strong><span>{member.projectRole}{member.responsibility ? ` · ${member.responsibility}` : ''}</span></div><b>{member.allocationPercent}%</b></button>) : <span>Bez alokácie v mesiaci.</span>}</div></div>}
+        </section>}
+
+        {capacityView === 'chart' && <section className="capacity-visual-panel">
+          <div className="capacity-bi-heading"><div><span>STACKED CAPACITY</span><h4>Rozpad kapacity podľa projektov · {monthCaption(capacityMonth)}</h4><p>Stĺpec je škálovaný do 120 %. Zvislá značka predstavuje hranicu 100 %.</p></div></div>
+          {capacityRows.length ? <div className="capacity-chart-list">{capacityRows.map((row) => <article key={row.key} className="capacity-chart-row"><div className="capacity-chart-person"><strong>{row.name}</strong><span>{row.assignments.length} projektov · {row.total}%</span></div><div className="capacity-chart-track"><span className="capacity-chart-limit" title="100 %"/>{row.assignments.sort((a,b) => Number(b.member.allocationPercent || 0) - Number(a.member.allocationPercent || 0)).map(({member,project}) => <button key={member.id} className={`capacity-chart-segment series-${Math.max(0, data.projects.findIndex((item) => item.id === project.id)) % 6}`} style={{width:`${Math.min(100, Number(member.allocationPercent || 0) / 1.2)}%`}} onClick={() => openProject(project.id)} title={`${project.id} · ${project.name}: ${member.allocationPercent}%`}><span>{Number(member.allocationPercent || 0) >= 15 ? `${project.id} ${member.allocationPercent}%` : ''}</span></button>)}</div><Badge tone={capacityTone(row.total)}>{row.total}%</Badge></article>)}</div> : <Empty title="Bez údajov pre graf" text="V referenčnom mesiaci nie sú aktívne projektové alokácie."/>}
+          <div className="capacity-chart-axis"><span>0 %</span><span>50 %</span><span>100 %</span><span>120 %</span></div>
+        </section>}
+
+        {capacityView === 'detail' && (capacityRows.length ? <div className="capacity-list">{capacityRows.map((row) => <article key={row.key} className="capacity-person-card">
           <div className="capacity-person-head"><div className="capacity-person-name"><span className="capacity-avatar"><Icon name="user" size={18}/></span><div><strong>{row.name}</strong><small>{row.email || 'Bez e-mailu'}</small></div></div><div className="capacity-total"><Badge tone={capacityTone(row.total)}>{row.total}% vyťaženie</Badge><strong>{row.total > 100 ? `+${row.total - 100}% nad kapacitu` : `${100 - row.total}% voľné`}</strong></div></div>
           <div className="capacity-bar"><span className={row.total > 100 ? 'over' : row.total >= 80 ? 'high' : ''} style={{ width: `${Math.min(100, row.total)}%` }}/></div>
           <div className="capacity-assignments">{row.assignments.sort((a,b) => b.member.allocationPercent - a.member.allocationPercent).map(({member, project}) => <div key={member.id} className="capacity-assignment">
@@ -432,7 +593,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
             <div><b>{member.allocationPercent}%</b><small>{dateLabel(member.validFrom)} – {dateLabel(member.validTo)}</small></div>
             {canManageProject(project) && <button className="icon-button capacity-edit" title="Upraviť alokáciu" onClick={() => setMemberDraft({ ...member })}><Icon name="edit" size={14}/></button>}
           </div>)}</div>
-        </article>)}</div> : <Empty title="Bez kapacitných údajov" text={isProjectMemberRole ? 'V zvolenom mesiaci nemáte aktívnu projektovú alokáciu.' : 'Pridajte členov do projektov a nastavte im percentuálnu kapacitu a obdobie platnosti.'}/>} 
+        </article>)}</div> : <Empty title="Bez kapacitných údajov" text={isProjectMemberRole ? 'V zvolenom mesiaci nemáte aktívnu projektovú alokáciu.' : 'Pridajte členov do projektov a nastavte im percentuálnu kapacitu a obdobie platnosti.'}/>)}
       </section>}
 
       {tab === 'assignments' && role === 'admin' && <section className="capacity-shell project-assignments-shell">
@@ -447,7 +608,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       <div className="project-detail-toolbar"><button className="button button-secondary button-small" onClick={closeProject}><Icon name="arrow" size={15}/>Späť na projekty</button><span>Karta projektu</span></div>
       <header className="project-detail-head"><div><span>{selectedProject.id} · {selectedProject.type}</span><h2>{selectedProject.name}</h2><p>{selectedProject.objective || selectedProject.description}</p></div><div className="project-detail-actions"><Badge tone={healthTone(selectedProject.health)}>{selectedProject.health || 'Health neurčený'}</Badge><Badge tone={statusTone(selectedProject.status)}>{selectedProject.status}</Badge>{canManageSelectedProject && <><button className="button button-secondary button-small" onClick={() => setProjectDraft({ ...blankProject(), ...selectedProject })}><Icon name="edit" size={15}/>Upraviť projekt</button><button className="button button-primary button-small" onClick={() => setMemberDraft(blankMember(selectedProject.id))}><Icon name="plus" size={15}/>Pridať člena</button><button className="button button-ghost button-small" onClick={() => void removeProject(selectedProject)}><Icon name="trash" size={15}/>Odstrániť</button></>}</div></header>
 
-      {role === 'project_manager' && !canManageSelectedProject && <div className="inline-alert inline-alert-info"><Icon name="info" size={17}/><span><strong>Projekt máte sprístupnený ako člen tímu.</strong> Projektovú kartu môžete čítať; riadiace zmeny vykonáva projektový manažér projektu alebo Admin.</span></div>}
+      {role === 'project_manager' && !canManageSelectedProject && <div className="inline-alert inline-alert-info"><Icon name="decision" size={17}/><span><strong>Projekt máte sprístupnený ako člen tímu.</strong> Projektovú kartu môžete čítať; riadiace zmeny vykonáva projektový manažér projektu alebo Admin.</span></div>}
 
       <div className="project-tabs project-detail-tabs">
         {([['overview','Karta projektu'],['delivery','Delivery a úlohy'],['team','Tím a kapacity'],['finance','Financovanie'],['links','Väzby']] as [ProjectDetailTab,string][]).map(([key,label]) => <button key={key} className={detailTab === key ? 'active' : ''} onClick={() => setDetailTab(key)}>{label}</button>)}
