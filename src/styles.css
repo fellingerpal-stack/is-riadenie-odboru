@@ -787,3 +787,6 @@
 @media(max-width:1120px){.portal-launch-hero{grid-template-columns:1fr}.portal-launch-hero-status{max-width:540px}.portal-launch-section-title{align-items:flex-start;flex-direction:column;gap:3px}.portal-launch-section-title p{text-align:left}}
 @media(max-width:840px){.portal-launch-primary-grid,.portal-launch-shared-grid,.portal-launch-utility-grid{grid-template-columns:1fr}.portal-launch-featured,.portal-launch-shared,.portal-launch-utility{min-height:0}.portal-launch-principles{grid-template-columns:1fr}.portal-launch-hero{padding:20px 21px}.portal-launch-hero-status{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:560px){.portal-launch-hero{padding:19px 17px}.portal-launch-hero h1{font-size:29px}.portal-launch-hero-status{grid-template-columns:1fr}.portal-launch-card,.portal-launch-featured,.portal-launch-utility{padding:18px 16px 16px}.portal-launch-card-head{grid-template-columns:auto 1fr}.portal-launch-access{grid-column:1/-1;justify-self:start}.portal-launch-featured h2,.portal-launch-card h2{font-size:21px}.portal-launch-utility h2{font-size:18px}}
+
+/* v0.51.0 - Riadenie projektov launch accent */
+.portal-launch-projects{--portal-accent:#5c56b8;--portal-accent-2:#2f83b9;--portal-soft:#f1f0ff}
