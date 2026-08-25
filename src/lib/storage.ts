@@ -3,7 +3,7 @@ import type { AccessApproval, AccessCatalogItem, AccessRequest, AppState, Change
 
 const STORAGE_KEY = 'cvti-is-riadenie-odboru-v01'
 const ROLE_KEY = 'cvti-is-riadenie-role'
-const CURRENT_VERSION = '0.49.0'
+const CURRENT_VERSION = '0.51.0'
 
 export function cloneSeed(): AppState {
   return structuredClone(seed) as unknown as AppState
@@ -666,11 +666,11 @@ export async function importState(file: File): Promise<AppState> {
   return migrated
 }
 
-export function loadRole(): 'admin' | 'manager' | 'resolver' | 'employee' | 'viewer' {
+export function loadRole(): import('../types').AppRole {
   const value = localStorage.getItem(ROLE_KEY)
-  return value === 'manager' || value === 'resolver' || value === 'employee' || value === 'viewer' ? value : 'admin'
+  return value === 'manager' || value === 'resolver' || value === 'project_manager' || value === 'project_member' || value === 'employee' || value === 'viewer' ? value : 'admin'
 }
 
-export function saveRole(role: 'admin' | 'manager' | 'resolver' | 'employee' | 'viewer'): void {
+export function saveRole(role: import('../types').AppRole): void {
   localStorage.setItem(ROLE_KEY, role)
 }

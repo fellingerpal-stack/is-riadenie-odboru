@@ -58,7 +58,7 @@ function safeUsers(value: unknown): UserProfile[] {
 }
 
 function normalizeRole(value: unknown): AppRole {
-  return value === 'admin' || value === 'manager' || value === 'resolver' || value === 'employee' ? value : 'viewer'
+  return value === 'admin' || value === 'manager' || value === 'resolver' || value === 'project_manager' || value === 'project_member' || value === 'employee' ? value : 'viewer'
 }
 
 export function loadLocalUsers(): UserProfile[] {

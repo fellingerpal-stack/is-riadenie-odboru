@@ -18,7 +18,7 @@ export function normalizeAccessLevel(value: unknown): AccessLevel {
 
 export function defaultAccessScopes(role: AppRole, department: string): UserAccessScopes {
   if (role === 'admin') return { oit: 'write', oris: 'write', shared: 'write' }
-  if (role === 'employee') return { oit: 'none', oris: 'none', shared: 'none' }
+  if (role === 'employee' || role === 'project_manager' || role === 'project_member') return { oit: 'none', oris: 'none', shared: 'none' }
 
   const dept = String(department || '').toLowerCase()
   const is31 = dept.includes('3.1') || dept.includes('oit')
@@ -45,7 +45,7 @@ export function defaultAccessScopes(role: AppRole, department: string): UserAcce
 
 export function normalizeAccessScopes(value: unknown, role: AppRole, department: string): UserAccessScopes {
   if (role === 'admin') return { oit: 'write', oris: 'write', shared: 'write' }
-  if (role === 'employee') return { oit: 'none', oris: 'none', shared: 'none' }
+  if (role === 'employee' || role === 'project_manager' || role === 'project_member') return { oit: 'none', oris: 'none', shared: 'none' }
   const fallback = defaultAccessScopes(role, department)
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback
   const row = value as Record<string, unknown>
