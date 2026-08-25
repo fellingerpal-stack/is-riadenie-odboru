@@ -18,6 +18,7 @@ import Services from './views/Services'
 import Substitutions from './views/Substitutions'
 import Capacity from './views/Capacity'
 import Work from './views/Work'
+import ProjectManagement from './views/ProjectManagement'
 import Helpdesk from './views/Helpdesk'
 import ChangeManagement from './views/ChangeManagement'
 import ProblemManagement from './views/ProblemManagement'
@@ -46,13 +47,14 @@ import Enterprise360 from './views/Enterprise360'
 import { countManagementActions } from './lib/actionCenter'
 import { oitData } from './data/oitData'
 
-type ViewKey='portals'|'enterprise360'|'actionCenter'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'serviceDesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'logs'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
+type ViewKey='portals'|'projectManagement'|'enterprise360'|'actionCenter'|'myWorkspace'|'dataQuality'|'technology'|'intelligence'|'itCosts'|'suppliers'|'contracts'|'dashboard'|'people'|'raci'|'services'|'substitutions'|'webs'|'informationSystems'|'capacity'|'work'|'helpdesk'|'serviceDesk'|'changes'|'problems'|'iam'|'cmdb'|'risks'|'decisions'|'roadmap'|'users'|'logs'|'oit'|'oitRaci'|'oitDc'|'oitNetwork'|'oitSystems'|'oitOperations'|'oitRelations'|'architecture'|'oitArchitecture'
 
 interface NavItem { key:ViewKey; label:string; icon:IconName; badge?: (s:AppState)=>number; roles?:AppRole[] }
-const allRoles:AppRole[]=['admin','manager','resolver','employee','viewer']
+const allRoles:AppRole[]=['admin','manager','resolver','project_manager','project_member','employee','viewer']
 const managementRoles:AppRole[]=['admin','manager']
 const resolverRoles:AppRole[]=['admin','manager','resolver']
 const employeeRoles:AppRole[]=['admin','manager','resolver','employee']
+const projectRoles:AppRole[]=['admin','project_manager','project_member']
 const orisNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Portál',items:[{key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},{key:'actionCenter',label:'Management Action Center',icon:'tasks',roles:['admin','manager','resolver','viewer'],badge:s=>countManagementActions(s)},{key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},{key:'dataQuality',label:'Kvalita dát',icon:'check',roles:allRoles}]},
   {label:'Spoločné',items:[
@@ -121,7 +123,8 @@ const oitNavGroups:{label:string;items:NavItem[]}[]=[
 const portalNavGroups:{label:string;items:NavItem[]}[]=[
   {label:'Pracovný priestor',items:[
     {key:'portals',label:'Hlavný panel',icon:'dashboard',roles:allRoles},
-    {key:'serviceDesk',label:'ServiceDesk',icon:'helpdesk',roles:allRoles,badge:s=>(Array.isArray(s.tickets)?s.tickets:[]).filter(t=>!['Vyriešená','Uzatvorená','Zrušená'].includes(t.status)).length},
+    {key:'serviceDesk',label:'ServiceDesk',icon:'helpdesk',roles:['admin'],badge:s=>(Array.isArray(s.tickets)?s.tickets:[]).filter(t=>!['Vyriešená','Uzatvorená','Zrušená'].includes(t.status)).length},
+    {key:'projectManagement',label:'Riadenie projektov',icon:'projects',roles:projectRoles},
     {key:'enterprise360',label:'CVTI 360 · Enterprise',icon:'shield',roles:['admin','manager','resolver','viewer']},
     {key:'actionCenter',label:'Management Action Center',icon:'tasks',roles:['admin','manager','resolver','viewer'],badge:s=>countManagementActions(s)},
     {key:'myWorkspace',label:'Moje centrum',icon:'tasks',roles:allRoles},
@@ -155,6 +158,8 @@ function roleLabel(role:AppRole){
   if(role==='admin')return 'Administrátor'
   if(role==='manager')return 'Riaditeľ / manažér'
   if(role==='resolver')return 'Riešiteľ'
+  if(role==='project_manager')return 'Projektový manažér'
+  if(role==='project_member')return 'Člen projektu'
   if(role==='employee')return 'Používateľ'
   return 'Čitateľ'
 }
@@ -299,6 +304,7 @@ export default function App(){
   const canManage=role==='admin'||role==='manager'
   const canResolve=canManage||role==='resolver'
   const canSubmit=canResolve||role==='employee'
+  const isProjectRole=role==='project_manager'||role==='project_member'
   const accessProfile=auth.profile??{role,department:'Odbor 3.2',accessScopes:defaultAccessScopes(role,'Odbor 3.2')}
   const canReadOit=canReadScope(accessProfile,'oit')
   const canReadOris=canReadScope(accessProfile,'oris')
@@ -317,13 +323,15 @@ export default function App(){
 
   function viewScope(key:ViewKey):AccessScope|'admin'|'portal'{
     if(key==='users'||key==='roadmap'||key==='logs')return 'admin'
-    if(key==='portals'||key==='serviceDesk'||key==='helpdesk'||key==='myWorkspace'||key==='dataQuality')return 'portal'
+    if(key==='portals'||key==='projectManagement'||key==='serviceDesk'||key==='helpdesk'||key==='myWorkspace'||key==='dataQuality')return 'portal'
     if(key==='enterprise360'||key==='technology'||key==='intelligence'||key==='itCosts'||key==='suppliers'||key==='contracts'||key==='cmdb')return 'shared'
     if(key.startsWith('oit'))return 'oit'
     return 'oris'
   }
   function canAccessView(key:ViewKey){
-    if(role==='employee')return key==='serviceDesk'||key==='helpdesk'
+    if(role==='employee')return key==='portals'
+    if(role==='project_manager'||role==='project_member')return key==='portals'||key==='projectManagement'
+    if((key==='serviceDesk'||key==='helpdesk')&&role!=='admin')return false
     const item=allNavGroups.flatMap(group=>group.items).find(candidate=>candidate.key===key)
     if(!(item?.roles?.includes(role)??false))return false
     const scope=viewScope(key)
@@ -332,7 +340,8 @@ export default function App(){
     return canReadScope(accessProfile,scope)
   }
   function accessFallback():ViewKey{
-    if(role==='employee')return 'serviceDesk'
+    if(role==='project_manager'||role==='project_member')return 'projectManagement'
+    if(role==='employee')return 'portals'
     if(canReadOris)return 'dashboard'
     if(canReadOit)return 'oit'
     if(canReadShared)return 'technology'
@@ -379,7 +388,7 @@ export default function App(){
   },[sync,state,auth.configured,auth.profile?.id,canSaveSnapshot])
 
   useEffect(()=>{
-    if(!auth.configured||!auth.profile?.organizationId)return
+    if(!auth.configured||!auth.profile?.organizationId||isProjectRole||role==='employee')return
     const unsubscribe=subscribeToWorkData(auth.profile.organizationId,()=>{
       if(workReloadTimer.current)window.clearTimeout(workReloadTimer.current)
       workReloadTimer.current=window.setTimeout(()=>void reloadWorkData(true),350)
@@ -391,7 +400,7 @@ export default function App(){
   },[auth.configured,auth.profile?.organizationId])
 
   useEffect(()=>{
-    if(!auth.configured||!auth.profile?.organizationId)return
+    if(!auth.configured||!auth.profile?.organizationId||role!=='admin')return
     const unsubscribe=subscribeToHelpdeskData(auth.profile.organizationId,()=>scheduleHelpdeskReload())
     return()=>{
       if(helpdeskReloadTimer.current)window.clearTimeout(helpdeskReloadTimer.current)
@@ -400,7 +409,7 @@ export default function App(){
   },[auth.configured,auth.profile?.organizationId])
 
   useEffect(()=>{
-    if(!auth.configured||!auth.profile?.organizationId)return
+    if(!auth.configured||!auth.profile?.organizationId||isProjectRole||role==='employee')return
     const unsubscribe=subscribeToIamData(auth.profile.organizationId,()=>{
       if(iamReloadTimer.current)window.clearTimeout(iamReloadTimer.current)
       iamReloadTimer.current=window.setTimeout(()=>void reloadIamData(true),350)
@@ -409,18 +418,18 @@ export default function App(){
       if(iamReloadTimer.current)window.clearTimeout(iamReloadTimer.current)
       unsubscribe()
     }
-  },[auth.configured,auth.profile?.organizationId])
+  },[auth.configured,auth.profile?.organizationId,role,isProjectRole])
 
   useEffect(()=>{
     const handler=(event:KeyboardEvent)=>{
-      if(role!=='employee'&&(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();setGlobalSearchOpen(true)}
+      if(role!=='employee'&&!isProjectRole&&(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();setGlobalSearchOpen(true)}
       if(event.key==='Escape')setGlobalSearchOpen(false)
     }
     window.addEventListener('keydown',handler)
     return()=>window.removeEventListener('keydown',handler)
-  },[role])
+  },[role,isProjectRole])
 
-  const workspace=view==='portals'||view==='serviceDesk'||view==='helpdesk'||view==='enterprise360'||view==='actionCenter'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'||view==='logs'?'portal':view.startsWith('oit')?'oit':'oris'
+  const workspace=view==='portals'||view==='projectManagement'||view==='serviceDesk'||view==='helpdesk'||view==='enterprise360'||view==='actionCenter'||view==='myWorkspace'||view==='dataQuality'||view==='technology'||view==='intelligence'||view==='itCosts'||view==='suppliers'||view==='contracts'||view==='cmdb'||view==='logs'?'portal':view.startsWith('oit')?'oit':'oris'
   const activeNavGroups=workspace==='oit'?oitNavGroups:workspace==='portal'?portalNavGroups:orisNavGroups
   const currentLabel=useMemo(()=>allNavGroups.flatMap(g=>g.items).find(i=>i.key===view)?.label||'Hlavný panel',[view])
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
@@ -620,13 +629,9 @@ export default function App(){
     if(!auth.configured)return
     setSync('loading');setSyncError('');setWorkSync('loading');setWorkError('');setHelpdeskSync('loading');setHelpdeskError('');setIamSync('loading');setIamError('')
     try{
-      if(role==='employee'){
-        const helpdesk=await loadHelpdeskData(role)
-        const nextState={...stateRef.current,...helpdesk}
-        stateRef.current=nextState
-        setState(nextState)
+      if(role==='project_manager'||role==='project_member'||role==='employee'){
         setSnapshot(null);cloudHasSnapshot.current=false
-        setWorkSync('local');setIamSync('local');setHelpdeskSync('synced');setSync('synced')
+        setWorkSync('local');setIamSync('local');setHelpdeskSync('local');setSync('synced')
         return
       }
       const loaded=await loadCurrentSnapshot()
@@ -707,14 +712,15 @@ export default function App(){
     {sidebarOpen&&<button className="sidebar-overlay" onClick={()=>setSidebarOpen(false)} aria-label="Zavrieť menu"/>}
     <div className="app-main">
       <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setSidebarOpen(true)}><Icon name="menu"/></button><div><small>{workspaceName}</small><strong>{currentLabel}</strong></div></div><div className="topbar-right">
-        {role!=='employee'&&<button className="top-search-trigger" title="Globálne hľadanie (Ctrl+K)" onClick={()=>setGlobalSearchOpen(true)}><Icon name="search" size={16}/><span>Hľadať</span><kbd>Ctrl K</kbd></button>}
-        {role!=='employee'&&auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canSaveSnapshot&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
-        <div className={`data-mode data-mode-${sync}`} title={role==='employee'?'ServiceDesk je pripojený k databáze.':syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{role==='employee'?'ServiceDesk online':syncLabel(sync)}</span></div>
-        <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{role==='employee'?'Používateľ · ServiceDesk':`${roleLabel(role)} · ${workspace==='oit'?'3.1':workspace==='oris'?'3.2':'Spoločné'} ${profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='write'?'W':profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='read'?'R':'—'}`}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
+        {role!=='employee'&&!isProjectRole&&<button className="top-search-trigger" title="Globálne hľadanie (Ctrl+K)" onClick={()=>setGlobalSearchOpen(true)}><Icon name="search" size={16}/><span>Hľadať</span><kbd>Ctrl K</kbd></button>}
+        {role!=='employee'&&!isProjectRole&&auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canSaveSnapshot&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
+        <div className={`data-mode data-mode-${sync}`} title={role==='employee'||isProjectRole?'Modul používa riadený databázový prístup.':syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{role==='employee'?'Portál':isProjectRole?'Projekty online':syncLabel(sync)}</span></div>
+        <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{role==='employee'?'Používateľ':isProjectRole?roleLabel(role):`${roleLabel(role)} · ${workspace==='oit'?'3.1':workspace==='oris'?'3.2':'Spoločné'} ${profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='write'?'W':profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='read'?'R':'—'}`}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
       </div></header>
       <main className="content">
         {role!=='employee'&&syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong> {syncError}</span><div className="sync-alert-actions"><button className="button button-secondary button-small" onClick={()=>void saveCloud()}>Skúsiť uložiť znova</button><button className="button button-ghost button-small" onClick={()=>void loadCloud()}>Načítať z DB</button></div></div>}
-        {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared}/>}
+        {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared} canServiceDesk={role==='admin'} canProjects={role==='admin'||isProjectRole}/>}
+        {view==='projectManagement'&&<ProjectManagement role={role} currentUserId={auth.profile?.id??'local-user'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} organizationId={auth.profile?.organizationId||''} databaseMode={auth.configured?'cloud':'local'} fallbackProjects={state.projects} fallbackTasks={state.tasks} onFallbackProjectsChange={commitProjects} onFallbackTasksChange={commitTasks}/>}
         {view==='enterprise360'&&<Enterprise360 state={state} go={go} canEdit={canManageShared} currentUser={displayName} onGovernanceChange={enterpriseGovernance=>setState(current=>({...current,enterpriseGovernance}))} onDevelopmentRequestsChange={contractDevelopmentRequests=>setState(current=>({...current,contractDevelopmentRequests}))}/>}
         {view==='actionCenter'&&<ManagementActionCenter state={state} currentUser={displayName} go={go}/>}
         {view==='myWorkspace'&&<MyWorkspace state={state} currentUser={displayName} role={role} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
@@ -740,7 +746,7 @@ export default function App(){
         {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManageOris} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
         {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManageOris} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
         {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
-        {(view==='serviceDesk'||view==='helpdesk')&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={role==='employee'?[]:Array.isArray(state.services)?state.services:[]} employees={role==='employee'?[]:serviceDeskEmployees} tasks={role==='employee'?[]:Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} serviceRoutingRules={Array.isArray(state.serviceRoutingRules)?state.serviceRoutingRules:[]} role={role} canEdit={role!=='viewer'} canConfigure={role==='admin'||role==='manager'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies} onServiceRoutingRulesChange={commitServiceRoutingRules}/>} 
+        {role==='admin'&&(view==='serviceDesk'||view==='helpdesk')&&<Helpdesk tickets={Array.isArray(state.tickets)?state.tickets:[]} services={Array.isArray(state.services)?state.services:[]} employees={serviceDeskEmployees} tasks={Array.isArray(state.tasks)?state.tasks:[]} supportQueues={Array.isArray(state.supportQueues)?state.supportQueues:[]} slaPolicies={Array.isArray(state.slaPolicies)?state.slaPolicies:[]} serviceRoutingRules={Array.isArray(state.serviceRoutingRules)?state.serviceRoutingRules:[]} role={role} canEdit canConfigure currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} databaseMode={auth.configured?'cloud':'local'} databaseState={helpdeskSync} databaseError={helpdeskError} onReload={()=>void reloadHelpdeskData()} onTicketsChange={commitTickets} onTasksChange={commitTasks} onSupportQueuesChange={commitSupportQueues} onSlaPoliciesChange={commitSlaPolicies} onServiceRoutingRulesChange={commitServiceRoutingRules}/>} 
         {view==='changes'&&<ChangeManagement changes={Array.isArray(state.changes)?state.changes:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onChangesChange={changes=>setState(current=>({...current,changes}))} onTasksChange={commitTasks}/>} 
         {view==='problems'&&<ProblemManagement problems={Array.isArray(state.problems)?state.problems:[]} services={Array.isArray(state.services)?state.services:[]} employees={Array.isArray(state.employees)?state.employees:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} projects={Array.isArray(state.projects)?state.projects:[]} tasks={Array.isArray(state.tasks)?state.tasks:[]} canEdit={canResolveOris} currentUser={displayName} onProblemsChange={problems=>setState(current=>({...current,problems}))} onTasksChange={commitTasks}/>} 
         {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={role==='employee'?[]:Array.isArray(state.services)?state.services:[]} employees={role==='employee'?[]:Array.isArray(state.employees)?state.employees:[]} tasks={role==='employee'?[]:Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
@@ -754,7 +760,7 @@ export default function App(){
         {view==='roadmap'&&role==='admin'&&<Roadmap state={state} role={role} configured={auth.configured} profile={auth.profile} sync={sync} snapshot={snapshot} onRoleChange={setDemoRole} onExport={()=>exportState(state)} onImport={importFile} onReset={reset} onLoadCloud={()=>loadCloud()} onSaveCloud={saveCloud} onSignOut={()=>auth.signOut()}/>} 
       </main>
     </div>
-    {role!=='employee'&&globalSearchOpen&&<GlobalSearch state={state} onClose={()=>setGlobalSearchOpen(false)} go={key=>go(key)} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared}/>}
+    {role!=='employee'&&!isProjectRole&&globalSearchOpen&&<GlobalSearch state={state} onClose={()=>setGlobalSearchOpen(false)} go={key=>go(key)} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared}/>}
     {profileOpen&&<AccountProfileModal onClose={()=>setProfileOpen(false)}/>}
   </div>
 }
