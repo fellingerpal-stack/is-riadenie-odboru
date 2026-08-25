@@ -19,6 +19,7 @@ import Substitutions from './views/Substitutions'
 import Capacity from './views/Capacity'
 import Work from './views/Work'
 import ProjectManagement from './views/ProjectManagement'
+import type { ProjectDatabaseState } from './lib/projectCloud'
 import Helpdesk from './views/Helpdesk'
 import ChangeManagement from './views/ChangeManagement'
 import ProblemManagement from './views/ProblemManagement'
@@ -219,6 +220,14 @@ function syncLabel(sync:SyncState){
   return 'Lokálne dáta'
 }
 
+function projectSyncLabel(sync:ProjectDatabaseState){
+  if(sync==='saving')return 'Ukladám projekty'
+  if(sync==='loading')return 'Načítavam projekty'
+  if(sync==='synced')return 'Projekty synchronizované'
+  if(sync==='error')return 'Chyba projektov'
+  return 'Lokálne projekty'
+}
+
 
 function buildServiceDeskEmployees(employees: Employee[]): Employee[] {
   const merged = new Map<string, Employee>()
@@ -284,6 +293,7 @@ export default function App(){
   const [helpdeskError,setHelpdeskError]=useState('')
   const [iamSync,setIamSync]=useState<IamDatabaseState>(auth.configured?'loading':'local')
   const [iamError,setIamError]=useState('')
+  const [projectSync,setProjectSync]=useState<ProjectDatabaseState>(auth.configured?'loading':'local')
   const lastCloudPayload=useRef<string>('')
   const cloudInitialized=useRef(false)
   const cloudHasSnapshot=useRef(false)
@@ -376,10 +386,11 @@ export default function App(){
 
   useEffect(()=>{
     if(!auth.configured||!auth.profile||!cloudInitialized.current||sync==='loading'||sync==='saving'||sync==='error')return
+    if(role==='project_manager'||role==='project_member'||role==='employee')return
     const serialized=serializeSnapshotScope(state)
     if(serialized===lastCloudPayload.current)setSync(cloudHasSnapshot.current?'synced':'empty')
     else setSync('dirty')
-  },[state,auth.configured,auth.profile,sync])
+  },[state,auth.configured,auth.profile,sync,role])
 
   useEffect(()=>{
     if(!auth.configured||!auth.profile||!canSaveSnapshot||sync!=='dirty')return
@@ -707,20 +718,20 @@ export default function App(){
     <aside className={`sidebar ${sidebarOpen?'sidebar-open':''}`}>
       <div className="brand"><div className="brand-mark">IS</div><div><strong>{workspaceName}</strong><small>{workspaceDetail}</small></div><button className="icon-button sidebar-close" onClick={()=>setSidebarOpen(false)}><Icon name="close"/></button></div>
       <nav>{visibleGroups.map(group=><section className="nav-group" key={group.label}><span>{group.label}</span>{group.items.map(item=>{const badge=item.badge?.(state);return <button key={item.key} className={view===item.key?'active':''} onClick={()=>go(item.key)}><Icon name={item.icon}/><span>{item.label}</span>{badge!==undefined&&badge>0?<b>{badge}</b>:null}</button>})}</section>)}</nav>
-      <div className="sidebar-footer"><div className={`mode-dot mode-${sync}`}/><div><strong>{auth.configured?'Supabase režim':'Pracovný prototyp'}</strong><small>{syncLabel(sync)} · v{state.meta.version}</small></div></div>
+      <div className="sidebar-footer"><div className={`mode-dot mode-${view==='projectManagement'?projectSync:sync}`}/><div><strong>{auth.configured?'Supabase režim':'Pracovný prototyp'}</strong><small>{view==='projectManagement'?projectSyncLabel(projectSync):syncLabel(sync)} · v{state.meta.version}</small></div></div>
     </aside>
     {sidebarOpen&&<button className="sidebar-overlay" onClick={()=>setSidebarOpen(false)} aria-label="Zavrieť menu"/>}
     <div className="app-main">
       <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setSidebarOpen(true)}><Icon name="menu"/></button><div><small>{workspaceName}</small><strong>{currentLabel}</strong></div></div><div className="topbar-right">
         {role!=='employee'&&!isProjectRole&&<button className="top-search-trigger" title="Globálne hľadanie (Ctrl+K)" onClick={()=>setGlobalSearchOpen(true)}><Icon name="search" size={16}/><span>Hľadať</span><kbd>Ctrl K</kbd></button>}
         {role!=='employee'&&!isProjectRole&&auth.configured&&<div className="sync-actions"><button className="icon-button" title="Načítať z databázy" disabled={sync==='loading'||sync==='saving'} onClick={()=>void loadCloud()}><Icon name="download" size={17}/></button>{canSaveSnapshot&&<button className="icon-button" title="Uložiť do databázy" disabled={sync==='loading'||sync==='saving'||sync==='synced'} onClick={()=>void saveCloud()}><Icon name="upload" size={17}/></button>}</div>}
-        <div className={`data-mode data-mode-${sync}`} title={role==='employee'||isProjectRole?'Modul používa riadený databázový prístup.':syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{role==='employee'?'Portál':isProjectRole?'Projekty online':syncLabel(sync)}</span></div>
+        <div className={`data-mode data-mode-${view==='projectManagement'?projectSync:sync}`} title={view==='projectManagement'?projectSyncLabel(projectSync):role==='employee'?'Portál používa riadený databázový prístup.':syncError||syncLabel(sync)}><Icon name="database" size={16}/><span>{view==='projectManagement'?projectSyncLabel(projectSync):role==='employee'?'Portál':syncLabel(sync)}</span></div>
         <button className="top-user" title="Môj profil a zmena hesla" onClick={()=>setProfileOpen(true)}><div className="avatar avatar-small">{initials(displayName)}</div><div><strong>{displayName}</strong><small>{role==='employee'?'Používateľ':isProjectRole?roleLabel(role):`${roleLabel(role)} · ${workspace==='oit'?'3.1':workspace==='oris'?'3.2':'Spoločné'} ${profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='write'?'W':profileAccess(accessProfile,workspace==='oit'?'oit':workspace==='oris'?'oris':'shared')==='read'?'R':'—'}`}</small></div><Icon name="chevron" size={16}/></button>{auth.configured&&<button className="icon-button top-logout" title="Odhlásiť sa" onClick={()=>void auth.signOut()}><Icon name="logout" size={18}/></button>}
       </div></header>
       <main className="content">
-        {role!=='employee'&&syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong> {syncError}</span><div className="sync-alert-actions"><button className="button button-secondary button-small" onClick={()=>void saveCloud()}>Skúsiť uložiť znova</button><button className="button button-ghost button-small" onClick={()=>void loadCloud()}>Načítať z DB</button></div></div>}
+        {role!=='employee'&&view!=='projectManagement'&&syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong> {syncError}</span><div className="sync-alert-actions"><button className="button button-secondary button-small" onClick={()=>void saveCloud()}>Skúsiť uložiť znova</button><button className="button button-ghost button-small" onClick={()=>void loadCloud()}>Načítať z DB</button></div></div>}
         {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared} canServiceDesk={role==='admin'} canProjects={role==='admin'||isProjectRole}/>}
-        {view==='projectManagement'&&<ProjectManagement role={role} currentUserId={auth.profile?.id??'local-user'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} organizationId={auth.profile?.organizationId||''} databaseMode={auth.configured?'cloud':'local'} fallbackProjects={state.projects} fallbackTasks={state.tasks} onFallbackProjectsChange={commitProjects} onFallbackTasksChange={commitTasks}/>}
+        {view==='projectManagement'&&<ProjectManagement role={role} currentUserId={auth.profile?.id??'local-user'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} organizationId={auth.profile?.organizationId||''} databaseMode={auth.configured?'cloud':'local'} fallbackProjects={state.projects} fallbackTasks={state.tasks} onFallbackProjectsChange={commitProjects} onFallbackTasksChange={commitTasks} onDatabaseStateChange={setProjectSync}/>}
         {view==='enterprise360'&&<Enterprise360 state={state} go={go} canEdit={canManageShared} currentUser={displayName} onGovernanceChange={enterpriseGovernance=>setState(current=>({...current,enterpriseGovernance}))} onDevelopmentRequestsChange={contractDevelopmentRequests=>setState(current=>({...current,contractDevelopmentRequests}))}/>}
         {view==='actionCenter'&&<ManagementActionCenter state={state} currentUser={displayName} go={go}/>}
         {view==='myWorkspace'&&<MyWorkspace state={state} currentUser={displayName} role={role} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
