@@ -4,7 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path'
 const root = resolve(new URL('..', import.meta.url).pathname)
 const src = join(root, 'src')
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-const expectedVersion = '0.53.0'
+const expectedVersion = '0.54.0'
 const errors = []
 
 if (pkg.version !== expectedVersion) errors.push(`package.json version=${pkg.version}, expected=${expectedVersion}`)
@@ -63,8 +63,8 @@ for (const file of sourceFiles) {
 }
 
 if (errors.length) {
-  console.error('[v0.53.0 verify] FAILED')
+  console.error('[v0.54.0 verify] FAILED')
   for (const error of errors) console.error(`- ${error}`)
   process.exit(1)
 }
-console.log(`[v0.53.0 verify] OK; sourceFiles=${sourceFiles.length}; version=${pkg.version}`)
+console.log(`[v0.54.0 verify] OK; sourceFiles=${sourceFiles.length}; version=${pkg.version}`)
