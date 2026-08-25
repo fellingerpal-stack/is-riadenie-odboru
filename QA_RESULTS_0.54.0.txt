@@ -1,0 +1,47 @@
+IS RIADENIE ODBORU v0.54.0 – QA RESULTS
+
+PASS  Version consistency
+      package.json = 0.54.0
+      src/lib/storage.ts CURRENT_VERSION = 0.54.0
+      src/data/seed.json meta.version = 0.54.0
+
+PASS  Release structure / imports
+      node scripts/verify-release.mjs
+      [v0.54.0 verify] OK; sourceFiles=74; version=0.54.0
+      kontrola potvrdila požadované súbory, žiadne legacy root TS duplicity a žiadne nevyriešené relatívne importy.
+
+PASS  TypeScript/TSX syntax
+      74 zdrojových TS/TSX súborov prešlo TypeScript transpile syntax kontrolou.
+      errors = 0
+
+PASS  Project Capacity Intelligence
+      prepínače BI prehľad / Heatmapa / Graf / Detail
+      referenčný mesiac
+      horizont 3 / 6 / 12 mesiacov
+      mesačná heatmapa s drill-downom
+      stacked graf alokácií s hranicou 100 %
+      BI KPI: FTE, voľná kapacita, priemer, overload/high
+      projektový a rolový kapacitný súhrn
+      automatické riziká: >100 %, 3+ projektov, končiaca alokácia
+
+PASS  Role-safe data use
+      frontend nemení serverový scope v0.53.0.
+      project_member si naďalej filtruje iba vlastné alokácie.
+      admin/PM BI počíta iba z dát, ktoré vráti project_portfolio_read.
+
+PASS  CSS structural check
+      ProjectManagement.css opening braces = closing braces = 282
+
+PASS  Database scope
+      v0.54.0 neobsahuje novú SQL migráciu, nemení RLS ani RPC.
+
+LIMITATION  Plný npm/Vite production build nebol v izolovanom prostredí vykonaný,
+            pretože lokálne nie sú nainštalované projektové npm dependencies.
+            Finálny build gate je Vercel. Prebuild verify je súčasťou release.
+
+SMOKE TEST PO NASADENÍ
+1. Otvoriť Riadenie projektov -> Kapacity.
+2. Prepnúť všetky 4 pohľady.
+3. Heatmapa: 3/6/12 mesiacov, klik na bunku, drill-down, otvorenie projektu.
+4. Graf: overiť stacked segmenty a 100 % hranicu.
+5. Admin/PM/Člen projektu: overiť rozsah viditeľných dát.
