@@ -1,5 +1,5 @@
 export type RaciCode = '' | 'R' | 'A' | 'C' | 'I' | 'R/A'
-export type AppRole = 'admin' | 'manager' | 'resolver' | 'employee' | 'viewer'
+export type AppRole = 'admin' | 'manager' | 'resolver' | 'project_manager' | 'project_member' | 'employee' | 'viewer'
 export type AccessLevel = 'none' | 'read' | 'write'
 export type AccessScope = 'oit' | 'oris' | 'shared'
 export interface UserAccessScopes { oit: AccessLevel; oris: AccessLevel; shared: AccessLevel }
@@ -153,6 +153,91 @@ export interface Project {
   description: string
   note?: string
   updatedAt?: string
+  phase?: string
+  health?: string
+  deliveryModel?: string
+  objective?: string
+  expectedOutcome?: string
+  nextMilestone?: string
+  nextMilestoneDue?: string
+  fundingStatus?: string
+  budgetTotal?: number
+  budgetSpent?: number
+  managerUserId?: string
+  managerName?: string
+  managerEmail?: string
+  linkedSystemNames?: string[]
+  linkedServiceIds?: string[]
+  linkedContractNumbers?: string[]
+}
+
+export interface ProjectMember {
+  id: string
+  projectId: string
+  userId: string
+  name: string
+  email: string
+  projectRole: string
+  responsibility: string
+  allocationPercent: number
+  validFrom: string
+  validTo: string
+  isActive: boolean
+  note: string
+}
+
+export interface ProjectFunding {
+  id: string
+  projectId: string
+  sourceType: string
+  sourceName: string
+  program: string
+  taskCode: string
+  year: number
+  amount: number
+  spent: number
+  cofinancingPercent: number
+  note: string
+}
+
+export interface ProjectMilestone {
+  id: string
+  projectId: string
+  title: string
+  phase: string
+  gate: string
+  owner: string
+  due: string
+  status: string
+  completedAt: string
+  note: string
+}
+
+export interface ProjectLink {
+  id: string
+  projectId: string
+  targetType: string
+  targetKey: string
+  targetName: string
+  relation: string
+  note: string
+}
+
+export interface ProjectReferenceItem {
+  type: string
+  key: string
+  name: string
+  subtitle: string
+}
+
+export interface ProjectPortfolioData {
+  projects: Project[]
+  tasks: Task[]
+  members: ProjectMember[]
+  funding: ProjectFunding[]
+  milestones: ProjectMilestone[]
+  links: ProjectLink[]
+  references: ProjectReferenceItem[]
 }
 
 export interface Task {
