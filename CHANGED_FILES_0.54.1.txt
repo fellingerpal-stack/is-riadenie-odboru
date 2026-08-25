@@ -1,0 +1,10 @@
+package.json
+scripts/prebuild-cleanup.mjs
+scripts/verify-release.mjs
+src/data/seed.json
+src/lib/storage.ts
+src/views/ProjectManagement.css
+RELEASE_NOTES_0.54.1.md
+README_NASADENIE_0.54.1.txt
+QA_RESULTS_0.54.1.txt
+CHANGED_FILES_0.54.1.txt

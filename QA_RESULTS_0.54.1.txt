@@ -1,0 +1,11 @@
+IS Riadenie odboru v0.54.1 - QA
+
+PASS - package.json v release = 0.54.1
+PASS - src/data/seed.json meta.version = 0.54.1
+PASS - src/lib/storage.ts CURRENT_VERSION = 0.54.1
+PASS - prebuild cleanup spusteny lokalne
+PASS - verify-release spusteny lokalne: OK, 74 TS/TSX source files
+PASS - simulacia stale package.json=0.53.0: iba WARNING, verify pokracuje a skonci OK
+PASS - simulacia legacy src/accessControl.ts: prebuild subor odstrani
+PASS - ZIP integrita bude overena po vytvoreni
+LIMIT - plny npm/tsc/vite build nebol lokalne dokonceny; npm instalacia dependencies v izolovanom prostredi timeoutla. Finalny build gate je Vercel.
