@@ -1,0 +1,21 @@
+IS Riadenie odboru v0.51.1 - Vercel build hotfix QA
+===================================================
+
+[PASS] package.json version = 0.51.1
+[PASS] src/lib/storage.ts CURRENT_VERSION = 0.51.1
+[PASS] src/data/seed.json meta.version = 0.51.1
+[PASS] tsconfig.app.json JSON valid
+[PASS] tsconfig.app.json no longer uses broad include ["src"]
+[PASS] production paths src/lib/**, src/views/**, src/auth/**, src/components/** and src/data/** included
+[PASS] root production entrypoints App.tsx/main.tsx/types.ts/vite-env.d.ts included
+[PASS] no database migration added
+[PASS] synthetic stale src/accessControl.ts, src/cloud.ts and src/storage.ts are excluded by TypeScript config
+[PASS] static relative-import scan of production src tree: 0 unresolved relative imports
+[PASS] v0.51.0 project-management migration remains authoritative
+
+Vercel error addressed:
+- TS2307 from stale src/*.ts files that used ../types and ../data imports
+- cascading implicit-any/type errors caused by those failed imports
+
+NOTE:
+A complete local npm build could not be executed in this sandbox because npm dependencies are not installed and package installation timed out. The hotfix is specifically targeted to the Vercel log supplied by the user. Vercel production build remains the final executable validation.
