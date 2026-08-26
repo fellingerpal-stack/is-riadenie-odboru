@@ -4,14 +4,18 @@ import { dirname, extname, join, resolve } from 'node:path'
 const root = resolve(new URL('..', import.meta.url).pathname)
 const src = join(root, 'src')
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-const expectedVersion = '0.56.1'
+const expectedVersion = '0.56.2'
 const errors = []
 
-if (pkg.version !== expectedVersion) console.warn(`[v0.56.1 verify] WARNING package.json version=${pkg.version}, expected=${expectedVersion}; build continues because this is metadata only`)
+if (pkg.version !== expectedVersion) console.warn(`[v0.56.2 verify] WARNING package.json version=${pkg.version}, expected=${expectedVersion}; build continues because this is metadata only`)
 for (const required of [
   'src/App.tsx',
   'src/types.ts',
   'src/lib/projectCloud.ts',
+  'src/lib/entityFinanceCloud.ts',
+  'src/lib/enterprise360.ts',
+  'src/views/Enterprise360.tsx',
+  'src/views/Enterprise360.css',
   'src/views/ProjectManagement.tsx',
   'src/views/ProjectManagement.css',
   'src/lib/storage.ts',
@@ -19,6 +23,7 @@ for (const required of [
   'src/data/contractTasks.json',
   'src/data/contractTaskLedger.json',
   'supabase/migration_project_finance_v056.sql',
+  'supabase/migration_entity_finance_allocation_v0562.sql',
   'tsconfig.app.json',
 ]) {
   if (!existsSync(join(root, required))) errors.push(`missing ${required}`)
@@ -66,8 +71,8 @@ for (const file of sourceFiles) {
 }
 
 if (errors.length) {
-  console.error('[v0.56.1 verify] FAILED')
+  console.error('[v0.56.2 verify] FAILED')
   for (const error of errors) console.error(`- ${error}`)
   process.exit(1)
 }
-console.log(`[v0.56.1 verify] OK; sourceFiles=${sourceFiles.length}; version=${pkg.version}`)
+console.log(`[v0.56.2 verify] OK; sourceFiles=${sourceFiles.length}; version=${pkg.version}`)
