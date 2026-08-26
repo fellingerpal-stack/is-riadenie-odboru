@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Field, Icon, Modal, PageHeader } from '../components/UI'
-import type { AppState, ContractDevelopmentRequest, EnterpriseGovernanceOverride } from '../types'
+import type { AppState, ContractDevelopmentRequest, EnterpriseGovernanceOverride, EntityFinancialAllocation } from '../types'
 import { buildEnterprise360Entities, enterprisePortfolioTotals, normalize360, type Enterprise360Entity, type EnterpriseLedgerRow } from '../lib/enterprise360'
 import { komisContract, type KomisContractModule } from '../data/komisContract'
+import contractTaskData from '../data/contractTasks.json'
+import contractTaskLedgerData from '../data/contractTaskLedger.json'
+import { deleteEntityFinancialAllocation, loadEntityFinancialAllocations, saveEntityFinancialAllocation } from '../lib/entityFinanceCloud'
 import './Enterprise360.css'
 
 type Tab='overview'|'finance'|'development'|'work'|'technology'|'governance'|'relations'
@@ -86,21 +89,105 @@ function Attention({entity}:{entity:Enterprise360Entity}){
   return <div className="e360-attention-list">{entries.length?entries.map((item,index)=><article key={`${item.kind}-${index}`}><span className={`e360-attention-dot is-${item.tone}`}/><div><small>{item.kind}</small><strong>{item.title}</strong><p>{item.detail}</p></div></article>):<div className="e360-empty-small"><Icon name="check" size={20}/><strong>Bez kritických upozornení</strong><span>Aktuálne prepojené dáta neindikujú otvorený problém.</span></div>}</div>
 }
 
-function FinanceView({entity,onGo,onSelectEntity}:{entity:Enterprise360Entity;onGo:Go;onSelectEntity:(id:string)=>void}){
+interface FinanceTaskLite{code:string;name:string;budget:number;spent:number;remaining:number}
+interface FinanceTaskDataset{meta:{period:string;year:number;monthsLoaded:number};tasks:FinanceTaskLite[]}
+interface FinanceLedgerDataset{payments:EnterpriseLedgerRow[]}
+const financeTaskDataset=contractTaskData as FinanceTaskDataset
+const financeLedgerDataset=contractTaskLedgerData as FinanceLedgerDataset
+
+type AllocationMode='full'|'amount'|'percent'
+interface AllocationDraft{moduleId:string;taskCode:string;mode:AllocationMode;ledgerIds:string[];amount:number;percent:number;note:string;search:string;usedSuggestion:boolean}
+function blankAllocationDraft(entity:Enterprise360Entity):AllocationDraft{return{moduleId:entity.komisModules.length===1?entity.komisModules[0].id:'',taskCode:'10',mode:'full',ledgerIds:[],amount:0,percent:100,note:'',search:'',usedSuggestion:false}}
+function allocationsForEntity(entity:Enterprise360Entity,all:EntityFinancialAllocation[]){
+  return all.filter(item=>item.entityId===entity.id||(item.moduleId&&entity.komisModules.some(module=>module.id===item.moduleId))||(entity.id==='komis'&&entity.komisModules.some(module=>module.entityIds.includes(item.entityId))))
+}
+function sourceAllocatedMagnitude(ledgerId:string,all:EntityFinancialAllocation[]){return all.filter(item=>item.ledgerId===ledgerId).reduce((sum,item)=>sum+Math.abs(Number(item.allocatedAmount||0)),0)}
+function signedMagnitude(source:number,magnitude:number){return source<0?-Math.abs(magnitude):Math.abs(magnitude)}
+function allocationTargetLabel(entity:Enterprise360Entity,item:EntityFinancialAllocation){return item.moduleCode||item.moduleName||item.entityName||entity.title}
+function rowSearchText(row:EnterpriseLedgerRow){return normalize360([row.document,row.note,row.zak,row.kpd,row.ppd,row.pracm,row.task].join(' '))}
+
+function FinanceView({entity,onGo,onSelectEntity,allAllocations,canEdit,onReload}:{entity:Enterprise360Entity;onGo:Go;onSelectEntity:(id:string)=>void;allAllocations:EntityFinancialAllocation[];canEdit:boolean;onReload:()=>Promise<void>}){
   const [month,setMonth]=useState<number|null>(null)
+  const [draft,setDraft]=useState<AllocationDraft|null>(null)
+  const [saving,setSaving]=useState(false)
+  const [allocationError,setAllocationError]=useState('')
   const finance=entity.finance
+  const entityAllocations=useMemo(()=>allocationsForEntity(entity,allAllocations),[entity,allAllocations])
+  const allocatedTotal=entityAllocations.reduce((sum,item)=>sum+Number(item.allocatedAmount||0),0)
+  const allocatedTaskCodes=unique(entityAllocations.map(item=>item.taskCode)).sort()
   const scopedRows=useMemo(()=>month?finance.rows.filter(row=>row.month===month):finance.rows,[finance.rows,month])
   const docs=useMemo(()=>groupDocuments(scopedRows),[scopedRows])
   const scopedTotal=scopedRows.reduce((sum,row)=>sum+Number(row.amount||0),0)
   const expected=month?Number(finance.monthly[month-1]||0):finance.spent
   const maxMonth=Math.max(1,...finance.monthly.map(value=>Math.abs(value)))
+  const allocationByTask=financeTaskDataset.tasks.map(task=>({task,total:entityAllocations.filter(item=>item.taskCode===task.code).reduce((sum,item)=>sum+Number(item.allocatedAmount||0),0),count:entityAllocations.filter(item=>item.taskCode===task.code).length})).filter(item=>item.count)
+  const draftRows=draft?financeLedgerDataset.payments.filter(row=>row.task===draft.taskCode):[]
+  const visibleDraftRows=draft?draftRows.filter(row=>!draft.search.trim()||rowSearchText(row).includes(normalize360(draft.search))).slice(0,140):[]
+  const selectedRows=draft?draftRows.filter(row=>draft.ledgerIds.includes(row.id)):[]
+  const selectedModule=draft?.moduleId?entity.komisModules.find(item=>item.id===draft.moduleId)||null:null
+  const selectedSource=selectedRows[0]
+  const selectedRemaining=selectedSource?Math.max(0,Math.abs(Number(selectedSource.amount||0))-sourceAllocatedMagnitude(selectedSource.id,allAllocations)):0
+  const proposedSingle=draft&&selectedSource?(draft.mode==='amount'?Number(draft.amount||0):draft.mode==='percent'?Math.abs(Number(selectedSource.amount||0))*Number(draft.percent||0)/100:selectedRemaining):0
+  const invalidSingle=Boolean(draft&&draft.mode!=='full'&&(selectedRows.length!==1||proposedSingle<=0||proposedSingle>selectedRemaining+0.01))
+  const canSaveDraft=Boolean(draft&&draft.ledgerIds.length&&!invalidSingle&&!saving)
+
+  const suggest=()=>{
+    if(!draft)return
+    const terms=(selectedModule?[selectedModule.code,selectedModule.title,...selectedModule.aliases]:[entity.title,...entity.aliases]).map(normalize360).filter(term=>term.length>=3)
+    const ids=draftRows.filter(row=>terms.some(term=>rowSearchText(row).includes(term))&&Math.abs(Number(row.amount||0))-sourceAllocatedMagnitude(row.id,allAllocations)>0.01).map(row=>row.id)
+    setDraft({...draft,ledgerIds:ids,usedSuggestion:true})
+  }
+  const saveDraft=async()=>{
+    if(!draft||!canSaveDraft)return
+    setSaving(true);setAllocationError('')
+    try{
+      const rowsToSave=draft.mode==='full'?selectedRows:[selectedRows[0]]
+      for(let index=0;index<rowsToSave.length;index++){
+        const row=rowsToSave[index]
+        const used=sourceAllocatedMagnitude(row.id,allAllocations)
+        const remaining=Math.max(0,Math.abs(Number(row.amount||0))-used)
+        let magnitude=remaining
+        let percent=remaining/Math.abs(Number(row.amount||1))*100
+        if(draft.mode==='amount'){magnitude=Number(draft.amount||0);percent=magnitude/Math.abs(Number(row.amount||1))*100}
+        if(draft.mode==='percent'){percent=Number(draft.percent||0);magnitude=Math.abs(Number(row.amount||0))*percent/100}
+        if(magnitude<=0||magnitude>remaining+0.01)throw new Error(`Položka ${row.document||row.id} nemá dostatočný nepriradený zostatok.`)
+        const item:EntityFinancialAllocation={
+          id:`EFA-${Date.now()}-${index}-${Math.random().toString(36).slice(2,7)}`,
+          entityId:entity.id,entityName:entity.title,moduleId:selectedModule?.id||'',moduleCode:selectedModule?.code||'',moduleName:selectedModule?.title||'',
+          taskCode:row.task,ledgerId:row.id,allocationMode:draft.usedSuggestion&&draft.mode==='full'?'suggested':draft.mode,allocationPercent:Math.round(percent*10000)/10000,
+          sourceAmount:Number(row.amount||0),allocatedAmount:signedMagnitude(Number(row.amount||0),magnitude),sourceDate:row.date||'',sourceDocument:row.document||'',sourceZak:row.zak||'',sourceKpd:row.kpd||'',sourcePpd:row.ppd||'',sourcePracm:row.pracm||'',sourceNote:row.note||'',note:draft.note||'',
+        }
+        await saveEntityFinancialAllocation(item)
+      }
+      await onReload();setDraft(null)
+    }catch(error){setAllocationError(error instanceof Error?error.message:String(error))}finally{setSaving(false)}
+  }
+  const removeAllocation=async(item:EntityFinancialAllocation)=>{
+    if(!confirm(`Odstrániť finančné mapovanie ${item.sourceDocument||item.ledgerId} → ${allocationTargetLabel(entity,item)}?`))return
+    setAllocationError('')
+    try{await deleteEntityFinancialAllocation(item.id);await onReload()}catch(error){setAllocationError(error instanceof Error?error.message:String(error))}
+  }
+
   return <div className="e360-section-stack">
     <KomisContractPanel entity={entity} onSelectEntity={onSelectEntity}/>
-    {!finance.task&&<div className="e360-callout warning"><Icon name="warning" size={20}/><div><strong>Táto entita zatiaľ nemá priame mapovanie na kontraktovú rozpočtovú úlohu.</strong><span>CVTI 360 preto nezobrazuje odvodené čerpanie. Assetové a zmluvné finančné údaje ostávajú uvedené samostatne.</span></div></div>}
+    {entityAllocations.length?<div className="e360-callout success"><Icon name="check" size={20}/><div><strong>Skutočné čerpanie je mapované na túto entitu.</strong><span>{entityAllocations.length} auditných alokácií z úloh {allocatedTaskCodes.join(' + ')} · spolu {money.format(allocatedTotal)}. Zmluvné SLA hodnoty ostávajú oddelené.</span></div></div>:!finance.task&&<div className="e360-callout warning"><Icon name="warning" size={20}/><div><strong>Táto entita zatiaľ nemá priame ani alokované mapovanie na kontraktovú rozpočtovú úlohu.</strong><span>CVTI 360 preto nezobrazuje skutočné čerpanie. Použi „Napárovať čerpanie“ alebo ponechaj zmluvné údaje samostatne.</span></div></div>}
+
+    <section className="e360-panel e360-allocation-panel">
+      <header className="e360-panel-head"><div><span>ENTITY FINANCIAL ALLOCATION</span><h3>Skutočné platby priradené k {entity.title}</h3><p>Jedna platba môže byť rozdelená medzi viac modulov. Systém stráži, aby súčet alokácií neprekročil zdrojový riadok.</p></div>{canEdit&&<button className="button button-primary" onClick={()=>{setAllocationError('');setDraft(blankAllocationDraft(entity))}}><Icon name="plus" size={16}/> Napárovať čerpanie</button>}</header>
+      <div className="e360-allocation-kpis">
+        <MiniStat label="ALOKOVANÉ ČERPANIE YTD" value={money.format(allocatedTotal)} detail={entityAllocations.length?`${entityAllocations.length} auditných alokácií`:'Zatiaľ bez alokácie'} tone="teal"/>
+        <MiniStat label="ZDROJOVÉ ÚLOHY" value={allocatedTaskCodes.length?allocatedTaskCodes.map(code=>`Úloha ${code}`).join(' + '):'—'} detail="10 / 22 / 25 podľa skutočného mapovania" tone="blue"/>
+        <MiniStat label="ZMLUVNÁ VRSTVA" value={entity.komisModules.length?money.format(sumKomis(entity.komisModules,'slaQuarterlyGross')):'—'} detail={entity.komisModules.length?'SLA / kvartál s DPH · nemieša sa s čerpaním':'Bez KOMIS SLA vrstvy'} tone="purple"/>
+      </div>
+      {allocationByTask.length?<div className="e360-allocation-task-grid">{allocationByTask.map(({task,total,count})=><article key={task.code}><span>ÚLOHA {task.code}</span><strong>{money.format(total)}</strong><small>{count} alokácií · celá úloha čerpá {money.format(task.spent)}</small><div><i style={{width:`${Math.min(100,task.spent?Math.abs(total)/Math.abs(task.spent)*100:0)}%`}}/></div></article>)}</div>:<div className="e360-empty-small"><Icon name="capacity" size={20}/><strong>Zatiaľ bez priradeného skutočného čerpania</strong><span>Zmluvné SLA a rozvojové ceny vyššie zostávajú informatívne a samostatné.</span></div>}
+      {entityAllocations.length>0&&<div className="e360-allocation-table-wrap"><table className="e360-allocation-table"><thead><tr><th>Dátum</th><th>Úloha</th><th>Cieľ</th><th>Doklad / popis</th><th>Zdroj</th><th>Alokované</th>{canEdit&&<th/>}</tr></thead><tbody>{entityAllocations.slice().sort((a,b)=>String(b.sourceDate).localeCompare(String(a.sourceDate))).map(item=><tr key={item.id}><td>{item.sourceDate||'—'}</td><td><Badge tone="info">{item.taskCode}</Badge></td><td><strong>{allocationTargetLabel(entity,item)}</strong><small>{item.allocationMode==='suggested'?'návrh potvrdený používateľom':item.allocationMode}</small></td><td><strong>{item.sourceDocument||item.ledgerId}</strong><small>{item.sourceNote||'Bez popisu'}</small></td><td>{money.format(item.sourceAmount)}<small>ZAK {item.sourceZak||'—'} · PRACM {item.sourcePracm||'—'}</small></td><td className="money-cell"><strong>{money.format(item.allocatedAmount)}</strong><small>{number.format(item.allocationPercent)} % zdroja</small></td>{canEdit&&<td><button className="icon-button" onClick={()=>removeAllocation(item)} title="Odstrániť mapovanie"><Icon name="trash" size={16}/></button></td>}</tr>)}</tbody></table></div>}
+      {allocationError&&<div className="e360-callout warning"><Icon name="warning" size={18}/><div><strong>Mapovanie sa nepodarilo</strong><span>{allocationError}</span></div></div>}
+    </section>
+
     <section className="e360-finance-kpis">
-      <MiniStat label="ROZPOČET" value={finance.task?money.format(finance.budget):'—'} detail={finance.task?`Úloha ${finance.taskCode}`:'Bez priameho mapovania'} tone="blue"/>
-      <MiniStat label="ČERPANIE YTD" value={finance.task?money.format(finance.spent):'—'} detail={finance.task?`${number.format(pct(finance.spent,finance.budget))} % rozpočtu`:'Nie je odvodené'} tone="teal"/>
-      <MiniStat label="ZOSTÁVA" value={finance.task?money.format(finance.remaining):'—'} detail={finance.task?`${number.format(100-pct(finance.spent,finance.budget))} % rozpočtu`:'Nie je odvodené'} tone="green"/>
+      <MiniStat label="ROZPOČET" value={finance.task?money.format(finance.budget):'—'} detail={finance.task?`Priame mapovanie · Úloha ${finance.taskCode}`:entityAllocations.length?'Rozpočet celej zdrojovej úlohy sa k modulu nepripisuje':'Bez priameho mapovania'} tone="blue"/>
+      <MiniStat label={finance.task?'ČERPANIE YTD':'ALOKOVANÉ ČERPANIE YTD'} value={finance.task?money.format(finance.spent):entityAllocations.length?money.format(allocatedTotal):'—'} detail={finance.task?`${number.format(pct(finance.spent,finance.budget))} % rozpočtu`:entityAllocations.length?`Úlohy ${allocatedTaskCodes.join(' + ')}`:'Nie je odvodené'} tone="teal"/>
+      <MiniStat label="ZOSTÁVA" value={finance.task?money.format(finance.remaining):'—'} detail={finance.task?`${number.format(100-pct(finance.spent,finance.budget))} % rozpočtu`:'Zostatok sa sleduje na zdrojovej úlohe'} tone="green"/>
       <MiniStat label="ZMLUVY · ROČNÁ HODNOTA" value={finance.contractAnnualValue?money.format(finance.contractAnnualValue):'—'} detail={`${entity.contracts.length} prepojených zmlúv`} tone="purple"/>
       <MiniStat label="ASSETY · ROČNÝ OPEX" value={finance.assetAnnualCost?money.format(finance.assetAnnualCost):'—'} detail={`${entity.cmdb.length} prepojených aktív`} tone="amber"/>
     </section>
@@ -125,6 +212,23 @@ function FinanceView({entity,onGo,onSelectEntity}:{entity:Enterprise360Entity;on
       <header className="e360-panel-head"><div><span>DÔKAZNÁ VRSTVA</span><h3>{month?`Platby · ${monthNames[month-1]}`:'Najväčšie platby a doklady'}</h3><p>Doklady sú agregované priamo z auditného ledgeru úlohy {finance.taskCode}.</p></div><Badge tone="info">{docs.length} dokladov</Badge></header>
       <div className="e360-payment-table-wrap"><table className="e360-payment-table"><thead><tr><th>Dátum</th><th>Doklad</th><th>Popis / účel</th><th>KPD / PPD</th><th>PRACM</th><th>Suma</th></tr></thead><tbody>{docs.slice(0,20).map(doc=><tr key={doc.key}><td>{doc.date||'—'}</td><td><strong>{doc.document}</strong><small>{doc.rows.length} riadkov</small></td><td>{doc.notes.slice(0,2).join(' · ')||'—'}</td><td>{doc.codes.slice(0,3).join(', ')||'—'}</td><td>{doc.centers.slice(0,3).join(', ')||'—'}</td><td className="money-cell">{money.format(doc.amount)}</td></tr>)}</tbody></table></div>
     </section>}
+
+    {draft&&<Modal title={`Napárovať čerpanie · ${entity.title}`} onClose={()=>!saving&&setDraft(null)} wide><div className="e360-allocation-modal">
+      <div className="form-grid">
+        <Field label="Cieľ mapovania" hint="Pri spoločnej 360° entite môžeš platbu priradiť konkrétnemu KOMIS modulu."><select value={draft.moduleId} onChange={e=>setDraft({...draft,moduleId:e.target.value,ledgerIds:[],usedSuggestion:false})}><option value="">Celá entita · {entity.title}</option>{entity.komisModules.map(module=><option key={module.id} value={module.id}>{module.code} · {module.title}</option>)}</select></Field>
+        <Field label="Kontraktová úloha"><select value={draft.taskCode} onChange={e=>setDraft({...draft,taskCode:e.target.value,ledgerIds:[],usedSuggestion:false})}>{financeTaskDataset.tasks.map(task=><option key={task.code} value={task.code}>Úloha {task.code} · {task.name}</option>)}</select></Field>
+        <Field label="Spôsob alokácie"><select value={draft.mode} onChange={e=>setDraft({...draft,mode:e.target.value as AllocationMode,ledgerIds:draft.ledgerIds.slice(0,e.target.value==='full'?999:1),usedSuggestion:false})}><option value="full">Celý nepriradený zostatok položky</option><option value="amount">Časť platby v €</option><option value="percent">Percento platby</option></select></Field>
+        {draft.mode==='amount'&&<Field label="Alokovať €" hint={selectedSource?`Na vybranej položke zostáva ${money.format(selectedRemaining)}.`:'Najprv vyber jednu položku.'}><input type="number" min="0" step="0.01" value={draft.amount||''} onChange={e=>setDraft({...draft,amount:Number(e.target.value)})}/></Field>}
+        {draft.mode==='percent'&&<Field label="Percento zdrojovej platby" hint={selectedSource?`Nepriradený zostatok: ${money.format(selectedRemaining)}.`:'Najprv vyber jednu položku.'}><input type="number" min="0" max="100" step="0.01" value={draft.percent} onChange={e=>setDraft({...draft,percent:Number(e.target.value)})}/></Field>}
+        <Field label="Poznámka"><input value={draft.note} onChange={e=>setDraft({...draft,note:e.target.value})} placeholder="napr. faktúra za modul SCIDAP"/></Field>
+      </div>
+      <div className="e360-allocation-tools"><div><button className="button button-secondary button-small" onClick={suggest}><Icon name="search" size={14}/> Navrhnúť podľa názvu</button>{draft.mode==='full'&&<button className="button button-secondary button-small" onClick={()=>setDraft({...draft,ledgerIds:visibleDraftRows.filter(row=>Math.abs(Number(row.amount||0))-sourceAllocatedMagnitude(row.id,allAllocations)>0.01).map(row=>row.id),usedSuggestion:false})}><Icon name="check" size={14}/> Vybrať zobrazené</button>}<button className="button button-secondary button-small" onClick={()=>setDraft({...draft,ledgerIds:[],usedSuggestion:false})}>Vyčistiť výber</button><span>Automatika iba predvyberie riadky podľa názvu/aliasov. Uloženie vždy potvrdzuje používateľ.</span></div><div className="e360-allocation-search"><Icon name="search" size={15}/><input value={draft.search} onChange={e=>setDraft({...draft,search:e.target.value})} placeholder="Hľadať doklad, popis, ZAK, PRACM…"/></div></div>
+      <div className="e360-allocation-picker"><table><thead><tr><th></th><th>Dátum</th><th>Doklad / popis</th><th>ZAK / PRACM</th><th>Zdrojová suma</th><th>Už priradené</th><th>Zostáva</th></tr></thead><tbody>{visibleDraftRows.map(row=>{const used=sourceAllocatedMagnitude(row.id,allAllocations);const remain=Math.max(0,Math.abs(Number(row.amount||0))-used);const checked=draft.ledgerIds.includes(row.id);return <tr key={row.id} className={checked?'is-selected':''}><td><input type="checkbox" checked={checked} disabled={remain<=0.01||draft.mode!=='full'&&draft.ledgerIds.length>0&&!checked} onChange={e=>setDraft({...draft,ledgerIds:e.target.checked?(draft.mode==='full'?[...draft.ledgerIds,row.id]:[row.id]):draft.ledgerIds.filter(id=>id!==row.id),usedSuggestion:false})}/></td><td>{row.date}</td><td><strong>{row.document||row.id}</strong><small>{row.note||'Bez popisu'}</small></td><td>ZAK {row.zak||'—'}<small>PRACM {row.pracm||'—'}</small></td><td className="money-cell">{money.format(row.amount)}</td><td className="money-cell">{money.format(signedMagnitude(Number(row.amount||0),used))}</td><td className="money-cell"><strong>{money.format(signedMagnitude(Number(row.amount||0),remain))}</strong></td></tr>})}</tbody></table></div>
+      {draft.usedSuggestion&&<div className="e360-callout warning"><Icon name="warning" size={18}/><div><strong>Automatický návrh</strong><span>Predvybraných {draft.ledgerIds.length} riadkov. Skontroluj ich pred uložením; návrh nie je účtovné rozhodnutie.</span></div></div>}
+      {invalidSingle&&<div className="e360-callout warning"><Icon name="warning" size={18}/><div><strong>Skontroluj alokáciu</strong><span>Pri čiastke alebo percente vyber presne jednu položku a neprekroč jej nepriradený zostatok.</span></div></div>}
+      {allocationError&&<div className="e360-callout warning"><Icon name="warning" size={18}/><div><strong>Uloženie zlyhalo</strong><span>{allocationError}</span></div></div>}
+      <div className="modal-actions"><button className="button button-secondary" disabled={saving} onClick={()=>setDraft(null)}>Zrušiť</button><button className="button button-primary" disabled={!canSaveDraft} onClick={saveDraft}>{saving?'Ukladám…':`Uložiť mapovanie${draft.mode==='full'&&draft.ledgerIds.length>1?` (${draft.ledgerIds.length})`:''}`}</button></div>
+    </div></Modal>}
   </div>
 }
 
@@ -266,7 +370,13 @@ function RelationsView({entity,onGo}:{entity:Enterprise360Entity;onGo:Go}){
 }
 
 export default function Enterprise360({state,go,canEdit,currentUser,onGovernanceChange,onDevelopmentRequestsChange}:{state:AppState;go:Go;canEdit:boolean;currentUser:string;onGovernanceChange:(items:EnterpriseGovernanceOverride[])=>void;onDevelopmentRequestsChange:(items:ContractDevelopmentRequest[])=>void}){
-  const entities=useMemo(()=>buildEnterprise360Entities(state),[state])
+  const [financialAllocations,setFinancialAllocations]=useState<EntityFinancialAllocation[]>([])
+  const [allocationLoadError,setAllocationLoadError]=useState('')
+  const reloadFinancialAllocations=async()=>{
+    try{setFinancialAllocations(await loadEntityFinancialAllocations());setAllocationLoadError('')}catch(error){setAllocationLoadError(error instanceof Error?error.message:String(error))}
+  }
+  useEffect(()=>{void reloadFinancialAllocations()},[])
+  const entities=useMemo(()=>buildEnterprise360Entities(state,financialAllocations),[state,financialAllocations])
   const totals=useMemo(()=>enterprisePortfolioTotals(entities),[entities])
   const [query,setQuery]=useState('')
   const [selectedId,setSelectedId]=useState(()=>{
@@ -312,17 +422,17 @@ export default function Enterprise360({state,go,canEdit,currentUser,onGovernance
       <aside className="e360-directory">
         <div className="e360-directory-search"><Icon name="search" size={16}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Hľadať CRZP, systém, službu…"/></div>
         <div className="e360-directory-head"><span>PORTFÓLIO</span><strong>{filtered.length} entít</strong></div>
-        <div className="e360-directory-list">{filtered.map(item=><button key={item.id} className={item.id===entity.id?'is-active':''} onClick={()=>selectEntity(item.id)}><span className={`e360-directory-score is-${toneForScore(item.readinessScore)}`}>{item.readinessScore}</span><div><strong>{item.title}</strong><small>{item.service?.category||item.businessLayer}</small><p>{item.finance.task?`Úloha ${item.finance.taskCode} · ${compactMoney.format(item.finance.spent)}`:item.komisModules.length?`KOMIS SLA · ${compactMoney.format(sumKomis(item.komisModules,'slaQuarterlyGross'))}/kv.`:`${item.cmdb.length} assetov · ${item.openWorkCount} úloh`}</p></div>{item.attentionScore>8&&<i>{item.attentionScore}</i>}</button>)}</div>
+        <div className="e360-directory-list">{filtered.map(item=><button key={item.id} className={item.id===entity.id?'is-active':''} onClick={()=>selectEntity(item.id)}><span className={`e360-directory-score is-${toneForScore(item.readinessScore)}`}>{item.readinessScore}</span><div><strong>{item.title}</strong><small>{item.service?.category||item.businessLayer}</small><p>{item.finance.task?`Úloha ${item.finance.taskCode} · ${compactMoney.format(item.finance.spent)}`:item.finance.allocationCount?`Úlohy ${item.finance.allocationTaskCodes.join(' + ')} · ${compactMoney.format(item.finance.allocatedSpent)}`:item.komisModules.length?`KOMIS SLA · ${compactMoney.format(sumKomis(item.komisModules,'slaQuarterlyGross'))}/kv.`:`${item.cmdb.length} assetov · ${item.openWorkCount} úloh`}</p></div>{item.attentionScore>8&&<i>{item.attentionScore}</i>}</button>)}</div>
       </aside>
 
       <main className="e360-detail">
         <section className="e360-entity-hero">
-          <div className="e360-entity-main"><div className="e360-entity-topline"><Badge tone={entity.criticality.toLowerCase().includes('krit')?'danger':'info'}>{entity.criticality}</Badge><span>{entity.confidence}</span><span>{entity.finance.task?`Financie · úloha ${entity.finance.taskCode}`:'Finančné mapovanie čerpania chýba'}</span>{entity.komisModules.length>0&&<span>KOMIS SLA · {compactMoney.format(komisQuarterlyGross)}/kv. s DPH</span>}</div><h2>{entity.title}</h2><p>{entity.businessLayer}</p><div className="e360-entity-tags">{entity.aliases.slice(0,5).map(alias=><span key={alias}>{alias}</span>)}</div></div>
+          <div className="e360-entity-main"><div className="e360-entity-topline"><Badge tone={entity.criticality.toLowerCase().includes('krit')?'danger':'info'}>{entity.criticality}</Badge><span>{entity.confidence}</span><span>{entity.finance.task?`Financie · úloha ${entity.finance.taskCode}`:entity.finance.allocationCount?`Alokované financie · úlohy ${entity.finance.allocationTaskCodes.join(' + ')}`:'Finančné mapovanie čerpania chýba'}</span>{entity.komisModules.length>0&&<span>KOMIS SLA · {compactMoney.format(komisQuarterlyGross)}/kv. s DPH</span>}</div><h2>{entity.title}</h2><p>{entity.businessLayer}</p><div className="e360-entity-tags">{entity.aliases.slice(0,5).map(alias=><span key={alias}>{alias}</span>)}</div></div>
           <div className="e360-score-card"><span>360 SKÓRE</span><strong>{entity.readinessScore}</strong><small>úplnosť + otvorené signály</small><div><i style={{width:`${entity.readinessScore}%`}}/></div></div>
         </section>
 
         <section className="e360-kpi-grid">
-          <button onClick={()=>setTab('finance')}><span><Icon name="capacity" size={18}/></span><p><small>{entity.finance.task?'ČERPANIE':'FINANCIE / SLA'}</small><strong>{entity.finance.task?compactMoney.format(entity.finance.spent):komisQuarterlyGross?compactMoney.format(komisQuarterlyGross):'—'}</strong><em>{entity.finance.task?`${number.format(spentPct)} % rozpočtu${komisQuarterlyGross?` · SLA ${compactMoney.format(komisQuarterlyGross)}/kv.`:''}`:komisQuarterlyGross?`KOMIS kvartál s DPH · mesačne ${compactMoney.format(komisMonthlyGross)}`:'bez priameho mapovania'}</em></p></button>
+          <button onClick={()=>setTab('finance')}><span><Icon name="capacity" size={18}/></span><p><small>{entity.finance.task?'ČERPANIE':entity.finance.allocationCount?'ALOKOVANÉ ČERPANIE':'FINANCIE / SLA'}</small><strong>{entity.finance.task?compactMoney.format(entity.finance.spent):entity.finance.allocationCount?compactMoney.format(entity.finance.allocatedSpent):komisQuarterlyGross?compactMoney.format(komisQuarterlyGross):'—'}</strong><em>{entity.finance.task?`${number.format(spentPct)} % rozpočtu${komisQuarterlyGross?` · SLA ${compactMoney.format(komisQuarterlyGross)}/kv.`:''}`:entity.finance.allocationCount?`Úlohy ${entity.finance.allocationTaskCodes.join(' + ')}${komisQuarterlyGross?` · SLA oddelene ${compactMoney.format(komisQuarterlyGross)}/kv.`:''}`:komisQuarterlyGross?`KOMIS kvartál s DPH · mesačne ${compactMoney.format(komisMonthlyGross)}`:'bez priameho mapovania'}</em></p></button>
           <button onClick={()=>setTab('work')}><span><Icon name="tasks" size={18}/></span><p><small>OTVORENÁ PRÁCA</small><strong>{entity.openWorkCount+entity.openIncidentCount+entity.openProblemCount}</strong><em>{entity.openWorkCount} úloh · {entity.openIncidentCount} ticketov</em></p></button>
           <button onClick={()=>setTab('technology')}><span><Icon name="cmdb" size={18}/></span><p><small>TECHNOLÓGIE</small><strong>{entity.cmdb.length}</strong><em>{entity.oitDomains.length} OIT domén</em></p></button>
           <button onClick={()=>setTab('governance')}><span><Icon name="risk" size={18}/></span><p><small>RIZIKÁ</small><strong>{entity.openRiskCount}</strong><em>{entity.highRiskCount} vysokých / kritických</em></p></button>
@@ -343,7 +453,7 @@ export default function Enterprise360({state,go,canEdit,currentUser,onGovernance
           </div>
           <section className="e360-panel"><header className="e360-panel-head"><div><span>PREKLIKY DO ZDROJOV</span><h3>Otvoriť pôvodný modul</h3><p>CVTI 360 údaje nekopíruje – toto sú zdrojové pracovné priestory.</p></div></header><div className="e360-quick-grid"><QuickLink icon="capacity" label="IT náklady" detail={entity.finance.task?`Úloha ${entity.finance.taskCode} · drill-down platieb`:'Finančný register'} onClick={()=>go('itCosts')}/><QuickLink icon="systems" label="Technologický katalóg" detail="Platforma, služby a infraštruktúra" onClick={()=>go('technology')}/><QuickLink icon="cmdb" label="Asset Management" detail={`${entity.cmdb.length} súvisiacich aktív`} onClick={()=>go('cmdb')}/><QuickLink icon="tasks" label="Riadenie práce" detail="Úlohy, projekty a zmeny" onClick={()=>go('work')}/><QuickLink icon="database" label="Dodávatelia" detail={`${entity.suppliers.length} väzieb`} onClick={()=>go('suppliers')}/><QuickLink icon="shield" label="Service 360" detail="Prevádzkové a manažérske signály" onClick={()=>go('intelligence')}/></div></section>
         </div>}
-        {tab==='finance'&&<FinanceView entity={entity} onGo={go} onSelectEntity={selectEntity}/>} 
+        {tab==='finance'&&<><FinanceView entity={entity} onGo={go} onSelectEntity={selectEntity} allAllocations={financialAllocations} canEdit={canEdit} onReload={reloadFinancialAllocations}/>{allocationLoadError&&<div className="e360-callout warning"><Icon name="warning" size={18}/><div><strong>Finančné alokácie sa nenačítali</strong><span>{allocationLoadError}</span></div></div>}</>} 
         {tab==='development'&&<DevelopmentView entity={entity} allRequests={state.contractDevelopmentRequests||[]} canEdit={canEdit} currentUser={currentUser} onChange={onDevelopmentRequestsChange}/>}
         {tab==='work'&&<WorkView entity={entity} onGo={go}/>} 
         {tab==='technology'&&<TechnologyView entity={entity} onGo={go}/>} 
