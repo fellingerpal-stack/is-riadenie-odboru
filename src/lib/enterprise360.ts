@@ -3,6 +3,7 @@ import type {
   ChangeRequest,
   CmdbItem,
   ContractDevelopmentRequest,
+  EntityFinancialAllocation,
   ContractRecord,
   ProblemRecord,
   Project,
@@ -103,6 +104,10 @@ export interface EnterpriseFinance {
   contractAnnualValue: number
   contractTotalValue: number
   contractSpentYtd: number
+  allocationCount: number
+  allocatedSpent: number
+  allocationTaskCodes: string[]
+  allocatedMonthly: number[]
 }
 
 export interface Enterprise360Entity {
@@ -249,9 +254,18 @@ function exactContractTask(record:ArchitectureCatalogRecord):ContractTask|null{
   if(record.id==='crzp-aps')return taskDataset.tasks.find(task=>task.code==='22')||null
   return null
 }
-function financeFor(record:ArchitectureCatalogRecord,cmdb:CmdbItem[],contracts:ContractRecord[]):EnterpriseFinance{
+function allocationApplies(record:ArchitectureCatalogRecord,modules:KomisContractModule[],allocation:EntityFinancialAllocation){
+  if(allocation.entityId===record.id)return true
+  if(allocation.moduleId&&modules.some(module=>module.id===allocation.moduleId))return true
+  if(record.id==='komis'&&modules.some(module=>module.entityIds.includes(allocation.entityId)))return true
+  return false
+}
+function financeFor(record:ArchitectureCatalogRecord,cmdb:CmdbItem[],contracts:ContractRecord[],modules:KomisContractModule[],allocations:EntityFinancialAllocation[]):EnterpriseFinance{
   const task=exactContractTask(record)
   const rows=task?ledgerDataset.payments.filter(row=>row.task===task.code):[]
+  const mapped=allocations.filter(item=>allocationApplies(record,modules,item))
+  const allocatedMonthly=Array.from({length:12},()=>0)
+  mapped.forEach(item=>{const month=Number(String(item.sourceDate||'').slice(5,7));if(month>=1&&month<=12)allocatedMonthly[month-1]+=Number(item.allocatedAmount||0)})
   return {
     task,
     taskCode:task?.code||'',
@@ -268,6 +282,10 @@ function financeFor(record:ArchitectureCatalogRecord,cmdb:CmdbItem[],contracts:C
     contractAnnualValue:contracts.reduce((sum,item)=>sum+Number(item.annualValue||0),0),
     contractTotalValue:contracts.reduce((sum,item)=>sum+Number(item.totalValue||0),0),
     contractSpentYtd:contracts.reduce((sum,item)=>sum+Number(item.spentYtd||0),0),
+    allocationCount:mapped.length,
+    allocatedSpent:mapped.reduce((sum,item)=>sum+Number(item.allocatedAmount||0),0),
+    allocationTaskCodes:unique(mapped.map(item=>item.taskCode)).sort(),
+    allocatedMonthly,
   }
 }
 function ownersFor(state:AppState,record:ArchitectureCatalogRecord,service:Service|null){
@@ -308,7 +326,7 @@ function missingFor(record:ArchitectureCatalogRecord,service:Service|null,financ
   if(!service?.runbook)missing.push('runbook')
   if(!record.monitoring||/potvrdiť|doplniť/i.test(record.monitoring))missing.push('monitoring')
   if(!record.backup||/potvrdiť|doplniť/i.test(record.backup))missing.push('backup/test obnovy')
-  if(!finance.task)missing.push('priame finančné mapovanie')
+  if(!finance.task&&!finance.allocationCount)missing.push('priame finančné mapovanie')
   if(!suppliers.length)missing.push('dodávateľská väzba')
   if(!contracts.length)missing.push('zmluvná väzba')
   return missing
@@ -317,7 +335,7 @@ function readinessScore(missing:string[],highRisk:number,openProblems:number,ope
   return Math.max(20,Math.min(100,100-missing.length*5-highRisk*5-openProblems*3-Math.min(8,openIncidents*2)))
 }
 
-export function buildEnterprise360Entities(state:AppState):Enterprise360Entity[]{
+export function buildEnterprise360Entities(state:AppState,allocations:EntityFinancialAllocation[]=[]):Enterprise360Entity[]{
   return getArchitectureCatalog(state).map(record=>{
     const service=serviceFor(state,record)
     const projects=linkedProjects(state,record)
@@ -332,8 +350,8 @@ export function buildEnterprise360Entities(state:AppState):Enterprise360Entity[]
     const contracts=linkedContracts(state,record,service,suppliers)
     const websites=linkedWebsites(record)
     const informationSystems=linkedInformationSystems(record)
-    const finance=financeFor(record,cmdb,contracts)
     const komisModules=komisModulesForEntity(record.id)
+    const finance=financeFor(record,cmdb,contracts,komisModules,allocations)
     const owners=ownersFor(state,record,service)
     const developmentRequests=linkedDevelopmentRequests(state,record,komisModules,contracts)
     const openTasks=tasks.filter(task=>!isClosedStatus(task.status))
