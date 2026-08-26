@@ -10,6 +10,7 @@ import type {
   ProjectStatusReport,
   ProjectDecision,
   ProjectPortfolioData,
+  ProjectCreateSeed,
   Task,
 } from '../types'
 import {
@@ -36,11 +37,55 @@ import {
   type ProjectDatabaseState,
 } from '../lib/projectCloud'
 import { Badge, Empty, Field, Icon, Modal, PageHeader, Progress } from '../components/UI'
+import contractTaskData from '../data/contractTasks.json'
+import contractTaskLedgerData from '../data/contractTaskLedger.json'
 import './ProjectManagement.css'
 
 type PortfolioTab = 'overview' | 'control' | 'projects' | 'capacity' | 'assignments'
 type ProjectDetailTab = 'overview' | 'delivery' | 'governance' | 'team' | 'finance' | 'links'
 type CapacityView = 'bi' | 'heatmap' | 'chart' | 'detail'
+
+interface ContractTask {
+  code: string
+  centers: string[]
+  name: string
+  description: string
+  budget: number
+  spent: number
+  remaining: number
+  monthly: number[]
+}
+interface ContractTaskDataset {
+  meta: { title: string; source: string; period: string; year: number; monthsLoaded: number; method: string }
+  tasks: ContractTask[]
+}
+interface ContractLedgerRow {
+  id: string
+  sourceRow: string
+  task: string
+  zak: string
+  kpd: string
+  ppd: string
+  fzd: string
+  pgd: string
+  pracm: string
+  amount: number
+  originalZak: string
+  column: string
+  category: string
+  date: string
+  month: number
+  document: string
+  note: string
+  dataNote: string
+}
+interface ContractLedgerDataset {
+  meta: { title: string; source: string; period: string; year: number; monthsLoaded: number; rowCount: number; method: string }
+  payments: ContractLedgerRow[]
+}
+
+const contractDataset = contractTaskData as ContractTaskDataset
+const contractLedger = contractTaskLedgerData as ContractLedgerDataset
 
 type ProjectManagementProps = {
   role: AppRole
@@ -54,6 +99,8 @@ type ProjectManagementProps = {
   onFallbackProjectsChange: (projects: Project[]) => void
   onFallbackTasksChange: (tasks: Task[]) => void
   onDatabaseStateChange?: (state: ProjectDatabaseState) => void
+  initialCreateSeed?: ProjectCreateSeed | null
+  onInitialCreateSeedConsumed?: () => void
 }
 
 const projectPhases = ['Idea', 'Iniciácia', 'Analýza', 'Príprava', 'Realizácia', 'Testovanie', 'Pilot', 'Go-live', 'Stabilizácia', 'Prevádzka', 'Ukončenie']
@@ -89,8 +136,13 @@ function blankProject(): Project {
 function blankMember(projectId = ''): ProjectMember {
   return { id: '', projectId, userId: '', name: '', email: '', projectRole: 'Analytik', responsibility: '', allocationPercent: 20, validFrom: today(), validTo: '', isActive: true, note: '' }
 }
-function blankFunding(projectId = ''): ProjectFunding {
-  return { id: '', projectId, sourceType: 'Štátny rozpočet / úloha', sourceName: '', program: '', taskCode: '', year: new Date().getFullYear(), amount: 0, spent: 0, cofinancingPercent: 0, note: '' }
+function blankFunding(projectId = '', sourceMode: 'manual' | 'linked_task' = 'manual'): ProjectFunding {
+  return {
+    id: '', projectId, sourceType: 'Štátny rozpočet / úloha', sourceName: '', program: '', taskCode: '',
+    year: contractDataset.meta.year || new Date().getFullYear(), amount: 0, spent: 0, cofinancingPercent: 0, note: '',
+    sourceMode, linkMode: sourceMode === 'linked_task' ? 'whole_task' : undefined, linkedTaskCode: '', allocationAmount: 0,
+    filterZak: '', selectedLedgerIds: [], syncSource: sourceMode === 'linked_task' ? contractDataset.meta.source : '',
+  }
 }
 function blankMilestone(projectId = ''): ProjectMilestone {
   return { id: '', projectId, title: '', phase: 'Realizácia', gate: '', owner: '', due: '', status: 'Plánované', completedAt: '', note: '' }
@@ -127,6 +179,64 @@ function statusTone(value?: string): 'success' | 'warning' | 'danger' | 'info' |
 function money(value: number) {
   return new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Number(value || 0))
 }
+function moneyPrecise(value: number) {
+  return new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))
+}
+function contractTaskByCode(code?: string) {
+  const key = String(code || '').trim()
+  return contractDataset.tasks.find((task) => task.code === key)
+}
+function ledgerRowsForTask(code?: string) {
+  const key = String(code || '').trim()
+  return contractLedger.payments.filter((row) => row.task === key)
+}
+function ledgerRowsForFunding(item: ProjectFunding) {
+  if ((item.sourceMode || 'manual') !== 'linked_task') return []
+  const code = item.linkedTaskCode || item.taskCode
+  const rows = ledgerRowsForTask(code)
+  if (item.linkMode === 'zak') return rows.filter((row) => row.zak === String(item.filterZak || '').trim())
+  if (item.linkMode === 'items') {
+    const selected = new Set(item.selectedLedgerIds || [])
+    return rows.filter((row) => selected.has(row.id))
+  }
+  if (item.linkMode === 'whole_task') return rows
+  return []
+}
+function fundingEffective(item: ProjectFunding) {
+  const linked = (item.sourceMode || 'manual') === 'linked_task'
+  const task = linked ? contractTaskByCode(item.linkedTaskCode || item.taskCode) : undefined
+  if (!linked || !task) {
+    const amount = Number(item.amount || 0)
+    const spent = Number(item.spent || 0)
+    return { linked: false, task, amount, spent, remaining: amount - spent, rows: [] as ContractLedgerRow[], status: 'Manuálny' }
+  }
+  const rows = ledgerRowsForFunding(item)
+  const linkedSpent = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+  if (item.linkMode === 'whole_task') {
+    return { linked: true, task, amount: task.budget, spent: task.spent, remaining: task.remaining, rows, status: 'Synchronizovaný' }
+  }
+  const amount = Number(item.allocationAmount || item.amount || 0)
+  const spent = item.linkMode === 'allocation' ? Number(item.spent || 0) : linkedSpent
+  return { linked: true, task, amount, spent, remaining: amount - spent, rows, status: item.linkMode === 'allocation' ? 'Čiastočne synchronizovaný' : 'Synchronizovaný' }
+}
+function fundingLinkLabel(item: ProjectFunding) {
+  if ((item.sourceMode || 'manual') !== 'linked_task') return item.program || item.taskCode || 'Manuálna evidencia'
+  const code = item.linkedTaskCode || item.taskCode
+  if (item.linkMode === 'whole_task') return `Úloha ${code} · celá úloha`
+  if (item.linkMode === 'zak') return `Úloha ${code} · ZAK ${item.filterZak || '—'}`
+  if (item.linkMode === 'items') return `Úloha ${code} · ${item.selectedLedgerIds?.length || 0} položiek`
+  return `Úloha ${code} · projektová alokácia`
+}
+function fundingDraftIsValid(item: ProjectFunding) {
+  if ((item.sourceMode || 'manual') !== 'linked_task') return Boolean(item.projectId)
+  const code = item.linkedTaskCode || item.taskCode
+  if (!contractTaskByCode(code)) return false
+  if (item.linkMode === 'whole_task') return true
+  if (Number(item.allocationAmount || 0) <= 0) return false
+  if (item.linkMode === 'zak') return Boolean(String(item.filterZak || '').trim())
+  if (item.linkMode === 'items') return Boolean(item.selectedLedgerIds?.length)
+  return true
+}
 function dateLabel(value?: string) {
   if (!value) return '—'
   const d = new Date(`${value}T12:00:00`)
@@ -161,7 +271,7 @@ function memberActiveInMonth(member: ProjectMember, monthKey: string) {
 }
 
 export default function ProjectManagement(props: ProjectManagementProps) {
-  const { role, currentUserId, currentUser, currentUserEmail, organizationId, databaseMode, fallbackProjects, fallbackTasks, onFallbackProjectsChange, onFallbackTasksChange, onDatabaseStateChange } = props
+  const { role, currentUserId, currentUser, currentUserEmail, organizationId, databaseMode, fallbackProjects, fallbackTasks, onFallbackProjectsChange, onFallbackTasksChange, onDatabaseStateChange, initialCreateSeed, onInitialCreateSeedConsumed } = props
   const [data, setData] = useState<ProjectPortfolioData>(() => ({ ...emptyPortfolio(), projects: fallbackProjects, tasks: fallbackTasks }))
   const [dbState, setDbState] = useState<ProjectDatabaseState>(databaseMode === 'cloud' ? 'loading' : 'local')
   const [error, setError] = useState('')
@@ -177,8 +287,10 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const [capacityFocus, setCapacityFocus] = useState<{ personKey: string; month: string } | null>(null)
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [projectDraft, setProjectDraft] = useState<Project | null>(null)
+  const [pendingCreateLinks, setPendingCreateLinks] = useState<Array<Omit<ProjectLink, 'id' | 'projectId'>>>([])
   const [memberDraft, setMemberDraft] = useState<ProjectMember | null>(null)
   const [fundingDraft, setFundingDraft] = useState<ProjectFunding | null>(null)
+  const [financeDrilldown, setFinanceDrilldown] = useState<ProjectFunding | null>(null)
   const [milestoneDraft, setMilestoneDraft] = useState<ProjectMilestone | null>(null)
   const [linkDraft, setLinkDraft] = useState<ProjectLink | null>(null)
   const [taskDraft, setTaskDraft] = useState<Task | null>(null)
@@ -189,6 +301,27 @@ export default function ProjectManagement(props: ProjectManagementProps) {
 
   const canManagePortfolio = role === 'admin' || role === 'project_manager'
   const isProjectMemberRole = role === 'project_member'
+
+  useEffect(() => {
+    if (!initialCreateSeed || !canManagePortfolio) return
+    const seed = initialCreateSeed
+    setDetailOpen(false)
+    setSelectedProjectId('')
+    setTab('projects')
+    setPendingCreateLinks(seed.links || [])
+    setProjectDraft({
+      ...blankProject(),
+      name: seed.name,
+      type: seed.type,
+      sponsor: seed.sponsor,
+      objective: seed.objective,
+      description: seed.description,
+      linkedSystemNames: (seed.links || []).filter((link) => link.targetType === 'Informačný systém').map((link) => link.targetName),
+      linkedServiceIds: (seed.links || []).filter((link) => link.targetType === 'Služba').map((link) => link.targetKey),
+      linkedContractNumbers: (seed.links || []).filter((link) => link.targetType === 'Zmluva').map((link) => link.targetKey),
+    })
+    onInitialCreateSeedConsumed?.()
+  }, [initialCreateSeed?.requestId])
 
   function isCurrentProjectMember(member: ProjectMember) {
     if (!member.isActive) return false
@@ -250,6 +383,10 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const projectTasks = selectedProject ? data.tasks.filter((task) => task.projectId === selectedProject.id) : []
   const projectMembers = selectedProject ? data.members.filter((member) => member.projectId === selectedProject.id && member.isActive) : []
   const projectFunding = selectedProject ? data.funding.filter((item) => item.projectId === selectedProject.id) : []
+  const projectFundingView = projectFunding.map((item) => ({ item, effective: fundingEffective(item) }))
+  const projectFinanceBudget = projectFundingView.reduce((sum, row) => sum + row.effective.amount, 0)
+  const projectFinanceSpent = projectFundingView.reduce((sum, row) => sum + row.effective.spent, 0)
+  const financeDrillSnapshot = financeDrilldown ? fundingEffective(financeDrilldown) : null
   const projectMilestones = selectedProject ? data.milestones.filter((item) => item.projectId === selectedProject.id) : []
   const projectLinks = selectedProject ? data.links.filter((item) => item.projectId === selectedProject.id) : []
   const projectRaidItems = selectedProject ? data.raidItems.filter((item) => item.projectId === selectedProject.id) : []
@@ -267,8 +404,8 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       const high = openRaid.filter((item) => item.severity === 'Vysoká')
       const overdueMilestones = data.milestones.filter((item) => item.projectId === project.id && item.status !== 'Splnené' && item.due && item.due < today())
       const funding = data.funding.filter((item) => item.projectId === project.id)
-      const budget = funding.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-      const spent = funding.reduce((sum, item) => sum + Number(item.spent || 0), 0)
+      const budget = funding.reduce((sum, item) => sum + fundingEffective(item).amount, 0)
+      const spent = funding.reduce((sum, item) => sum + fundingEffective(item).spent, 0)
       const pendingDecisions = data.decisions.filter((item) => item.projectId === project.id && item.status === 'Čaká na rozhodnutie')
       const overdueDecisions = pendingDecisions.filter((item) => item.due && item.due < today())
       const latestReport = data.statusReports.filter((item) => item.projectId === project.id).sort((a, b) => b.period.localeCompare(a.period))[0]
@@ -291,8 +428,8 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const kpis = useMemo(() => {
     const active = data.projects.filter((p) => !['Ukončený', 'Ukončené'].includes(p.status)).length
     const atRisk = data.projects.filter((p) => healthByProject.get(p.id)?.health === 'Červený').length
-    const budget = data.funding.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    const spent = data.funding.reduce((sum, item) => sum + Number(item.spent || 0), 0)
+    const budget = data.funding.reduce((sum, item) => sum + fundingEffective(item).amount, 0)
+    const spent = data.funding.reduce((sum, item) => sum + fundingEffective(item).spent, 0)
     const overdueMilestones = data.milestones.filter((m) => m.status !== 'Splnené' && m.due && m.due < today()).length
     return { active, atRisk, budget, spent, overdueMilestones }
   }, [data, healthByProject])
@@ -497,11 +634,22 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   async function persistProject() {
     if (!projectDraft?.name.trim()) return
     const draft: Project = { ...projectDraft, id: projectDraft.id || `PRJ-${String(data.projects.length + 1).padStart(3, '0')}`, owner: projectDraft.managerName || projectDraft.owner || currentUser, managerName: projectDraft.managerName || currentUser, managerEmail: projectDraft.managerEmail || currentUserEmail, managerUserId: projectDraft.managerUserId || currentUserId }
-    await runSave(() => savePortfolioProject(draft), () => {
+    const createLinks = projectDraft.id ? [] : pendingCreateLinks
+    await runSave(async () => {
+      await savePortfolioProject(draft)
+      for (const link of createLinks) {
+        await saveProjectLink({ ...link, id: uid('PL'), projectId: draft.id })
+      }
+    }, () => {
       const next = projectDraft.id ? fallbackProjects.map((p) => p.id === draft.id ? draft : p) : [...fallbackProjects, draft]
       onFallbackProjectsChange(next)
-      setData((current) => ({ ...current, projects: next }))
+      setData((current) => ({
+        ...current,
+        projects: next,
+        links: createLinks.length ? [...current.links, ...createLinks.map((link) => ({ ...link, id: uid('PL'), projectId: draft.id }))] : current.links,
+      }))
     })
+    setPendingCreateLinks([])
     setProjectDraft(null); setSelectedProjectId(draft.id); setDetailTab('overview'); setDetailOpen(true)
   }
 
@@ -539,8 +687,22 @@ export default function ProjectManagement(props: ProjectManagementProps) {
     setMemberDraft(null)
   }
   async function persistFunding() {
-    if (!fundingDraft?.projectId) return
-    const draft = { ...fundingDraft, id: fundingDraft.id || uid('PF') }
+    if (!fundingDraft?.projectId || !fundingDraftIsValid(fundingDraft)) return
+    const linked = (fundingDraft.sourceMode || 'manual') === 'linked_task'
+    const task = linked ? contractTaskByCode(fundingDraft.linkedTaskCode || fundingDraft.taskCode) : undefined
+    const normalized: ProjectFunding = linked && task
+      ? {
+          ...fundingDraft,
+          sourceType: 'Štátny rozpočet / úloha',
+          sourceName: `Úloha ${task.code} - ${task.name}`,
+          taskCode: task.code,
+          linkedTaskCode: task.code,
+          year: contractDataset.meta.year,
+          syncSource: contractDataset.meta.source,
+        }
+      : { ...fundingDraft, sourceMode: 'manual', linkMode: undefined, linkedTaskCode: '', allocationAmount: 0, filterZak: '', selectedLedgerIds: [], syncSource: '' }
+    const effective = fundingEffective(normalized)
+    const draft = { ...normalized, id: normalized.id || uid('PF'), amount: effective.amount, spent: effective.spent }
     await runSave(() => saveProjectFunding(draft))
     setFundingDraft(null)
   }
@@ -585,7 +747,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       actions={<div className="project-header-actions">
         <Badge tone={dbState === 'error' ? 'danger' : dbState === 'saving' || dbState === 'loading' ? 'warning' : 'success'}>{stateLabel}</Badge>
         <button className="button button-secondary" onClick={() => void reload()} disabled={busy}><Icon name="refresh" size={16}/>Obnoviť</button>
-        {!detailOpen && canManagePortfolio && <button className="button button-primary" onClick={() => setProjectDraft(blankProject())}><Icon name="plus" size={16}/>Nový projekt</button>}
+        {!detailOpen && canManagePortfolio && <button className="button button-primary" onClick={() => { setPendingCreateLinks([]); setProjectDraft(blankProject()) }}><Icon name="plus" size={16}/>Nový projekt</button>}
       </div>}
     />
 
@@ -609,7 +771,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
         {filteredProjects.length === 0 ? <Empty title={isProjectMemberRole ? 'Nemáte priradený projekt' : 'Žiadne projekty'} text={isProjectMemberRole ? 'Projekt sa zobrazí automaticky, keď vás Admin alebo projektový manažér zaradí do projektového tímu.' : role === 'project_manager' ? 'Vytvorte vlastný projekt alebo vás Admin priradí do existujúceho projektu.' : 'Vytvorte prvý projekt alebo upravte vyhľadávanie.'}/> : <section className="project-portfolio-grid">{filteredProjects.map((project) => {
           const taskCount = data.tasks.filter((task) => task.projectId === project.id).length
           const memberCount = data.members.filter((member) => member.projectId === project.id && member.isActive).length
-          const funding = data.funding.filter((item) => item.projectId === project.id).reduce((sum,item) => sum + Number(item.amount || 0), 0)
+          const funding = data.funding.filter((item) => item.projectId === project.id).reduce((sum,item) => sum + fundingEffective(item).amount, 0)
           return <article key={project.id} className="project-card" onClick={() => openProject(project.id)} tabIndex={0} role="button" onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openProject(project.id) }}>
             <div className="project-card-top"><div><span className="project-code">{project.id}</span><h3>{project.name}</h3></div><Badge tone={healthTone(healthByProject.get(project.id)?.health)}>{healthByProject.get(project.id)?.health || 'Bez health'}</Badge></div>
             <div className="project-card-meta"><span><Icon name="roadmap" size={14}/>{project.phase || 'Neurčená fáza'}</span><span><Icon name="user" size={14}/>{project.managerName || project.owner || 'Bez PM'}</span></div>
@@ -719,7 +881,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
 
     {detailOpen && selectedProject && <section className="project-detail-shell project-detail-page">
       <div className="project-detail-toolbar"><button className="button button-secondary button-small" onClick={closeProject}><Icon name="arrow" size={15}/>Späť na projekty</button><span>Karta projektu</span></div>
-      <header className="project-detail-head"><div><span>{selectedProject.id} · {selectedProject.type}</span><h2>{selectedProject.name}</h2><p>{selectedProject.objective || selectedProject.description}</p></div><div className="project-detail-actions"><Badge tone={healthTone(healthByProject.get(selectedProject.id)?.health)}>{healthByProject.get(selectedProject.id)?.health || 'Health neurčený'} · auto</Badge><Badge tone={statusTone(selectedProject.status)}>{selectedProject.status}</Badge>{canManageSelectedProject && <><button className="button button-secondary button-small" onClick={() => setProjectDraft({ ...blankProject(), ...selectedProject })}><Icon name="edit" size={15}/>Upraviť projekt</button><button className="button button-primary button-small" onClick={() => setMemberDraft(blankMember(selectedProject.id))}><Icon name="plus" size={15}/>Pridať člena</button><button className="button button-ghost button-small" onClick={() => void removeProject(selectedProject)}><Icon name="trash" size={15}/>Odstrániť</button></>}</div></header>
+      <header className="project-detail-head"><div><span>{selectedProject.id} · {selectedProject.type}</span><h2>{selectedProject.name}</h2><p>{selectedProject.objective || selectedProject.description}</p></div><div className="project-detail-actions"><Badge tone={healthTone(healthByProject.get(selectedProject.id)?.health)}>{healthByProject.get(selectedProject.id)?.health || 'Health neurčený'} · auto</Badge><Badge tone={statusTone(selectedProject.status)}>{selectedProject.status}</Badge>{canManageSelectedProject && <><button className="button button-secondary button-small" onClick={() => { setPendingCreateLinks([]); setProjectDraft({ ...blankProject(), ...selectedProject }) }}><Icon name="edit" size={15}/>Upraviť projekt</button><button className="button button-primary button-small" onClick={() => setMemberDraft(blankMember(selectedProject.id))}><Icon name="plus" size={15}/>Pridať člena</button><button className="button button-ghost button-small" onClick={() => void removeProject(selectedProject)}><Icon name="trash" size={15}/>Odstrániť</button></>}</div></header>
 
       {role === 'project_manager' && !canManageSelectedProject && <div className="inline-alert inline-alert-info"><Icon name="decision" size={17}/><span><strong>Projekt máte sprístupnený ako člen tímu.</strong> Projektovú kartu môžete čítať; riadiace zmeny vykonáva projektový manažér projektu alebo Admin.</span></div>}
 
@@ -735,7 +897,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
           <article><span>Termín</span><strong>{dateLabel(selectedProject.start)} → {dateLabel(selectedProject.due)}</strong><small>{selectedProject.priority || 'Priorita neurčená'}</small></article>
           <article><span>Projektový tím</span><strong>{projectMembers.length} ľudí</strong><small>{projectMembers.reduce((sum, member) => sum + Number(member.allocationPercent || 0), 0)}% súčet projektových alokácií</small></article>
           <article><span>Úlohy</span><strong>{projectTasks.length}</strong><small>{projectTasks.filter((task) => task.status === 'Hotovo').length} hotových</small></article>
-          <article><span>Rozpočet</span><strong>{money(projectFunding.reduce((sum,item) => sum + Number(item.amount || 0), 0))}</strong><small>{money(projectFunding.reduce((sum,item) => sum + Number(item.spent || 0), 0))} čerpané</small></article>
+          <article><span>Rozpočet</span><strong>{money(projectFinanceBudget)}</strong><small>{money(projectFinanceSpent)} čerpané</small></article>
           <article><span>Najbližší míľnik</span><strong>{selectedProject.nextMilestone || projectMilestones.find((m) => m.status !== 'Splnené')?.title || '—'}</strong><small>{dateLabel(selectedProject.nextMilestoneDue || projectMilestones.find((m) => m.status !== 'Splnené')?.due)}</small></article>
           <article className="span-two"><span>Cieľ projektu</span><strong>{selectedProject.objective || 'Zatiaľ neurčený'}</strong><small>{selectedProject.description || ''}</small></article>
           <article className="span-two"><span>Očakávaný výsledok</span><strong>{selectedProject.expectedOutcome || 'Zatiaľ neurčený'}</strong><small>{selectedProject.note || ''}</small></article>
@@ -782,9 +944,10 @@ export default function ProjectManagement(props: ProjectManagementProps) {
         <div className="project-table-wrap"><table className="project-table"><thead><tr><th>Meno</th><th>Rola v projekte</th><th>Zodpovednosť</th><th>Kapacita</th><th>Platnosť</th><th></th></tr></thead><tbody>{projectMembers.map((member) => <tr key={member.id}><td><strong>{member.name}</strong><small>{member.email}</small></td><td><Badge tone={member.projectRole === 'Projektový manažér' ? 'purple' : 'info'}>{member.projectRole}</Badge></td><td>{member.responsibility || '—'}</td><td><Badge tone={capacityTone(Number(member.allocationPercent || 0))}>{member.allocationPercent}%</Badge></td><td>{dateLabel(member.validFrom)} – {dateLabel(member.validTo)}</td><td>{canManageSelectedProject && <div className="row-actions"><button onClick={() => setMemberDraft({ ...member })}><Icon name="edit" size={14}/></button><button onClick={() => confirm('Odstrániť člena z projektu?') && void runSave(() => deleteProjectMember(member.id))}><Icon name="trash" size={14}/></button></div>}</td></tr>)}</tbody></table>{!projectMembers.length && <Empty title="Tím ešte nie je zostavený" text="Pridajte gestora, analytikov, testerov, technické roly a ďalších členov."/>}</div>
       </section>}
 
-      {detailTab === 'finance' && <section><div className="project-section-title"><div><span>ZDROJE A ČERPANIE</span><h3>Financovanie projektu</h3></div>{canManageSelectedProject && <button className="button button-primary button-small" onClick={() => setFundingDraft(blankFunding(selectedProject.id))}><Icon name="plus" size={14}/>Zdroj financovania</button>}</div>
-        <div className="project-finance-summary"><div><span>Rozpočet</span><strong>{money(projectFunding.reduce((s,x) => s + Number(x.amount || 0),0))}</strong></div><div><span>Čerpanie</span><strong>{money(projectFunding.reduce((s,x) => s + Number(x.spent || 0),0))}</strong></div><div><span>Zostatok</span><strong>{money(projectFunding.reduce((s,x) => s + Number(x.amount || 0) - Number(x.spent || 0),0))}</strong></div></div>
-        <div className="project-table-wrap"><table className="project-table"><thead><tr><th>Zdroj</th><th>Program / úloha</th><th>Rok</th><th>Rozpočet</th><th>Čerpanie</th><th></th></tr></thead><tbody>{projectFunding.map((item) => <tr key={item.id}><td><strong>{item.sourceType}</strong><small>{item.sourceName || '—'}</small></td><td>{item.program || item.taskCode || '—'}</td><td>{item.year || '—'}</td><td>{money(item.amount)}</td><td>{money(item.spent)}</td><td>{canManageSelectedProject && <div className="row-actions"><button onClick={() => setFundingDraft({ ...item })}><Icon name="edit" size={14}/></button><button onClick={() => confirm('Odstrániť zdroj financovania?') && void runSave(() => deleteProjectFunding(item.id))}><Icon name="trash" size={14}/></button></div>}</td></tr>)}</tbody></table>{!projectFunding.length && <Empty title="Financovanie nie je evidované" text="Pridajte úlohu, EÚ zdroj, plán obnovy alebo iný zdroj financovania."/>}</div>
+      {detailTab === 'finance' && <section><div className="project-section-title"><div><span>ZDROJE A ČERPANIE</span><h3>Financovanie projektu</h3><p className="project-section-help">Projekt môže kombinovať synchronizované IT úlohy 10 / 22 / 25 a ľubovoľné manuálne zdroje financovania.</p></div>{canManageSelectedProject && <div className="project-finance-actions"><button className="button button-secondary button-small" onClick={() => setFundingDraft(blankFunding(selectedProject.id, 'linked_task'))}><Icon name="systems" size={14}/>Pripojiť IT úlohu</button><button className="button button-primary button-small" onClick={() => setFundingDraft(blankFunding(selectedProject.id, 'manual'))}><Icon name="plus" size={14}/>Nový zdroj</button></div>}</div>
+        <div className="project-finance-data-note"><Icon name="database" size={16}/><div><strong>IT finančná dátová vrstva</strong><span>{contractDataset.meta.period} · {contractDataset.meta.source}. Mesiace po poslednom načítanom období sa nepovažujú za nulové čerpanie.</span></div></div>
+        <div className="project-finance-summary"><div><span>Projektový rozpočet</span><strong>{money(projectFinanceBudget)}</strong></div><div><span>Čerpanie</span><strong>{money(projectFinanceSpent)}</strong></div><div><span>Zostatok</span><strong>{money(projectFinanceBudget - projectFinanceSpent)}</strong></div><div><span>Synchronizované zdroje</span><strong>{projectFundingView.filter((row) => row.effective.linked).length}</strong></div></div>
+        <div className="project-table-wrap"><table className="project-table project-finance-table"><thead><tr><th>Zdroj</th><th>Väzba</th><th>Rok</th><th>Rozpočet</th><th>Čerpanie</th><th>Zostatok</th><th>Stav dát</th><th></th></tr></thead><tbody>{projectFundingView.map(({item,effective}) => <tr key={item.id}><td><strong>{item.sourceType}</strong><small>{effective.task ? `Úloha ${effective.task.code} · ${effective.task.name}` : (item.sourceName || '—')}</small></td><td><strong>{fundingLinkLabel(item)}</strong>{item.program && <small>{item.program}</small>}</td><td>{item.year || '—'}</td><td>{money(effective.amount)}</td><td>{money(effective.spent)}</td><td className={effective.remaining < 0 ? 'finance-negative' : ''}>{money(effective.remaining)}</td><td><Badge tone={effective.linked ? (effective.status === 'Synchronizovaný' ? 'success' : 'warning') : 'neutral'}>{effective.status}</Badge>{!effective.linked && contractTaskByCode(item.taskCode) && canManageSelectedProject && <button className="finance-inline-link" onClick={() => setFundingDraft({ ...item, sourceMode: 'linked_task', linkedTaskCode: item.taskCode, linkMode: 'whole_task', allocationAmount: 0, selectedLedgerIds: [], syncSource: contractDataset.meta.source })}>Prepojiť</button>}</td><td><div className="row-actions">{effective.linked && <button title="Detail čerpania" onClick={() => setFinanceDrilldown(item)}><Icon name="eye" size={14}/></button>}{canManageSelectedProject && <><button title="Upraviť" onClick={() => setFundingDraft({ ...item, sourceMode: item.sourceMode || 'manual', selectedLedgerIds: item.selectedLedgerIds || [] })}><Icon name="edit" size={14}/></button><button title="Odstrániť" onClick={() => confirm('Odstrániť zdroj financovania?') && void runSave(() => deleteProjectFunding(item.id))}><Icon name="trash" size={14}/></button></>}</div></td></tr>)}</tbody></table>{!projectFunding.length && <Empty title="Financovanie nie je evidované" text="Pripojte IT úlohu 10 / 22 / 25 alebo pridajte nový manuálny zdroj financovania."/>}</div>
       </section>}
 
       {detailTab === 'links' && <section><div className="project-section-title"><div><span>VÄZBY NA OSTATNÉ MODULY</span><h3>Systémy, služby, zmluvy a dodávatelia</h3></div>{canManageSelectedProject && <button className="button button-primary button-small" onClick={() => setLinkDraft(blankLink(selectedProject.id))}><Icon name="plus" size={14}/>Pridať väzbu</button>}</div>
@@ -792,7 +955,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       </section>}
     </section>}
 
-    {projectDraft && <Modal wide title={projectDraft.id ? `Projekt ${projectDraft.id}` : 'Nový projekt'} onClose={() => setProjectDraft(null)}><div className="project-form-grid">
+    {projectDraft && <Modal wide title={projectDraft.id ? `Projekt ${projectDraft.id}` : 'Nový projekt'} onClose={() => { setProjectDraft(null); setPendingCreateLinks([]) }}>{!projectDraft.id && pendingCreateLinks.length > 0 && <div className="project-origin-banner"><Icon name="systems" size={18}/><div><strong>Projekt vzniká z existujúcej evidencie</strong><span>{pendingCreateLinks.map((link) => `${link.targetType}: ${link.targetName}`).join(' · ')}</span><small>Po uložení sa vytvoria živé väzby; zdrojové údaje sa nekopírujú ako samostatný register.</small></div></div>}<div className="project-form-grid">
       <Field label="Názov projektu"><input value={projectDraft.name} onChange={(e) => setProjectDraft({ ...projectDraft, name: e.target.value })}/></Field>
       <Field label="Typ"><input value={projectDraft.type} onChange={(e) => setProjectDraft({ ...projectDraft, type: e.target.value })}/></Field>
       <Field label="Fáza"><select value={projectDraft.phase || ''} onChange={(e) => setProjectDraft({ ...projectDraft, phase: e.target.value })}>{projectPhases.map(x => <option key={x}>{x}</option>)}</select></Field>
@@ -825,13 +988,26 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       <Field label="Platí od"><input type="date" value={memberDraft.validFrom} onChange={(e) => setMemberDraft({ ...memberDraft, validFrom: e.target.value })}/></Field><Field label="Platí do"><input type="date" value={memberDraft.validTo} onChange={(e) => setMemberDraft({ ...memberDraft, validTo: e.target.value })}/></Field>
     </div><div className="modal-actions"><button className="button button-secondary" onClick={() => setMemberDraft(null)}>Zrušiť</button><button className="button button-primary" disabled={busy || !memberDraft.name.trim() || !memberDraft.projectId} onClick={() => void persistMember()}>Uložiť</button></div></Modal>}
 
-    {fundingDraft && <Modal title={fundingDraft.id ? 'Upraviť financovanie' : 'Nový zdroj financovania'} onClose={() => setFundingDraft(null)}><div className="form-grid">
-      <Field label="Typ zdroja"><select value={fundingDraft.sourceType} onChange={(e) => setFundingDraft({ ...fundingDraft, sourceType: e.target.value })}>{fundingTypes.map(x => <option key={x}>{x}</option>)}</select></Field><Field label="Názov zdroja"><input value={fundingDraft.sourceName} onChange={(e) => setFundingDraft({ ...fundingDraft, sourceName: e.target.value })}/></Field>
-      <Field label="Program / výzva"><input value={fundingDraft.program} onChange={(e) => setFundingDraft({ ...fundingDraft, program: e.target.value })}/></Field><Field label="Úloha / kód"><input value={fundingDraft.taskCode} onChange={(e) => setFundingDraft({ ...fundingDraft, taskCode: e.target.value })}/></Field>
-      <Field label="Rok"><input type="number" value={fundingDraft.year} onChange={(e) => setFundingDraft({ ...fundingDraft, year: Number(e.target.value) })}/></Field><Field label="Spolufinancovanie %"><input type="number" min="0" max="100" value={fundingDraft.cofinancingPercent} onChange={(e) => setFundingDraft({ ...fundingDraft, cofinancingPercent: Number(e.target.value) })}/></Field>
-      <Field label="Rozpočet €"><input type="number" min="0" step="0.01" value={fundingDraft.amount} onChange={(e) => setFundingDraft({ ...fundingDraft, amount: Number(e.target.value) })}/></Field><Field label="Čerpanie €"><input type="number" min="0" step="0.01" value={fundingDraft.spent} onChange={(e) => setFundingDraft({ ...fundingDraft, spent: Number(e.target.value) })}/></Field>
-      <Field label="Poznámka"><textarea rows={3} value={fundingDraft.note} onChange={(e) => setFundingDraft({ ...fundingDraft, note: e.target.value })}/></Field>
-    </div><div className="modal-actions"><button className="button button-secondary" onClick={() => setFundingDraft(null)}>Zrušiť</button><button className="button button-primary" disabled={busy} onClick={() => void persistFunding()}>Uložiť</button></div></Modal>}
+    {fundingDraft && <Modal wide title={fundingDraft.id ? 'Upraviť financovanie' : ((fundingDraft.sourceMode || 'manual') === 'linked_task' ? 'Pripojiť IT úlohu' : 'Nový zdroj financovania')} onClose={() => setFundingDraft(null)}><div className="finance-source-mode"><button className={(fundingDraft.sourceMode || 'manual') === 'manual' ? 'active' : ''} onClick={() => setFundingDraft({ ...fundingDraft, sourceMode: 'manual', linkMode: undefined })}>Manuálny zdroj</button><button className={(fundingDraft.sourceMode || 'manual') === 'linked_task' ? 'active' : ''} onClick={() => setFundingDraft({ ...fundingDraft, sourceMode: 'linked_task', sourceType: 'Štátny rozpočet / úloha', linkMode: fundingDraft.linkMode || 'whole_task', syncSource: contractDataset.meta.source })}>Prepojená IT úloha</button></div>
+      {(fundingDraft.sourceMode || 'manual') === 'manual' ? <div className="form-grid">
+        <Field label="Typ zdroja"><select value={fundingDraft.sourceType} onChange={(e) => setFundingDraft({ ...fundingDraft, sourceType: e.target.value })}>{fundingTypes.map(x => <option key={x}>{x}</option>)}</select></Field><Field label="Názov zdroja"><input value={fundingDraft.sourceName} onChange={(e) => setFundingDraft({ ...fundingDraft, sourceName: e.target.value })}/></Field>
+        <Field label="Program / výzva"><input value={fundingDraft.program} onChange={(e) => setFundingDraft({ ...fundingDraft, program: e.target.value })}/></Field><Field label="Úloha / kód"><input value={fundingDraft.taskCode} onChange={(e) => setFundingDraft({ ...fundingDraft, taskCode: e.target.value })}/></Field>
+        <Field label="Rok"><input type="number" value={fundingDraft.year} onChange={(e) => setFundingDraft({ ...fundingDraft, year: Number(e.target.value) })}/></Field><Field label="Spolufinancovanie %"><input type="number" min="0" max="100" value={fundingDraft.cofinancingPercent} onChange={(e) => setFundingDraft({ ...fundingDraft, cofinancingPercent: Number(e.target.value) })}/></Field>
+        <Field label="Rozpočet €"><input type="number" min="0" step="0.01" value={fundingDraft.amount} onChange={(e) => setFundingDraft({ ...fundingDraft, amount: Number(e.target.value) })}/></Field><Field label="Čerpanie €"><input type="number" min="0" step="0.01" value={fundingDraft.spent} onChange={(e) => setFundingDraft({ ...fundingDraft, spent: Number(e.target.value) })}/></Field>
+        <Field label="Poznámka"><textarea rows={3} value={fundingDraft.note} onChange={(e) => setFundingDraft({ ...fundingDraft, note: e.target.value })}/></Field>
+      </div> : <div className="finance-link-form">
+        <div className="form-grid"><Field label="IT úloha" hint="Vyberte autoritatívny finančný zdroj z pohľadu SIT 2026."><select value={fundingDraft.linkedTaskCode || fundingDraft.taskCode || ''} onChange={(e) => { const task = contractTaskByCode(e.target.value); setFundingDraft({ ...fundingDraft, linkedTaskCode: e.target.value, taskCode: e.target.value, sourceName: task ? `Úloha ${task.code} - ${task.name}` : '', year: contractDataset.meta.year, filterZak: '', selectedLedgerIds: [] }) }}><option value="">— vybrať úlohu —</option>{contractDataset.tasks.map((task) => <option key={task.code} value={task.code}>Úloha {task.code} · {task.name}</option>)}</select></Field><Field label="Spôsob väzby"><select value={fundingDraft.linkMode || 'whole_task'} onChange={(e) => setFundingDraft({ ...fundingDraft, linkMode: e.target.value as ProjectFunding['linkMode'], filterZak: '', selectedLedgerIds: [] })}><option value="whole_task">Celá úloha</option><option value="zak">Podľa ZAK</option><option value="items">Vybrané finančné položky</option><option value="allocation">Projektová alokácia + manuálne čerpanie</option></select></Field></div>
+        {contractTaskByCode(fundingDraft.linkedTaskCode || fundingDraft.taskCode) && <div className="finance-link-preview">{(() => { const task = contractTaskByCode(fundingDraft.linkedTaskCode || fundingDraft.taskCode)!; return <><div><span>Rozpočet úlohy</span><strong>{moneyPrecise(task.budget)}</strong></div><div><span>Čerpanie úlohy</span><strong>{moneyPrecise(task.spent)}</strong></div><div><span>Zostatok úlohy</span><strong>{moneyPrecise(task.remaining)}</strong></div><div><span>Dátové obdobie</span><strong>{contractDataset.meta.period}</strong></div></> })()}</div>}
+        {fundingDraft.linkMode === 'whole_task' && <div className="finance-link-warning"><Icon name="warning" size={16}/><span>Celá úloha znamená, že celý rozpočet a celé čerpanie úlohy budú započítané do projektu. Ak úloha financuje viac projektov, použite ZAK, vybrané položky alebo projektovú alokáciu.</span></div>}
+        {fundingDraft.linkMode === 'zak' && <div className="form-grid"><Field label="ZAK" hint="Čerpanie sa spočíta iba z riadkov vybranej IT úlohy s týmto ZAK."><select value={fundingDraft.filterZak || ''} onChange={(e) => setFundingDraft({ ...fundingDraft, filterZak: e.target.value })}><option value="">— vybrať ZAK —</option>{Array.from(new Set(ledgerRowsForTask(fundingDraft.linkedTaskCode || fundingDraft.taskCode).map((row) => row.zak).filter(Boolean))).sort().map((zak) => <option key={zak} value={zak}>{zak}</option>)}</select></Field><Field label="Projektová alokácia €"><input type="number" min="0" step="0.01" value={fundingDraft.allocationAmount || 0} onChange={(e) => setFundingDraft({ ...fundingDraft, allocationAmount: Number(e.target.value) })}/></Field></div>}
+        {fundingDraft.linkMode === 'items' && <><div className="form-grid"><Field label="Projektová alokácia €"><input type="number" min="0" step="0.01" value={fundingDraft.allocationAmount || 0} onChange={(e) => setFundingDraft({ ...fundingDraft, allocationAmount: Number(e.target.value) })}/></Field></div>{selectedProject && <div className="finance-item-suggest"><button className="button button-secondary button-small" onClick={() => { const needle = normalize(selectedProject.name); const ids = ledgerRowsForTask(fundingDraft.linkedTaskCode || fundingDraft.taskCode).filter((row) => needle && normalize(row.note || '').includes(needle)).map((row) => row.id); setFundingDraft({ ...fundingDraft, selectedLedgerIds: ids }) }}><Icon name="search" size={14}/>Navrhnúť podľa názvu projektu</button><span>Pomôcka iba predvyberie riadky, ktorých popis obsahuje názov projektu. Výber pred uložením skontrolujte.</span></div>}<Field label="Vybrané položky čerpania" hint="Ctrl/Shift umožní vybrať viac riadkov. Čerpanie projektu bude súčtom vybraných zdrojových položiek."><select className="finance-ledger-select" multiple size={9} value={fundingDraft.selectedLedgerIds || []} onChange={(e) => setFundingDraft({ ...fundingDraft, selectedLedgerIds: Array.from(e.currentTarget.selectedOptions).map((option) => option.value) })}>{ledgerRowsForTask(fundingDraft.linkedTaskCode || fundingDraft.taskCode).map((row) => <option key={row.id} value={row.id}>{row.date} · {row.document || row.id} · {moneyPrecise(row.amount)} · ZAK {row.zak || '—'} · {row.note}</option>)}</select></Field></>}
+        {fundingDraft.linkMode === 'allocation' && <div className="form-grid"><Field label="Projektová alokácia €"><input type="number" min="0" step="0.01" value={fundingDraft.allocationAmount || 0} onChange={(e) => setFundingDraft({ ...fundingDraft, allocationAmount: Number(e.target.value) })}/></Field><Field label="Projektové čerpanie €" hint="Tento režim má prepojenú identitu IT úlohy, ale projektové čerpanie sa zadáva manuálne."><input type="number" min="0" step="0.01" value={fundingDraft.spent} onChange={(e) => setFundingDraft({ ...fundingDraft, spent: Number(e.target.value) })}/></Field></div>}
+        {fundingDraft.linkMode && fundingDraft.linkMode !== 'whole_task' && contractTaskByCode(fundingDraft.linkedTaskCode || fundingDraft.taskCode) && <div className="finance-link-calculated"><span>Projektové čerpanie podľa zvolenej väzby</span><strong>{moneyPrecise(fundingEffective(fundingDraft).spent)}</strong><small>{fundingEffective(fundingDraft).rows.length ? `${fundingEffective(fundingDraft).rows.length} zdrojových riadkov` : fundingDraft.linkMode === 'allocation' ? 'manuálne projektové čerpanie' : 'bez priradených riadkov'}</small></div>}
+        <Field label="Poznámka"><textarea rows={3} value={fundingDraft.note} onChange={(e) => setFundingDraft({ ...fundingDraft, note: e.target.value })}/></Field>
+      </div>}
+      <div className="modal-actions"><span className="finance-modal-status">{(fundingDraft.sourceMode || 'manual') === 'linked_task' ? `Zdroj dát: ${contractDataset.meta.source}` : 'Manuálne evidovaný zdroj'}</span><button className="button button-secondary" onClick={() => setFundingDraft(null)}>Zrušiť</button><button className="button button-primary" disabled={busy || !fundingDraftIsValid(fundingDraft)} onClick={() => void persistFunding()}>Uložiť</button></div></Modal>}
+
+    {financeDrilldown && financeDrillSnapshot && <Modal wide title={`Detail čerpania · ${financeDrillSnapshot.task ? `Úloha ${financeDrillSnapshot.task.code}` : financeDrilldown.sourceName}`} onClose={() => setFinanceDrilldown(null)}><div className="finance-drill-head"><div><span>Väzba</span><strong>{fundingLinkLabel(financeDrilldown)}</strong></div><div><span>Rozpočet projektu</span><strong>{moneyPrecise(financeDrillSnapshot.amount)}</strong></div><div><span>Čerpanie projektu</span><strong>{moneyPrecise(financeDrillSnapshot.spent)}</strong></div><div><span>Zostatok</span><strong>{moneyPrecise(financeDrillSnapshot.remaining)}</strong></div></div><p className="finance-drill-source">{contractLedger.meta.period} · {contractLedger.meta.source}. Zobrazené riadky sú zdrojové finančné položky použité pre projektovú väzbu.</p>{financeDrillSnapshot.rows.length ? <div className="project-table-wrap finance-drill-table"><table className="project-table"><thead><tr><th>Dátum</th><th>Doklad</th><th>Úloha</th><th>ZAK</th><th>KPD/PPD</th><th>Popis</th><th>Suma</th></tr></thead><tbody>{financeDrillSnapshot.rows.map((row) => <tr key={row.id}><td>{dateLabel(row.date)}</td><td>{row.document || '—'}</td><td>{row.task}</td><td>{row.zak || '—'}</td><td>{row.kpd || '—'}{row.ppd ? ` / ${row.ppd}` : ''}</td><td><strong>{row.note || '—'}</strong><small>{row.category ? `Kategória ${row.category}` : ''}</small></td><td><strong>{moneyPrecise(row.amount)}</strong></td></tr>)}</tbody></table></div> : <Empty title="Bez zdrojových riadkov" text={financeDrilldown.linkMode === 'allocation' ? 'Projektové čerpanie je v tomto režime evidované manuálne.' : 'Pre zvolenú väzbu neboli nájdené finančné riadky.'}/>}<div className="modal-actions"><button className="button button-primary" onClick={() => setFinanceDrilldown(null)}>Zavrieť</button></div></Modal>}
 
     {milestoneDraft && <Modal title={milestoneDraft.id ? 'Upraviť míľnik' : 'Nový míľnik'} onClose={() => setMilestoneDraft(null)}><div className="form-grid">
       <Field label="Názov"><input value={milestoneDraft.title} onChange={(e) => setMilestoneDraft({ ...milestoneDraft, title: e.target.value })}/></Field><Field label="Fáza"><select value={milestoneDraft.phase} onChange={(e) => setMilestoneDraft({ ...milestoneDraft, phase: e.target.value })}>{projectPhases.map(x => <option key={x}>{x}</option>)}</select></Field>

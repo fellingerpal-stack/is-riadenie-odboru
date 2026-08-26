@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ProjectCreateSeed, ProjectPortfolioData } from '../types'
+import { loadProjectPortfolio } from '../lib/projectCloud'
 import { Badge, Empty, Field, Icon, Modal, PageHeader } from '../components/UI'
 import {
   deleteInformationSystem,
@@ -69,7 +71,7 @@ function downloadCsv(items: InformationSystemRecord[]) {
   const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `informacne-systemy-cvti-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(link.href)
 }
 
-export default function InformationSystems({ canEdit, databaseMode, organizationId }: { canEdit: boolean; databaseMode: 'local' | 'cloud'; organizationId?: string }) {
+export default function InformationSystems({ canEdit, databaseMode, organizationId, canCreateProjects = false, onCreateProject, onOpenProjects }: { canEdit: boolean; databaseMode: 'local' | 'cloud'; organizationId?: string; canCreateProjects?: boolean; onCreateProject?: (seed: ProjectCreateSeed) => void; onOpenProjects?: () => void }) {
   const [items, setItems] = useState<InformationSystemRecord[]>([])
   const [sync, setSync] = useState<RegistrySyncState>(databaseMode === 'cloud' ? 'loading' : 'local')
   const [error, setError] = useState('')
@@ -80,6 +82,7 @@ export default function InformationSystems({ canEdit, databaseMode, organization
   const [criticalityFilter, setCriticalityFilter] = useState('Všetky')
   const [reviewFilter, setReviewFilter] = useState('Všetky')
   const [draft, setDraft] = useState<InformationSystemRecord | null>(null)
+  const [projectPortfolio, setProjectPortfolio] = useState<Pick<ProjectPortfolioData, 'projects' | 'links'>>({ projects: [], links: [] })
   const [modalTab, setModalTab] = useState<ModalTab>('basic')
   const reloadTimer = useRef<number | undefined>(undefined)
   const effectiveCanEdit = canEdit && !(databaseMode === 'cloud' && schemaFallback)
@@ -104,6 +107,11 @@ export default function InformationSystems({ canEdit, databaseMode, organization
     }
   }
   useEffect(() => { void reload(true) }, [databaseMode])
+  useEffect(() => {
+    let active = true
+    void loadProjectPortfolio().then((portfolio) => { if (active) setProjectPortfolio({ projects: portfolio.projects, links: portfolio.links }) }).catch(() => undefined)
+    return () => { active = false }
+  }, [databaseMode])
   useEffect(() => {
     if (databaseMode !== 'cloud' || !organizationId) return
     const unsubscribe = subscribeToInformationSystemRegistry(organizationId, () => {
@@ -149,6 +157,19 @@ export default function InformationSystems({ canEdit, databaseMode, organization
     catch (caught) { setSync('error'); setError(caught instanceof Error ? caught.message : 'Informačný systém sa nepodarilo odstrániť.') }
   }
   function update<K extends keyof InformationSystemRecord>(key: K, value: InformationSystemRecord[K]) { setDraft((current) => current ? { ...current, [key]: value } : current) }
+  const linkedProjects = useMemo(() => {
+    if (!draft?.sourceKey) return []
+    const ids = new Set(projectPortfolio.links.filter((link) => link.targetType === 'Informačný systém' && (link.targetKey === draft.sourceKey || link.targetName === draft.name)).map((link) => link.projectId))
+    return projectPortfolio.projects.filter((project) => ids.has(project.id))
+  }, [draft?.sourceKey, draft?.name, projectPortfolio])
+  function createDevelopmentProject(item: InformationSystemRecord) {
+    if (!onCreateProject) return
+    const links: ProjectCreateSeed['links'] = [{ targetType: 'Informačný systém', targetKey: item.sourceKey, targetName: item.name, relation: 'Rozvoj / zmena existujúceho IS', note: item.area || '' }]
+    if (item.contractNumber.trim()) links.push({ targetType: 'Zmluva', targetKey: item.contractNumber.trim(), targetName: item.contractNumber.trim(), relation: 'Zmluvný rámec existujúceho IS', note: item.supplier || '' })
+    if (item.supplier.trim()) links.push({ targetType: 'Dodávateľ', targetKey: item.supplier.trim(), targetName: item.supplier.trim(), relation: 'Dodávateľ existujúceho IS', note: item.contractNumber || '' })
+    onCreateProject({ requestId: `is-${item.sourceKey}-${Date.now()}`, name: `${item.name} – rozvoj`, type: 'Rozvoj existujúceho IS', sponsor: item.businessOwner || item.businessContact || '', objective: `Rozvoj informačného systému ${item.name}`, description: item.purpose || `Projekt rozvoja existujúceho informačného systému ${item.name}.`, links })
+    setDraft(null)
+  }
 
   return <>
     <PageHeader eyebrow="Digitálne portfólio" title="Informačné systémy CVTI SR" description="Register systémov a softvéru s vecným a technickým vlastníctvom, kritickosťou, hostingom, SLA, zmluvami a ochranou údajov."
@@ -192,6 +213,7 @@ export default function InformationSystems({ canEdit, databaseMode, organization
       {modalTab === 'owners' && <div className="form-grid"><Field label="Vecný gestor (sekcia/odbor)"><input disabled={!effectiveCanEdit} value={draft.businessOwner} onChange={(event) => update('businessOwner', event.target.value)}/></Field><Field label="Kontaktná osoba vecného gestora"><input disabled={!effectiveCanEdit} value={draft.businessContact} onChange={(event) => update('businessContact', event.target.value)}/></Field><Field label="Gestor IT / technický správca"><input disabled={!effectiveCanEdit} value={draft.technicalOwner} onChange={(event) => update('technicalOwner', event.target.value)}/></Field><Field label="Správca admin prístupov"><input disabled={!effectiveCanEdit} value={draft.adminAccessManager} onChange={(event) => update('adminAccessManager', event.target.value)}/></Field><Field label="Koncoví používatelia"><textarea disabled={!effectiveCanEdit} value={draft.endUsers} onChange={(event) => update('endUsers', event.target.value)}/></Field></div>}
       {modalTab === 'contracts' && <div className="form-grid"><Field label="SLA uzatvorená?"><select disabled={!effectiveCanEdit} value={draft.slaStatus} onChange={(event) => update('slaStatus', event.target.value)}>{slaOptions.map((value) => <option key={value}>{value}</option>)}</select></Field><Field label="Platnosť SLA od"><input disabled={!effectiveCanEdit} value={draft.slaFrom} onChange={(event) => update('slaFrom', event.target.value)}/></Field><Field label="Platnosť SLA do"><input disabled={!effectiveCanEdit} value={draft.slaTo} onChange={(event) => update('slaTo', event.target.value)}/></Field><Field label="Ročná platba za SLA (€ bez DPH)"><input disabled={!effectiveCanEdit} value={draft.annualSlaPayment} onChange={(event) => update('annualSlaPayment', event.target.value)}/></Field><Field label="Celková hodnota zmluvy (€ bez DPH)"><input disabled={!effectiveCanEdit} value={draft.contractValue} onChange={(event) => update('contractValue', event.target.value)}/></Field><Field label="Dodávateľ"><input disabled={!effectiveCanEdit} value={draft.supplier} onChange={(event) => update('supplier', event.target.value)}/></Field><Field label="Číslo zmluvy"><input disabled={!effectiveCanEdit} value={draft.contractNumber} onChange={(event) => update('contractNumber', event.target.value)}/></Field><Field label="Účinnosť zmluvy od"><input disabled={!effectiveCanEdit} value={draft.contractEffectiveFrom} onChange={(event) => update('contractEffectiveFrom', event.target.value)}/></Field><Field label="Platnosť zmluvy do"><input disabled={!effectiveCanEdit} value={draft.contractValidTo} onChange={(event) => update('contractValidTo', event.target.value)}/></Field><Field label="Link na CRZ"><input disabled={!effectiveCanEdit} value={draft.crzLink} onChange={(event) => update('crzLink', event.target.value)}/></Field></div>}
       {modalTab === 'security' && <div className="form-grid"><Field label="Spracúva osobné/citlivé údaje?"><select disabled={!effectiveCanEdit} value={draft.personalData} onChange={(event) => update('personalData', event.target.value)}>{personalDataOptions.map((value) => <option key={value}>{value}</option>)}</select></Field><Field label="Stav preverenia údajov"><select disabled={!effectiveCanEdit} value={draft.reviewStatus} onChange={(event) => update('reviewStatus', event.target.value)}>{reviewOptions.map((value) => <option key={value}>{value}</option>)}</select></Field><Field label="Poznámka / otvorené otázky"><textarea disabled={!effectiveCanEdit} value={draft.notes} onChange={(event) => update('notes', event.target.value)}/></Field></div>}
+      {draft.sourceKey && items.some((item) => item.sourceKey === draft.sourceKey) && <div className="entity-project-panel"><div><span className="eyebrow">PROJEKTY / ROZVOJ</span><strong>{linkedProjects.length ? `${linkedProjects.length} prepojených projektov` : 'Bez prepojeného projektu'}</strong><small>Jeden informačný systém môže mať viac projektov rozvoja v rôznych obdobiach.</small></div><div className="entity-project-actions">{linkedProjects.slice(0,4).map((project) => <button key={project.id} className="entity-project-chip" onClick={onOpenProjects}><span>{project.id}</span><b>{project.name}</b><small>{project.phase || project.status}</small></button>)}{canCreateProjects && onCreateProject && <button className="button button-primary button-small" onClick={() => createDevelopmentProject(draft)}><Icon name="plus" size={15}/> Vytvoriť projekt rozvoja</button>}</div></div>}
       <div className="portfolio-source-note"><Icon name="database" size={17}/><span><strong>Zdrojový záznam</strong>{draft.sourceFile || 'Aplikácia'} · {draft.sourceSheet || 'Informačné systémy'} · riadok {draft.sourceRow || 'nový'}</span></div><div className="modal-actions"><button className="button button-secondary" onClick={() => setDraft(null)}>Zavrieť</button>{effectiveCanEdit && <button className="button button-primary" onClick={() => void saveDraft()} disabled={!draft.name.trim()}><Icon name="check" size={16}/> Uložiť IS</button>}</div>
     </Modal>}
   </>
