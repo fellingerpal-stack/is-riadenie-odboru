@@ -848,6 +848,31 @@ export interface ServiceArchitectureRecord {
 }
 
 
+export interface EntityFinancialAllocation {
+  id: string
+  entityId: string
+  entityName: string
+  moduleId: string
+  moduleCode: string
+  moduleName: string
+  taskCode: string
+  ledgerId: string
+  allocationMode: 'full' | 'amount' | 'percent' | 'suggested'
+  allocationPercent: number
+  sourceAmount: number
+  allocatedAmount: number
+  sourceDate: string
+  sourceDocument: string
+  sourceZak: string
+  sourceKpd: string
+  sourcePpd: string
+  sourcePracm: string
+  sourceNote: string
+  note: string
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface EnterpriseGovernanceOverride {
   entityId: string
   primaryOwner: string
