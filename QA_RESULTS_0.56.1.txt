@@ -1,0 +1,46 @@
+IS RIADENIE ODBORU v0.56.1 - QA
+================================
+
+PASS - release metadata
+- package.json = 0.56.1
+- src/lib/storage.ts CURRENT_VERSION = 0.56.1
+- src/data/seed.json meta.version = 0.56.1
+- prebuild/verify log prefix = v0.56.1
+
+PASS - release verifier
+[v0.56.1 verify] OK; sourceFiles=74; version=0.56.1
+- unresolved relative imports: 0
+- legacy root src/*.ts duplicates: 0
+
+PASS - TypeScript/TSX syntax
+- 74 TS/TSX source files parsed/transpiled TypeScript compilerom
+- syntactic diagnostics: 0
+
+PASS - Project Financial Integration
+- Uloha 10: budget 909630.00, spent 509559.61, ledger 509559.61, delta 0.00
+- Uloha 22: budget 93552.00, spent 49508.47, ledger 49508.47, delta 0.00
+- Uloha 25: budget 65501.00, spent 48541.18, ledger 48541.18, delta 0.00
+- dataset period: januar az jul 2026
+
+PASS - IS / Service -> Project integration static checks
+- InformationSystems obsahuje akciu Vytvorit projekt rozvoja
+- Services obsahuje akciu Projekt rozvoja
+- App odovzdava ProjectCreateSeed do modulu Riadenie projektov
+- ProjectManagement prijima initialCreateSeed a predvyplni novy projekt
+- pri ulozeni noveho projektu sa ukladaju zdrojove project_links
+- pri IS sa pripravi vazba na Informačný system a podla dostupnych dat aj Zmluva / Dodavatel
+- pri sluzbe sa pripravi vazba typu Sluzba
+- detail IS/sluzby cita existujuce project_links a zobrazuje prepojene projekty
+
+PASS - CSS static check
+- pocet otvaracich a zatvaracich zlozenych zatvoriek v hlavnych CSS suboroch je zhodny
+
+PASS - databazovy dopad v0.56.1
+- v0.56.1 nepridava novu SQL schemu
+- finalny balicek pre upgrade z v0.55.0 obsahuje migration_project_finance_v056.sql
+- existujuca project_links tabulka/RPC je pouzita pre IS/sluzba/zmluva/dodavatel vazby
+
+NOT EXECUTED LOCALLY - complete Vite production build
+- izolovane prostredie nema projektove npm dependencies
+- plny tsc/Vite dependency build preto nebol lokalne vykonany
+- finalny executable gate je Vercel CI: prebuild verify -> tsc -b -> vite build

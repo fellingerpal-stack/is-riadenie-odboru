@@ -1,0 +1,21 @@
+IS Riadenie odboru v0.56.1 - zmenene/pridane subory oproti v0.56.0
+
+package.json
+scripts/prebuild-cleanup.mjs
+scripts/verify-release.mjs
+src/types.ts
+src/lib/storage.ts
+src/data/seed.json
+src/App.tsx
+src/styles.css
+src/views/ProjectManagement.tsx
+src/views/InformationSystems.tsx
+src/views/Services.tsx
+RELEASE_NOTES_0.56.1.md
+README_NASADENIE_0.56.1.txt
+CHANGED_FILES_0.56.1.txt
+QA_RESULTS_0.56.1.txt
+
+Databaza:
+- bez novej v0.56.1 schemy,
+- pri upgrade priamo z v0.55.0 sa pouziva existujuca supabase/migration_project_finance_v056.sql.
