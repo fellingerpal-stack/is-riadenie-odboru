@@ -198,6 +198,13 @@ export interface ProjectFunding {
   spent: number
   cofinancingPercent: number
   note: string
+  sourceMode?: 'manual' | 'linked_task'
+  linkMode?: 'whole_task' | 'allocation' | 'zak' | 'items'
+  linkedTaskCode?: string
+  allocationAmount?: number
+  filterZak?: string
+  selectedLedgerIds?: string[]
+  syncSource?: string
 }
 
 export interface ProjectMilestone {
@@ -221,6 +228,16 @@ export interface ProjectLink {
   targetName: string
   relation: string
   note: string
+}
+
+export interface ProjectCreateSeed {
+  requestId: string
+  name: string
+  type: string
+  sponsor: string
+  objective: string
+  description: string
+  links: Array<Omit<ProjectLink, 'id' | 'projectId'>>
 }
 
 export interface ProjectRaidItem {
