@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AccessScope, AppRole, AppState, CloudSnapshot, Employee, SyncState } from './types'
+import type { AccessScope, AppRole, AppState, CloudSnapshot, Employee, ProjectCreateSeed, SyncState } from './types'
 import { exportState, importState, loadRole, loadState, migrateState, resetState, saveRole, saveState } from './lib/storage'
 import { loadCurrentSnapshot, saveCurrentSnapshot } from './lib/cloud'
 import { canReadScope, canWriteScope, defaultAccessScopes, profileAccess } from './lib/accessControl'
@@ -294,6 +294,7 @@ export default function App(){
   const [iamSync,setIamSync]=useState<IamDatabaseState>(auth.configured?'loading':'local')
   const [iamError,setIamError]=useState('')
   const [projectSync,setProjectSync]=useState<ProjectDatabaseState>(auth.configured?'loading':'local')
+  const [projectCreateSeed,setProjectCreateSeed]=useState<ProjectCreateSeed|null>(null)
   const lastCloudPayload=useRef<string>('')
   const cloudInitialized=useRef(false)
   const cloudHasSnapshot=useRef(false)
@@ -446,6 +447,11 @@ export default function App(){
   const visibleGroups=useMemo(()=>activeNavGroups.map(group=>({...group,items:group.items.filter(item=>canAccessView(item.key))})).filter(group=>group.items.length),[role,workspace,canReadOit,canReadOris,canReadShared])
   const workspaceName=workspace==='oit'?'Odbor 3.1':workspace==='oris'?'Odbor 3.2':'Portál odborov'
   const workspaceDetail=workspace==='oit'?'Správa a prevádzka IT infraštruktúry':workspace==='oris'?'Prevádzka a rozvoj IS · projektové riadenie':'CVTI SR · odbory 3.1 a 3.2'
+
+  function createProjectFromReference(seed:ProjectCreateSeed){
+    setProjectCreateSeed(seed)
+    go('projectManagement')
+  }
 
   function go(next:string){
     const key=next as ViewKey
@@ -731,7 +737,7 @@ export default function App(){
       <main className="content">
         {role!=='employee'&&view!=='projectManagement'&&syncError&&<div className="inline-alert inline-alert-error sync-alert"><Icon name="warning" size={18}/><span><strong>Synchronizácia zlyhala.</strong> {syncError}</span><div className="sync-alert-actions"><button className="button button-secondary button-small" onClick={()=>void saveCloud()}>Skúsiť uložiť znova</button><button className="button button-ghost button-small" onClick={()=>void loadCloud()}>Načítať z DB</button></div></div>}
         {view==='portals'&&<DepartmentPortal go={go} canOit={canReadOit} canOris={canReadOris} canShared={canReadShared} canServiceDesk={role==='admin'} canProjects={role==='admin'||isProjectRole}/>}
-        {view==='projectManagement'&&<ProjectManagement role={role} currentUserId={auth.profile?.id??'local-user'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} organizationId={auth.profile?.organizationId||''} databaseMode={auth.configured?'cloud':'local'} fallbackProjects={state.projects} fallbackTasks={state.tasks} onFallbackProjectsChange={commitProjects} onFallbackTasksChange={commitTasks} onDatabaseStateChange={setProjectSync}/>}
+        {view==='projectManagement'&&<ProjectManagement role={role} currentUserId={auth.profile?.id??'local-user'} currentUser={displayName} currentUserEmail={auth.profile?.email||auth.user?.email||''} organizationId={auth.profile?.organizationId||''} databaseMode={auth.configured?'cloud':'local'} fallbackProjects={state.projects} fallbackTasks={state.tasks} onFallbackProjectsChange={commitProjects} onFallbackTasksChange={commitTasks} onDatabaseStateChange={setProjectSync} initialCreateSeed={projectCreateSeed} onInitialCreateSeedConsumed={()=>setProjectCreateSeed(null)}/>}
         {view==='enterprise360'&&<Enterprise360 state={state} go={go} canEdit={canManageShared} currentUser={displayName} onGovernanceChange={enterpriseGovernance=>setState(current=>({...current,enterpriseGovernance}))} onDevelopmentRequestsChange={contractDevelopmentRequests=>setState(current=>({...current,contractDevelopmentRequests}))}/>}
         {view==='actionCenter'&&<ManagementActionCenter state={state} currentUser={displayName} go={go}/>}
         {view==='myWorkspace'&&<MyWorkspace state={state} currentUser={displayName} role={role} canReadOit={canReadOit} canReadOris={canReadOris} canReadShared={canReadShared} go={go}/>}
@@ -753,7 +759,7 @@ export default function App(){
         {view==='dashboard'&&<Dashboard state={state} go={go}/>} 
         {view==='people'&&<People employees={state.employees} raci={state.raci} capacity={state.capacity} canEdit={canManageOris} onChange={employees=>setState(current=>({...current,employees}))}/>} 
         {view==='raci'&&<Raci items={state.raci} employees={state.employees} substitutions={state.substitutions} canEdit={canManageOris} onChange={raci=>setState(current=>({...current,raci}))}/>} 
-        {view==='services'&&<Services services={state.services} canEdit={canManageOris} onChange={services=>setState(current=>({...current,services}))}/>} 
+        {view==='services'&&<Services services={state.services} canEdit={canManageOris} onChange={services=>setState(current=>({...current,services}))} canCreateProjects={role==='admin'||role==='project_manager'} onCreateProject={createProjectFromReference} onOpenProjects={()=>go('projectManagement')}/>} 
         {view==='substitutions'&&<Substitutions items={state.substitutions} canEdit={canManageOris} onChange={substitutions=>setState(current=>({...current,substitutions}))}/>} 
         {view==='capacity'&&<Capacity rows={state.capacity} canEdit={canManageOris} onChange={capacity=>setState(current=>({...current,capacity}))}/>} 
         {view==='work'&&<Work projects={state.projects} tasks={state.tasks} employees={state.employees} canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} databaseState={workSync} databaseError={workError} onReload={()=>void reloadWorkData()} onProjectsChange={commitProjects} onTasksChange={commitTasks}/>} 
@@ -763,7 +769,7 @@ export default function App(){
         {view==='iam'&&<IamManagement accessRequests={Array.isArray(state.accessRequests)?state.accessRequests:[]} accessCatalog={Array.isArray(state.accessCatalog)?state.accessCatalog:[]} recertificationCampaigns={Array.isArray(state.recertificationCampaigns)?state.recertificationCampaigns:[]} services={role==='employee'?[]:Array.isArray(state.services)?state.services:[]} employees={role==='employee'?[]:Array.isArray(state.employees)?state.employees:[]} tasks={role==='employee'?[]:Array.isArray(state.tasks)?state.tasks:[]} canEdit={canSubmitOris} canConfigure={canResolveOris} currentUser={displayName} databaseMode={auth.configured?'cloud':'local'} databaseState={iamSync} databaseError={iamError} onReload={()=>void reloadIamData()} onAccessRequestsChange={commitAccessRequests} onAccessCatalogChange={commitAccessCatalog} onRecertificationCampaignsChange={commitRecertificationCampaigns} onTasksChange={commitTasks}/>} 
         {view==='cmdb'&&<Cmdb items={Array.isArray(state.cmdbItems)?state.cmdbItems:[]} relationships={Array.isArray(state.cmdbRelationships)?state.cmdbRelationships:[]} services={Array.isArray(state.services)?state.services:[]} tickets={Array.isArray(state.tickets)?state.tickets:[]} changes={Array.isArray(state.changes)?state.changes:[]} employees={Array.isArray(state.employees)?state.employees:[]} suppliers={Array.isArray(state.supplierRecords)?state.supplierRecords:[]} role={role} currentUser={displayName} canWriteOit={canWriteOit} canWriteOris={canWriteOris} canWriteShared={canWriteShared} onItemsChange={cmdbItems=>setState(current=>({...current,cmdbItems}))} onRelationshipsChange={cmdbRelationships=>setState(current=>({...current,cmdbRelationships}))}/>} 
         {view==='webs'&&<WebRegistry canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
-        {view==='informationSystems'&&<InformationSystems canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId}/>} 
+        {view==='informationSystems'&&<InformationSystems canEdit={canResolveOris} databaseMode={auth.configured?'cloud':'local'} organizationId={auth.profile?.organizationId} canCreateProjects={role==='admin'||role==='project_manager'} onCreateProject={createProjectFromReference} onOpenProjects={()=>go('projectManagement')}/>} 
         {view==='risks'&&<Risks risks={state.risks} canEdit={canManageOris} onChange={risks=>setState(current=>({...current,risks}))}/>} 
         {view==='decisions'&&<Decisions items={state.decisions} canEdit={canManageOris} onChange={decisions=>setState(current=>({...current,decisions}))}/>} 
         {view==='users'&&role==='admin'&&<Users currentUserId={auth.profile?.id??'local-admin'} currentUserName={displayName} configured={auth.configured}/>} 
