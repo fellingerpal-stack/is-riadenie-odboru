@@ -35,6 +35,9 @@ function array<T>(value: unknown): T[] {
 function friendlyProjectError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error ?? '')
   const lower = message.toLowerCase()
+  if (lower.includes('project_finance')) {
+    return new Error('Projektové finančné prepojenia ešte nie sú pripravené v databáze. Spustite migráciu v0.56.0.')
+  }
   if (lower.includes('project_governance')) {
     return new Error('Project Governance ešte nie je pripravený v databáze. Spustite migráciu v0.55.0.')
   }
@@ -67,16 +70,19 @@ function normalizePortfolio(value: unknown): ProjectPortfolioData {
 export async function loadProjectPortfolio(): Promise<ProjectPortfolioData> {
   if (!supabase) return emptyPortfolio()
   try {
-    const [{ data, error }, governance] = await Promise.all([
+    const [{ data, error }, governance, finance] = await Promise.all([
       supabase.rpc('project_portfolio_read'),
       supabase.rpc('project_governance_read'),
+      supabase.rpc('project_finance_read'),
     ])
     if (error) throw error
     if (governance.error) throw governance.error
+    if (finance.error) throw finance.error
     const portfolio = normalizePortfolio(data)
     const governanceData = governance.data && typeof governance.data === 'object' && !Array.isArray(governance.data) ? governance.data as Record<string, unknown> : {}
     return {
       ...portfolio,
+      funding: array<ProjectFunding>(finance.data),
       raidItems: array<ProjectRaidItem>(governanceData.raidItems),
       statusReports: array<ProjectStatusReport>(governanceData.statusReports),
       decisions: array<ProjectDecision>(governanceData.decisions),
@@ -121,11 +127,11 @@ export async function deleteProjectMember(memberId: string): Promise<void> {
 }
 
 export async function saveProjectFunding(item: ProjectFunding): Promise<void> {
-  return invoke('project_portfolio_upsert_funding', { p_item: item })
+  return invoke('project_finance_upsert', { p_item: item })
 }
 
 export async function deleteProjectFunding(itemId: string): Promise<void> {
-  return invoke('project_portfolio_delete_funding', { p_item_id: itemId })
+  return invoke('project_finance_delete', { p_item_id: itemId })
 }
 
 export async function saveProjectMilestone(item: ProjectMilestone): Promise<void> {
