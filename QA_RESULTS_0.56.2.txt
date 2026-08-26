@@ -1,0 +1,46 @@
+IS Riadenie odboru v0.56.2 - QA
+Date: 2026-08-26
+
+VERSION / RELEASE VERIFY
+[PASS] package.json = 0.56.2
+[PASS] storage CURRENT_VERSION = 0.56.2
+[PASS] seed meta version = 0.56.2
+[PASS] [v0.56.2 verify] OK; sourceFiles=75; version=0.56.2
+[PASS] local relative import audit via verify-release; missing = 0
+
+ENTITY FINANCIAL ALLOCATION
+[PASS] New type EntityFinancialAllocation present.
+[PASS] Cloud RPC client read/upsert/delete wired.
+[PASS] CVTI 360 builder accepts allocation layer without breaking existing direct finance mapping.
+[PASS] Finance view supports whole remaining item / amount EUR / percent.
+[PASS] KOMIS module target selection present.
+[PASS] Manual search by document/note/ZAK/PRACM present.
+[PASS] Name/alias suggestion is confirmation-only, not silent auto-posting.
+[PASS] Source allocation remaining amount is calculated across all entity allocations.
+[PASS] DB RPC rejects aggregate allocation above source_amount.
+[PASS] Contract/SLA layer remains separate from actual allocated spending.
+
+TARGETED TYPESCRIPT
+[PASS] TypeScript check passed for changed core TS/TSX files using QA declarations:
+       src/views/Enterprise360.tsx
+       src/lib/enterprise360.ts
+       src/lib/entityFinanceCloud.ts
+       src/types.ts
+
+DATA RECONCILIATION
+[PASS] Task 10: 509559.61 EUR = ledger 509559.61 EUR; diff 0.00
+[PASS] Task 22: 49508.47 EUR = ledger 49508.47 EUR; diff 0.00
+[PASS] Task 25: 48541.18 EUR = ledger 48541.18 EUR; diff 0.00
+
+STATIC STRUCTURE
+[PASS] JSON parse: package / seed / contractTasks / contractTaskLedger.
+[PASS] Enterprise360.css braces 350/350.
+[PASS] SQL single BEGIN/COMMIT transaction.
+[PASS] SQL dollar quoting balanced (6 markers).
+[PASS] SQL contains table + read/upsert/delete RPCs.
+
+FULL BUILD LIMITATION
+[INFO] A full local npm dependency install was attempted but did not complete in the isolated runtime time window.
+[INFO] Therefore the final production gate remains Vercel: tsc -b && vite build.
+[REQUIRED] Deploy only after Vercel shows [v0.56.2 verify] OK and the production build succeeds.
+[REQUIRED] Execute migration_entity_finance_allocation_v0562.sql before the v0.56.2 frontend is used.
