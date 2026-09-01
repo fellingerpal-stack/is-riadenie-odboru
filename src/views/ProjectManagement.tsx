@@ -392,6 +392,11 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const projectRaidItems = selectedProject ? data.raidItems.filter((item) => item.projectId === selectedProject.id) : []
   const projectStatusReports = selectedProject ? data.statusReports.filter((item) => item.projectId === selectedProject.id) : []
   const projectDecisions = selectedProject ? data.decisions.filter((item) => item.projectId === selectedProject.id) : []
+  const projectOpenRaidCount = projectRaidItems.filter((item) => !['Uzavreté', 'Akceptované'].includes(item.status)).length
+  const projectPendingDecisionCount = projectDecisions.filter((item) => item.status === 'Čaká na rozhodnutie').length
+  const projectCapacityTotal = projectMembers.reduce((sum, member) => sum + Number(member.allocationPercent || 0), 0)
+  const projectNextMilestone = [...projectMilestones].filter((item) => item.status !== 'Splnené').sort((a, b) => (a.due || '9999-12-31').localeCompare(b.due || '9999-12-31'))[0]
+  const projectBudgetUsage = projectFinanceBudget > 0 ? Math.round(projectFinanceSpent / projectFinanceBudget * 100) : 0
 
   const healthByProject = useMemo(() => {
     const map = new Map<string, { health: 'Zelený' | 'Oranžový' | 'Červený'; score: number; reasons: string[] }>()
@@ -769,17 +774,32 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       {(tab === 'overview' || tab === 'projects') && <>
         <div className="project-toolbar"><div className="project-search"><Icon name="search" size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Hľadať projekt, fázu, manažéra…"/></div><span>{filteredProjects.length} projektov</span></div>
         {filteredProjects.length === 0 ? <Empty title={isProjectMemberRole ? 'Nemáte priradený projekt' : 'Žiadne projekty'} text={isProjectMemberRole ? 'Projekt sa zobrazí automaticky, keď vás Admin alebo projektový manažér zaradí do projektového tímu.' : role === 'project_manager' ? 'Vytvorte vlastný projekt alebo vás Admin priradí do existujúceho projektu.' : 'Vytvorte prvý projekt alebo upravte vyhľadávanie.'}/> : <section className="project-portfolio-grid">{filteredProjects.map((project) => {
-          const taskCount = data.tasks.filter((task) => task.projectId === project.id).length
-          const memberCount = data.members.filter((member) => member.projectId === project.id && member.isActive).length
-          const funding = data.funding.filter((item) => item.projectId === project.id).reduce((sum,item) => sum + fundingEffective(item).amount, 0)
-          return <article key={project.id} className="project-card" onClick={() => openProject(project.id)} tabIndex={0} role="button" onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openProject(project.id) }}>
-            <div className="project-card-top"><div><span className="project-code">{project.id}</span><h3>{project.name}</h3></div><Badge tone={healthTone(healthByProject.get(project.id)?.health)}>{healthByProject.get(project.id)?.health || 'Bez health'}</Badge></div>
+          const projectTasksAll = data.tasks.filter((task) => task.projectId === project.id)
+          const taskCount = projectTasksAll.length
+          const memberRows = data.members.filter((member) => member.projectId === project.id && member.isActive)
+          const memberCount = memberRows.length
+          const fundingRows = data.funding.filter((item) => item.projectId === project.id).map((item) => fundingEffective(item))
+          const funding = fundingRows.reduce((sum,item) => sum + item.amount, 0)
+          const spent = fundingRows.reduce((sum,item) => sum + item.spent, 0)
+          const usage = funding > 0 ? Math.round(spent / funding * 100) : 0
+          const openRaid = data.raidItems.filter((item) => item.projectId === project.id && !['Uzavreté','Akceptované'].includes(item.status)).length
+          const pendingDecisions = data.decisions.filter((item) => item.projectId === project.id && item.status === 'Čaká na rozhodnutie').length
+          const nextMilestone = [...data.milestones].filter((item) => item.projectId === project.id && item.status !== 'Splnené').sort((a,b) => (a.due || '9999-12-31').localeCompare(b.due || '9999-12-31'))[0]
+          const autoHealth = healthByProject.get(project.id)?.health || 'Zelený'
+          return <article key={project.id} className={`project-card project-card-executive health-${normalize(autoHealth)}`} onClick={() => openProject(project.id)} tabIndex={0} role="button" onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openProject(project.id) }}>
+            <div className="project-card-accent"/>
+            <div className="project-card-top project-card-top-executive"><div><span className="project-code">{project.id}</span><h3>{project.name}</h3></div><div className="project-card-state-stack"><Badge tone={healthTone(autoHealth)}>{autoHealth}</Badge><Badge tone={statusTone(project.status)}>{project.status}</Badge></div></div>
             <div className="project-card-meta"><span><Icon name="roadmap" size={14}/>{project.phase || 'Neurčená fáza'}</span><span><Icon name="user" size={14}/>{project.managerName || project.owner || 'Bez PM'}</span></div>
-            <p>{project.objective || project.description || 'Bez definovaného cieľa.'}</p>
-            <Progress value={Number(project.progress || 0)} label="Delivery"/>
-            <div className="project-card-stats"><span><b>{memberCount}</b> ľudí</span><span><b>{taskCount}</b> úloh</span><span><b>{money(funding)}</b> zdroje</span></div>
-            <div className="project-card-bottom"><Badge tone={statusTone(project.status)}>{project.status}</Badge><span>{dateLabel(project.start)} → {dateLabel(project.due)}</span></div>
-            <div className="project-card-open">Otvoriť kartu projektu <Icon name="chevron" size={15}/></div>
+            <p className="project-card-objective">{project.objective || project.description || 'Bez definovaného cieľa.'}</p>
+            <div className="project-card-delivery"><div><span>Delivery</span><strong>{Number(project.progress || 0)}%</strong></div><div className="project-card-progress"><i style={{width:`${Math.max(0,Math.min(100,Number(project.progress || 0)))}%`}}/></div></div>
+            <div className="project-card-exec-stats">
+              <div><span>Rozpočet</span><strong>{money(funding)}</strong><small>{funding ? `${usage}% čerpané` : 'bez zdroja'}</small></div>
+              <div><span>Tím</span><strong>{memberCount}</strong><small>{memberRows.reduce((sum, member) => sum + Number(member.allocationPercent || 0), 0)}% alokácia</small></div>
+              <div><span>Úlohy</span><strong>{taskCount}</strong><small>{projectTasksAll.filter((task) => task.status === 'Hotovo').length} hotových</small></div>
+              <div><span>Signály</span><strong>{openRaid + pendingDecisions}</strong><small>{openRaid} RAID · {pendingDecisions} rozhod.</small></div>
+            </div>
+            <div className="project-card-milestone"><span><Icon name="calendar" size={14}/>Najbližší míľnik</span><strong>{project.nextMilestone || nextMilestone?.title || 'Neurčený'}</strong><small>{dateLabel(project.nextMilestoneDue || nextMilestone?.due)}</small></div>
+            <div className="project-card-bottom project-card-bottom-executive"><span><Icon name="calendar" size={13}/>{dateLabel(project.start)} → {dateLabel(project.due)}</span><span className="project-card-open-inline">Detail <Icon name="chevron" size={15}/></span></div>
           </article>
         })}</section>}
       </>}
@@ -881,7 +901,19 @@ export default function ProjectManagement(props: ProjectManagementProps) {
 
     {detailOpen && selectedProject && <section className="project-detail-shell project-detail-page">
       <div className="project-detail-toolbar"><button className="button button-secondary button-small" onClick={closeProject}><Icon name="arrow" size={15}/>Späť na projekty</button><span>Karta projektu</span></div>
-      <header className="project-detail-head"><div><span>{selectedProject.id} · {selectedProject.type}</span><h2>{selectedProject.name}</h2><p>{selectedProject.objective || selectedProject.description}</p></div><div className="project-detail-actions"><Badge tone={healthTone(healthByProject.get(selectedProject.id)?.health)}>{healthByProject.get(selectedProject.id)?.health || 'Health neurčený'} · auto</Badge><Badge tone={statusTone(selectedProject.status)}>{selectedProject.status}</Badge>{canManageSelectedProject && <><button className="button button-secondary button-small" onClick={() => { setPendingCreateLinks([]); setProjectDraft({ ...blankProject(), ...selectedProject }) }}><Icon name="edit" size={15}/>Upraviť projekt</button><button className="button button-primary button-small" onClick={() => setMemberDraft(blankMember(selectedProject.id))}><Icon name="plus" size={15}/>Pridať člena</button><button className="button button-ghost button-small" onClick={() => void removeProject(selectedProject)}><Icon name="trash" size={15}/>Odstrániť</button></>}</div></header>
+      <header className={`project-detail-head project-detail-hero health-${normalize(healthByProject.get(selectedProject.id)?.health || 'Zelený')}`}>
+        <div className="project-detail-identity"><span>{selectedProject.id} · {selectedProject.type}</span><h2>{selectedProject.name}</h2><p>{selectedProject.objective || selectedProject.description || 'Karta projektu a jeho riadenie.'}</p><div className="project-detail-hero-badges"><Badge tone={healthTone(healthByProject.get(selectedProject.id)?.health)}>{healthByProject.get(selectedProject.id)?.health || 'Zelený'} · auto health</Badge><Badge tone={statusTone(selectedProject.status)}>{selectedProject.status}</Badge><Badge tone="info">{selectedProject.phase || 'Fáza neurčená'}</Badge></div></div>
+        <div className="project-detail-actions">{canManageSelectedProject && <><button className="button button-secondary button-small" onClick={() => { setPendingCreateLinks([]); setProjectDraft({ ...blankProject(), ...selectedProject }) }}><Icon name="edit" size={15}/>Upraviť</button><button className="button button-primary button-small" onClick={() => setMemberDraft(blankMember(selectedProject.id))}><Icon name="plus" size={15}/>Člen tímu</button><button className="button button-ghost button-small" onClick={() => void removeProject(selectedProject)}><Icon name="trash" size={15}/></button></>}</div>
+        <div className="project-detail-delivery"><div><span>Delivery</span><strong>{Number(selectedProject.progress || 0)}%</strong></div><div className="project-card-progress"><i style={{width:`${Math.max(0,Math.min(100,Number(selectedProject.progress || 0)))}%`}}/></div></div>
+        <div className="project-detail-exec-grid">
+          <article><span>Projektový manažér</span><strong>{selectedProject.managerName || selectedProject.owner || '—'}</strong><small>{selectedProject.managerEmail || 'bez e-mailu'}</small></article>
+          <article><span>Termín</span><strong>{dateLabel(selectedProject.due)}</strong><small>od {dateLabel(selectedProject.start)}</small></article>
+          <article><span>Rozpočet</span><strong>{money(projectFinanceBudget)}</strong><small>{projectBudgetUsage}% čerpané · {money(projectFinanceSpent)}</small></article>
+          <article><span>Tím / kapacita</span><strong>{projectMembers.length} ľudí</strong><small>{projectCapacityTotal}% projektových alokácií</small></article>
+          <article><span>Governance signály</span><strong>{projectOpenRaidCount + projectPendingDecisionCount}</strong><small>{projectOpenRaidCount} RAID · {projectPendingDecisionCount} rozhodnutí</small></article>
+          <article><span>Najbližší míľnik</span><strong>{selectedProject.nextMilestone || projectNextMilestone?.title || '—'}</strong><small>{dateLabel(selectedProject.nextMilestoneDue || projectNextMilestone?.due)}</small></article>
+        </div>
+      </header>
 
       {role === 'project_manager' && !canManageSelectedProject && <div className="inline-alert inline-alert-info"><Icon name="decision" size={17}/><span><strong>Projekt máte sprístupnený ako člen tímu.</strong> Projektovú kartu môžete čítať; riadiace zmeny vykonáva projektový manažér projektu alebo Admin.</span></div>}
 
@@ -890,11 +922,11 @@ export default function ProjectManagement(props: ProjectManagementProps) {
       </div>
 
       {detailTab === 'overview' && <>
-        <div className="project-detail-grid">
-          <article><span>Fáza</span><strong>{selectedProject.phase || '—'}</strong><small>{selectedProject.deliveryModel || 'Model delivery neurčený'}</small></article>
-          <article><span>Projektový manažér</span><strong>{selectedProject.managerName || selectedProject.owner || '—'}</strong><small>{selectedProject.managerEmail || '—'}</small></article>
+        <div className="project-detail-grid project-detail-context-grid">
+          <article><span>Fáza / delivery model</span><strong>{selectedProject.phase || '—'}</strong><small>{selectedProject.deliveryModel || 'Model delivery neurčený'}</small></article>
           <article><span>Gestor / sponsor</span><strong>{selectedProject.sponsor || '—'}</strong><small>riadiaca zodpovednosť</small></article>
-          <article><span>Termín</span><strong>{dateLabel(selectedProject.start)} → {dateLabel(selectedProject.due)}</strong><small>{selectedProject.priority || 'Priorita neurčená'}</small></article>
+          <article><span>Priorita</span><strong>{selectedProject.priority || '—'}</strong><small>{healthByProject.get(selectedProject.id)?.score || 0} bodov automatického rizika</small></article>
+          <article><span>Stav reportingu</span><strong>{projectStatusReports.length ? `${projectStatusReports.length} reportov` : 'Bez reportu'}</strong><small>{[...projectStatusReports].sort((a,b) => b.period.localeCompare(a.period))[0]?.period || 'aktuálny report chýba'}</small></article>
           <article><span>Projektový tím</span><strong>{projectMembers.length} ľudí</strong><small>{projectMembers.reduce((sum, member) => sum + Number(member.allocationPercent || 0), 0)}% súčet projektových alokácií</small></article>
           <article><span>Úlohy</span><strong>{projectTasks.length}</strong><small>{projectTasks.filter((task) => task.status === 'Hotovo').length} hotových</small></article>
           <article><span>Rozpočet</span><strong>{money(projectFinanceBudget)}</strong><small>{money(projectFinanceSpent)} čerpané</small></article>
@@ -907,7 +939,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
           <button onClick={() => setDetailTab('team')}><Icon name="people" size={19}/><div><strong>Tím a kapacity</strong><span>{projectMembers.length} členov projektu</span></div><Icon name="chevron" size={16}/></button>
           <button onClick={() => setDetailTab('finance')}><Icon name="capacity" size={19}/><div><strong>Financovanie</strong><span>{projectFunding.length} zdrojov financovania</span></div><Icon name="chevron" size={16}/></button>
           <button onClick={() => setDetailTab('links')}><Icon name="systems" size={19}/><div><strong>Väzby</strong><span>{projectLinks.length} väzieb na registre</span></div><Icon name="chevron" size={16}/></button>
-          <button onClick={() => setDetailTab('governance')}><Icon name="decision" size={19}/><div><strong>Governance</strong><span>{projectRaidItems.filter((item) => !['Uzavreté','Akceptované'].includes(item.status)).length} otvorených RAID · {projectDecisions.filter((item) => item.status === 'Čaká na rozhodnutie').length} rozhodnutí</span></div><Icon name="chevron" size={16}/></button>
+          <button onClick={() => setDetailTab('governance')}><Icon name="decision" size={19}/><div><strong>Governance</strong><span>{projectOpenRaidCount} otvorených RAID · {projectPendingDecisionCount} rozhodnutí</span></div><Icon name="chevron" size={16}/></button>
         </div></section>
       </>}
 
