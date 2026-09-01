@@ -1,0 +1,29 @@
+IS Riadenie odboru v0.57.0 - QA
+
+VERSION / RELEASE VERIFY
+[PASS] package.json = 0.57.0
+[PASS] src/lib/storage.ts CURRENT_VERSION = 0.57.0
+[PASS] src/data/seed.json meta.version = 0.57.0
+[PASS] node scripts/verify-release.mjs
+       [v0.57.0 verify] OK; sourceFiles=75; version=0.57.0
+[PASS] relative import audit inside verify-release: missing = 0
+[PASS] required v0.56/v0.56.2 migration files remain in FULL release
+
+TYPESCRIPT / TSX
+[PASS] 75 TS/TSX source files checked with TypeScript transpileModule
+[PASS] syntax diagnostics = 0
+
+CSS
+[PASS] ProjectManagement.css brace balance = 471 / 471
+
+FUNCTIONAL SCOPE CHECKED IN SOURCE
+[PASS] executive portfolio cards retain click/keyboard navigation
+[PASS] health/status/funding/team/tasks/governance summaries are derived from existing portfolio data
+[PASS] project detail executive header uses existing role-safe project dataset
+[PASS] original detail tabs and CRUD handlers remain in place
+[PASS] no DB/RLS/RPC/Edge Function change introduced by v0.57.0
+
+FULL PRODUCTION BUILD LIMITATION
+[INFO] Local npm dependency installation was attempted but did not complete within the isolated environment timeout.
+[INFO] Full local tsc + vite production build was therefore not claimed as passed.
+[REQUIRED] Vercel CI tsc -b && vite build is the final production gate.

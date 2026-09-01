@@ -1,0 +1,15 @@
+v0.57.0 changed / added files
+
+src/views/ProjectManagement.tsx
+src/views/ProjectManagement.css
+src/lib/storage.ts
+src/data/seed.json
+scripts/prebuild-cleanup.mjs
+scripts/verify-release.mjs
+package.json
+RELEASE_NOTES.md
+RELEASE_NOTES_0.57.0.md
+README_NASADENIE_0.57.0.txt
+README_DATABASE_0.57.0.txt
+QA_RESULTS_0.57.0.txt
+CHANGED_FILES_0.57.0.txt
