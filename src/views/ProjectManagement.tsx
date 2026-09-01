@@ -44,6 +44,11 @@ import './ProjectManagement.css'
 type PortfolioTab = 'overview' | 'control' | 'projects' | 'capacity' | 'assignments'
 type ProjectDetailTab = 'overview' | 'delivery' | 'governance' | 'team' | 'finance' | 'links'
 type CapacityView = 'bi' | 'heatmap' | 'chart' | 'detail'
+type CapacityDrilldown =
+  | { kind: 'people' | 'allocatedFte' | 'freeFte' | 'overloaded' | 'high' | 'average' }
+  | { kind: 'distribution'; bucket: 'free' | 'balanced' | 'high' | 'over' }
+  | { kind: 'project'; projectId: string }
+  | { kind: 'role'; roleName: string }
 
 interface ContractTask {
   code: string
@@ -285,6 +290,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const [capacityView, setCapacityView] = useState<CapacityView>('bi')
   const [capacityHorizon, setCapacityHorizon] = useState<3 | 6 | 12>(6)
   const [capacityFocus, setCapacityFocus] = useState<{ personKey: string; month: string } | null>(null)
+  const [capacityDrilldown, setCapacityDrilldown] = useState<CapacityDrilldown | null>(null)
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [projectDraft, setProjectDraft] = useState<Project | null>(null)
   const [pendingCreateLinks, setPendingCreateLinks] = useState<Array<Omit<ProjectLink, 'id' | 'projectId'>>>([])
@@ -565,6 +571,61 @@ export default function ProjectManagement(props: ProjectManagementProps) {
     return { row, month: capacityFocus.month, total: Number(row.months[capacityFocus.month] || 0), assignments: row.assignments[capacityFocus.month] || [] }
   }, [capacityFocus, capacityMatrixRows])
 
+  const capacityDrilldownData = useMemo(() => {
+    if (!capacityDrilldown) return null
+    let title = 'Detail kapacít'
+    let subtitle = `Referenčný mesiac ${monthCaption(capacityMonth)}`
+    let rows = capacityRows.map((row) => ({ ...row, scopedTotal: row.total, scopedAssignments: row.assignments }))
+
+    if (capacityDrilldown.kind === 'people') {
+      title = isProjectMemberRole ? 'Moja aktívna kapacita' : 'Ľudia v projektoch'
+      subtitle = 'Všetci ľudia s aktívnou projektovou alokáciou v referenčnom mesiaci.'
+    } else if (capacityDrilldown.kind === 'allocatedFte') {
+      title = 'Plánované FTE'
+      subtitle = 'Rozpad plánovaných projektových alokácií na konkrétnych ľudí a projekty.'
+    } else if (capacityDrilldown.kind === 'freeFte') {
+      title = 'Voľná kapacita'
+      subtitle = 'Ľudia, ktorí majú v referenčnom mesiaci ešte rezervu do 100 % projektovej kapacity.'
+      rows = rows.filter((row) => row.total < 100).sort((a, b) => (100 - b.total) - (100 - a.total) || a.name.localeCompare(b.name, 'sk'))
+    } else if (capacityDrilldown.kind === 'overloaded') {
+      title = 'Preťažení nad 100 %'
+      subtitle = 'Konkrétni ľudia, ktorých súčet aktívnych projektových alokácií prekračuje 100 %.'
+      rows = rows.filter((row) => row.total > 100)
+    } else if (capacityDrilldown.kind === 'high') {
+      title = 'Vyťažení 80–100 %'
+      subtitle = 'Ľudia s vysokým vyťažením a malou alebo nulovou voľnou rezervou.'
+      rows = rows.filter((row) => row.total >= 80 && row.total <= 100)
+    } else if (capacityDrilldown.kind === 'average') {
+      title = 'Priemerné vyťaženie tímu'
+      subtitle = 'Rozpad priemeru na jednotlivých ľudí; priemer je počítaný zo súčtu ich aktívnych alokácií.'
+    } else if (capacityDrilldown.kind === 'distribution') {
+      const bucket = capacityDrilldown.bucket
+      const labels = { free: ['Voľná kapacita', '< 50 %'], balanced: ['Vyvážené vyťaženie', '50–79 %'], high: ['Vysoké vyťaženie', '80–100 %'], over: ['Preťaženie', '> 100 %'] } as const
+      title = labels[bucket][0]
+      subtitle = `Ľudia v pásme ${labels[bucket][1]} za ${monthCaption(capacityMonth)}.`
+      rows = rows.filter((row) => bucket === 'free' ? row.total < 50 : bucket === 'balanced' ? row.total >= 50 && row.total < 80 : bucket === 'high' ? row.total >= 80 && row.total <= 100 : row.total > 100)
+    } else if (capacityDrilldown.kind === 'project') {
+      const project = data.projects.find((item) => item.id === capacityDrilldown.projectId)
+      title = project ? `${project.id} · ${project.name}` : capacityDrilldown.projectId
+      subtitle = 'Ľudia a alokácie, ktoré tvoria kapacitný tlak tohto projektu.'
+      rows = rows.map((row) => {
+        const scopedAssignments = row.assignments.filter((assignment) => assignment.project.id === capacityDrilldown.projectId)
+        return { ...row, scopedAssignments, scopedTotal: scopedAssignments.reduce((sum, assignment) => sum + Number(assignment.member.allocationPercent || 0), 0) }
+      }).filter((row) => row.scopedAssignments.length > 0)
+    } else if (capacityDrilldown.kind === 'role') {
+      title = `Rola · ${capacityDrilldown.roleName}`
+      subtitle = 'Ľudia a projekty, v ktorých je kapacita sústredená na tejto projektovej role.'
+      rows = rows.map((row) => {
+        const scopedAssignments = row.assignments.filter((assignment) => (assignment.member.projectRole || 'Iné') === capacityDrilldown.roleName)
+        return { ...row, scopedAssignments, scopedTotal: scopedAssignments.reduce((sum, assignment) => sum + Number(assignment.member.allocationPercent || 0), 0) }
+      }).filter((row) => row.scopedAssignments.length > 0)
+    }
+
+    const allocatedFte = rows.reduce((sum, row) => sum + row.scopedTotal, 0) / 100
+    const freeFte = rows.reduce((sum, row) => sum + Math.max(0, 100 - row.total), 0) / 100
+    return { title, subtitle, rows, allocatedFte, freeFte }
+  }, [capacityDrilldown, capacityMonth, capacityRows, data.projects, isProjectMemberRole])
+
   const assignmentRows = useMemo(() => {
     const q = normalize(assignmentQuery)
     return data.members
@@ -835,31 +896,31 @@ export default function ProjectManagement(props: ProjectManagementProps) {
           {([['bi','BI prehľad'],['heatmap','Heatmapa'],['chart','Graf'],['detail','Detail']] as [CapacityView,string][]).map(([key,label]) => <button key={key} className={capacityView === key ? 'active' : ''} onClick={() => setCapacityView(key)}>{key === 'bi' && <Icon name="dashboard" size={15}/>} {key === 'heatmap' && <Icon name="matrix" size={15}/>} {key === 'chart' && <Icon name="capacity" size={15}/>} {key === 'detail' && <Icon name="people" size={15}/>}<span>{label}</span></button>)}
         </div>
         <section className="capacity-kpi-grid capacity-kpi-grid-six">
-          <article><span>{isProjectMemberRole ? 'Osoba' : 'Ľudia v projektoch'}</span><strong>{capacityKpis.people}</strong><small>aktívne alokácie v mesiaci</small></article>
-          <article><span>Plánované FTE</span><strong>{capacityDistribution.allocatedFte.toLocaleString('sk-SK', { maximumFractionDigits: 1 })}</strong><small>súčet projektových alokácií / 100</small></article>
-          <article><span>Voľná kapacita</span><strong>{capacityDistribution.freeFte.toLocaleString('sk-SK', { maximumFractionDigits: 1 })} FTE</strong><small>rezerva do 100 % na osobu</small></article>
-          <article><span>Preťažení nad 100 %</span><strong>{capacityKpis.overloaded}</strong><small>vyžaduje preplánovanie</small></article>
-          <article><span>Vyťažení 80–100 %</span><strong>{capacityKpis.high}</strong><small>malá voľná rezerva</small></article>
-          <article><span>Priemerné vyťaženie</span><strong>{capacityKpis.average}%</strong><small>za referenčný mesiac</small></article>
+          <button className="capacity-kpi-card" onClick={() => setCapacityDrilldown({ kind: 'people' })}><span>{isProjectMemberRole ? 'Osoba' : 'Ľudia v projektoch'}</span><strong>{capacityKpis.people}</strong><small>aktívne alokácie v mesiaci</small><i>Otvoriť detail →</i></button>
+          <button className="capacity-kpi-card" onClick={() => setCapacityDrilldown({ kind: 'allocatedFte' })}><span>Plánované FTE</span><strong>{capacityDistribution.allocatedFte.toLocaleString('sk-SK', { maximumFractionDigits: 1 })}</strong><small>súčet projektových alokácií / 100</small><i>Rozpad na ľudí →</i></button>
+          <button className="capacity-kpi-card" onClick={() => setCapacityDrilldown({ kind: 'freeFte' })}><span>Voľná kapacita</span><strong>{capacityDistribution.freeFte.toLocaleString('sk-SK', { maximumFractionDigits: 1 })} FTE</strong><small>rezerva do 100 % na osobu</small><i>Kto je voľný →</i></button>
+          <button className="capacity-kpi-card" onClick={() => setCapacityDrilldown({ kind: 'overloaded' })}><span>Preťažení nad 100 %</span><strong>{capacityKpis.overloaded}</strong><small>vyžaduje preplánovanie</small><i>Zobraziť ľudí →</i></button>
+          <button className="capacity-kpi-card" onClick={() => setCapacityDrilldown({ kind: 'high' })}><span>Vyťažení 80–100 %</span><strong>{capacityKpis.high}</strong><small>malá voľná rezerva</small><i>Zobraziť ľudí →</i></button>
+          <button className="capacity-kpi-card" onClick={() => setCapacityDrilldown({ kind: 'average' })}><span>Priemerné vyťaženie</span><strong>{capacityKpis.average}%</strong><small>za referenčný mesiac</small><i>Rozpad priemeru →</i></button>
         </section>
 
         {capacityView === 'bi' && <div className="capacity-bi-grid">
           <section className="capacity-bi-panel capacity-bi-wide">
             <div className="capacity-bi-heading"><div><span>ROZLOŽENIE KAPACITY</span><h4>Vyťaženosť tímu · {monthCaption(capacityMonth)}</h4></div><Badge tone={capacityKpis.overloaded ? 'danger' : 'success'}>{capacityKpis.overloaded ? `${capacityKpis.overloaded} preťažených` : 'Bez preťaženia'}</Badge></div>
             <div className="capacity-distribution-grid">
-              {[{label:'Voľná kapacita',value:capacityDistribution.free,range:'< 50 %',cls:'free'},{label:'Vyvážené',value:capacityDistribution.balanced,range:'50–79 %',cls:'balanced'},{label:'Vysoké vyťaženie',value:capacityDistribution.high,range:'80–100 %',cls:'high'},{label:'Preťaženie',value:capacityDistribution.over,range:'> 100 %',cls:'over'}].map((item) => <article key={item.label} className={`capacity-distribution-card ${item.cls}`}><div><strong>{item.value}</strong><span>{item.label}</span></div><small>{item.range}</small><div className="capacity-dist-track"><span style={{width:`${capacityKpis.people ? Math.round((item.value / capacityKpis.people) * 100) : 0}%`}}/></div></article>)}
+              {([{label:'Voľná kapacita',value:capacityDistribution.free,range:'< 50 %',cls:'free',bucket:'free'},{label:'Vyvážené',value:capacityDistribution.balanced,range:'50–79 %',cls:'balanced',bucket:'balanced'},{label:'Vysoké vyťaženie',value:capacityDistribution.high,range:'80–100 %',cls:'high',bucket:'high'},{label:'Preťaženie',value:capacityDistribution.over,range:'> 100 %',cls:'over',bucket:'over'}] as const).map((item) => <button key={item.label} className={`capacity-distribution-card ${item.cls}`} onClick={() => setCapacityDrilldown({ kind: 'distribution', bucket: item.bucket })}><div><strong>{item.value}</strong><span>{item.label}</span></div><small>{item.range}</small><div className="capacity-dist-track"><span style={{width:`${capacityKpis.people ? Math.round((item.value / capacityKpis.people) * 100) : 0}%`}}/></div><i>Zobraziť ľudí →</i></button>)}
             </div>
             <div className="capacity-bi-note"><Icon name="decision" size={16}/><span>BI počíta vyťaženie zo súčtu aktívnych alokácií v projektoch. 100 % predstavuje plnú plánovanú projektovú kapacitu človeka.</span></div>
           </section>
 
           <section className="capacity-bi-panel">
             <div className="capacity-bi-heading"><div><span>PROJEKTOVÝ TLAK</span><h4>Najväčšie kapacitné projekty</h4></div></div>
-            <div className="capacity-ranking">{projectCapacitySummary.length ? projectCapacitySummary.map((item) => <button key={item.project.id} className="capacity-ranking-row" onClick={() => openProject(item.project.id)}><div><strong>{item.project.id} · {item.project.name}</strong><small>{item.people} ľudí · {(item.total / 100).toLocaleString('sk-SK', { maximumFractionDigits: 1 })} FTE</small></div><div className="capacity-ranking-meter"><span style={{width:`${Math.min(100, (item.total / Math.max(100, projectCapacitySummary[0]?.total || 100)) * 100)}%`}}/></div><b>{item.total}%</b></button>) : <Empty title="Bez projektových alokácií" text="V referenčnom mesiaci nie sú aktívne kapacity."/>}</div>
+            <div className="capacity-ranking">{projectCapacitySummary.length ? projectCapacitySummary.map((item) => <button key={item.project.id} className="capacity-ranking-row" onClick={() => setCapacityDrilldown({ kind: 'project', projectId: item.project.id })}><div><strong>{item.project.id} · {item.project.name}</strong><small>{item.people} ľudí · {(item.total / 100).toLocaleString('sk-SK', { maximumFractionDigits: 1 })} FTE</small></div><div className="capacity-ranking-meter"><span style={{width:`${Math.min(100, (item.total / Math.max(100, projectCapacitySummary[0]?.total || 100)) * 100)}%`}}/></div><b>{item.total}%</b></button>) : <Empty title="Bez projektových alokácií" text="V referenčnom mesiaci nie sú aktívne kapacity."/>}</div>
           </section>
 
           <section className="capacity-bi-panel">
             <div className="capacity-bi-heading"><div><span>ROLE A KOMPETENCIE</span><h4>Kde je sústredená kapacita</h4></div></div>
-            <div className="capacity-role-list">{roleCapacitySummary.length ? roleCapacitySummary.map((item) => <div key={item.roleName} className="capacity-role-row"><div><strong>{item.roleName}</strong><small>{item.people} ľudí</small></div><div className="capacity-role-meter"><span style={{width:`${Math.min(100, (item.total / Math.max(100, roleCapacitySummary[0]?.total || 100)) * 100)}%`}}/></div><b>{item.total}%</b></div>) : <p className="capacity-muted">Bez údajov o projektových rolách.</p>}</div>
+            <div className="capacity-role-list">{roleCapacitySummary.length ? roleCapacitySummary.map((item) => <button key={item.roleName} className="capacity-role-row" onClick={() => setCapacityDrilldown({ kind: 'role', roleName: item.roleName })}><div><strong>{item.roleName}</strong><small>{item.people} ľudí · klik pre detail</small></div><div className="capacity-role-meter"><span style={{width:`${Math.min(100, (item.total / Math.max(100, roleCapacitySummary[0]?.total || 100)) * 100)}%`}}/></div><b>{item.total}%</b></button>) : <p className="capacity-muted">Bez údajov o projektových rolách.</p>}</div>
           </section>
 
           <section className="capacity-bi-panel capacity-bi-wide">
@@ -986,6 +1047,8 @@ export default function ProjectManagement(props: ProjectManagementProps) {
         <div className="project-link-grid">{projectLinks.map((link) => <article key={link.id}><span className="project-link-icon"><Icon name={link.targetType === 'Dodávateľ' ? 'database' : link.targetType === 'Zmluva' ? 'calendar' : 'systems'} size={18}/></span><div><small>{link.targetType}</small><strong>{link.targetName}</strong><span>{link.relation}{link.targetKey ? ` · ${link.targetKey}` : ''}</span></div>{canManageSelectedProject && <div className="row-actions"><button onClick={() => setLinkDraft({ ...link })}><Icon name="edit" size={14}/></button><button onClick={() => confirm('Odstrániť väzbu?') && void runSave(() => deleteProjectLink(link.id))}><Icon name="trash" size={14}/></button></div>}</article>)}</div>{!projectLinks.length && <Empty title="Projekt zatiaľ nemá väzby" text="Prepojte ho s informačnými systémami, službami, zmluvami, dodávateľmi alebo rizikami."/>}
       </section>}
     </section>}
+
+    {capacityDrilldownData && <Modal wide title={capacityDrilldownData.title} onClose={() => setCapacityDrilldown(null)}><div className="capacity-drill-intro"><div><span>KAPACITNÝ DRILL-DOWN</span><strong>{capacityDrilldownData.subtitle}</strong></div><Badge tone={capacityDrilldownData.rows.some((row) => row.total > 100) ? 'danger' : 'info'}>{monthCaption(capacityMonth)}</Badge></div><div className="capacity-drill-summary"><article><span>Ľudia</span><strong>{capacityDrilldownData.rows.length}</strong><small>v aktuálnom výbere</small></article><article><span>Alokácia</span><strong>{capacityDrilldownData.allocatedFte.toLocaleString('sk-SK', { maximumFractionDigits: 1 })} FTE</strong><small>podľa zvoleného rezu</small></article><article><span>Voľná rezerva</span><strong>{capacityDrilldownData.freeFte.toLocaleString('sk-SK', { maximumFractionDigits: 1 })} FTE</strong><small>do 100 % na osobu</small></article><article><span>Preťažení</span><strong>{capacityDrilldownData.rows.filter((row) => row.total > 100).length}</strong><small>nad 100 % celkovo</small></article></div>{capacityDrilldownData.rows.length ? <div className="capacity-drill-list">{capacityDrilldownData.rows.map((row) => <article key={row.key} className="capacity-drill-person"><div className="capacity-drill-person-head"><div className="capacity-person-name"><span className="capacity-avatar"><Icon name="user" size={18}/></span><div><strong>{row.name}</strong><small>{row.email || 'Bez e-mailu'}</small></div></div><div className="capacity-drill-load"><Badge tone={capacityTone(row.total)}>{row.total}% celkom</Badge><strong>{row.total > 100 ? `+${row.total - 100}% nad kapacitu` : `${100 - row.total}% voľné`}</strong>{row.scopedTotal !== row.total && <small>{row.scopedTotal}% v tomto výbere</small>}</div></div><div className="capacity-bar"><span className={row.total > 100 ? 'over' : row.total >= 80 ? 'high' : ''} style={{ width: `${Math.min(100, row.total)}%` }}/></div><div className="capacity-drill-assignments">{row.scopedAssignments.sort((a,b) => Number(b.member.allocationPercent || 0) - Number(a.member.allocationPercent || 0)).map(({ member, project }) => <button key={member.id} onClick={() => { setCapacityDrilldown(null); openProject(project.id) }}><div><strong>{project.id} · {project.name}</strong><span>{member.projectRole}{member.responsibility ? ` · ${member.responsibility}` : ''}</span></div><b>{member.allocationPercent}%</b></button>)}</div><div className="capacity-drill-actions"><button className="button button-secondary button-small" onClick={() => { setCapacityFocus({ personKey: row.key, month: capacityMonth }); setCapacityView('heatmap'); setCapacityDrilldown(null) }}><Icon name="matrix" size={14}/>Heatmapa</button><button className="button button-secondary button-small" onClick={() => { setCapacityQuery(row.name); setCapacityView('detail'); setCapacityDrilldown(null) }}><Icon name="people" size={14}/>Detail kapacity</button></div></article>)}</div> : <Empty title="Bez ľudí v tomto výbere" text="Pre zvolený filter a referenčný mesiac neboli nájdené aktívne projektové alokácie."/>}<div className="modal-actions"><button className="button button-primary" onClick={() => setCapacityDrilldown(null)}>Zavrieť</button></div></Modal>}
 
     {projectDraft && <Modal wide title={projectDraft.id ? `Projekt ${projectDraft.id}` : 'Nový projekt'} onClose={() => { setProjectDraft(null); setPendingCreateLinks([]) }}>{!projectDraft.id && pendingCreateLinks.length > 0 && <div className="project-origin-banner"><Icon name="systems" size={18}/><div><strong>Projekt vzniká z existujúcej evidencie</strong><span>{pendingCreateLinks.map((link) => `${link.targetType}: ${link.targetName}`).join(' · ')}</span><small>Po uložení sa vytvoria živé väzby; zdrojové údaje sa nekopírujú ako samostatný register.</small></div></div>}<div className="project-form-grid">
       <Field label="Názov projektu"><input value={projectDraft.name} onChange={(e) => setProjectDraft({ ...projectDraft, name: e.target.value })}/></Field>
