@@ -41,7 +41,9 @@ import contractTaskData from '../data/contractTasks.json'
 import contractTaskLedgerData from '../data/contractTaskLedger.json'
 import './ProjectManagement.css'
 
-type PortfolioTab = 'overview' | 'control' | 'projects' | 'capacity' | 'assignments'
+type PortfolioTab = 'control' | 'projects' | 'capacity' | 'assignments'
+type ProjectQuickFilter = 'all' | 'attention' | 'active' | 'unfunded' | 'overdue'
+type ProjectSort = 'attention' | 'due' | 'budget' | 'progress' | 'name'
 type ProjectDetailTab = 'overview' | 'delivery' | 'governance' | 'team' | 'finance' | 'links'
 type CapacityView = 'bi' | 'heatmap' | 'chart' | 'detail'
 type CapacityDrilldown =
@@ -280,7 +282,9 @@ export default function ProjectManagement(props: ProjectManagementProps) {
   const [data, setData] = useState<ProjectPortfolioData>(() => ({ ...emptyPortfolio(), projects: fallbackProjects, tasks: fallbackTasks }))
   const [dbState, setDbState] = useState<ProjectDatabaseState>(databaseMode === 'cloud' ? 'loading' : 'local')
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<PortfolioTab>('overview')
+  const [tab, setTab] = useState<PortfolioTab>('projects')
+  const [projectQuickFilter, setProjectQuickFilter] = useState<ProjectQuickFilter>('all')
+  const [projectSort, setProjectSort] = useState<ProjectSort>('attention')
   const [detailTab, setDetailTab] = useState<ProjectDetailTab>('overview')
   const [detailOpen, setDetailOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -380,7 +384,7 @@ export default function ProjectManagement(props: ProjectManagementProps) {
     })
   }, [databaseMode, organizationId, reload])
 
-  const filteredProjects = useMemo(() => {
+  const projectQueryRows = useMemo(() => {
     const q = normalize(query)
     return data.projects.filter((project) => !q || normalize(`${project.id} ${project.name} ${project.owner} ${project.managerName ?? ''} ${project.phase ?? ''} ${project.status}`).includes(q))
   }, [data.projects, query])
@@ -444,6 +448,59 @@ export default function ProjectManagement(props: ProjectManagementProps) {
     const overdueMilestones = data.milestones.filter((m) => m.status !== 'Splnené' && m.due && m.due < today()).length
     return { active, atRisk, budget, spent, overdueMilestones }
   }, [data, healthByProject])
+
+  const projectPortfolioMeta = useMemo(() => {
+    const map = new Map<string, { budget: number; spent: number; overdue: boolean; attention: boolean; active: boolean; unfunded: boolean }>()
+    const currentDate = today()
+    for (const project of data.projects) {
+      const fundingRows = data.funding.filter((item) => item.projectId === project.id).map((item) => fundingEffective(item))
+      const budget = fundingRows.reduce((sum, item) => sum + item.amount, 0)
+      const spent = fundingRows.reduce((sum, item) => sum + item.spent, 0)
+      const overdueMilestone = data.milestones.some((item) => item.projectId === project.id && item.status !== 'Splnené' && Boolean(item.due) && item.due < currentDate)
+      const overdueProject = Boolean(project.due && project.due < currentDate && !['Ukončený', 'Ukončené'].includes(project.status))
+      const health = healthByProject.get(project.id)
+      map.set(project.id, {
+        budget,
+        spent,
+        overdue: overdueMilestone || overdueProject,
+        attention: Boolean(health && health.health !== 'Zelený'),
+        active: !['Ukončený', 'Ukončené'].includes(project.status),
+        unfunded: budget <= 0,
+      })
+    }
+    return map
+  }, [data.projects, data.funding, data.milestones, healthByProject])
+
+  const projectFilterCounts = useMemo(() => ({
+    all: projectQueryRows.length,
+    attention: projectQueryRows.filter((project) => projectPortfolioMeta.get(project.id)?.attention).length,
+    active: projectQueryRows.filter((project) => projectPortfolioMeta.get(project.id)?.active).length,
+    unfunded: projectQueryRows.filter((project) => projectPortfolioMeta.get(project.id)?.unfunded).length,
+    overdue: projectQueryRows.filter((project) => projectPortfolioMeta.get(project.id)?.overdue).length,
+  }), [projectQueryRows, projectPortfolioMeta])
+
+  const filteredProjects = useMemo(() => {
+    const rows = projectQueryRows.filter((project) => {
+      const meta = projectPortfolioMeta.get(project.id)
+      if (!meta || projectQuickFilter === 'all') return true
+      return projectQuickFilter === 'attention' ? meta.attention
+        : projectQuickFilter === 'active' ? meta.active
+        : projectQuickFilter === 'unfunded' ? meta.unfunded
+        : meta.overdue
+    })
+    return [...rows].sort((a, b) => {
+      const aMeta = projectPortfolioMeta.get(a.id)
+      const bMeta = projectPortfolioMeta.get(b.id)
+      if (projectSort === 'budget') return Number(bMeta?.budget || 0) - Number(aMeta?.budget || 0) || a.name.localeCompare(b.name, 'sk')
+      if (projectSort === 'progress') return Number(b.progress || 0) - Number(a.progress || 0) || a.name.localeCompare(b.name, 'sk')
+      if (projectSort === 'due') return (a.due || '9999-12-31').localeCompare(b.due || '9999-12-31') || a.name.localeCompare(b.name, 'sk')
+      if (projectSort === 'name') return a.name.localeCompare(b.name, 'sk')
+      const scoreDiff = Number(healthByProject.get(b.id)?.score || 0) - Number(healthByProject.get(a.id)?.score || 0)
+      if (scoreDiff) return scoreDiff
+      if (Boolean(bMeta?.overdue) !== Boolean(aMeta?.overdue)) return Number(Boolean(bMeta?.overdue)) - Number(Boolean(aMeta?.overdue))
+      return (a.due || '9999-12-31').localeCompare(b.due || '9999-12-31') || a.name.localeCompare(b.name, 'sk')
+    })
+  }, [projectQueryRows, projectPortfolioMeta, projectQuickFilter, projectSort, healthByProject])
 
   const capacityRows = useMemo(() => {
     const { start, end } = monthBounds(capacityMonth)
@@ -821,19 +878,25 @@ export default function ProjectManagement(props: ProjectManagementProps) {
 
     {!detailOpen && <>
       <section className="project-kpi-grid">
-        <article><span>Aktívne projekty</span><strong>{kpis.active}</strong><small>z {data.projects.length} v portfóliu</small></article>
-        <article><span>Ohrozené</span><strong>{kpis.atRisk}</strong><small>červený health / ohrozený stav</small></article>
-        <article><span>Rozpočet</span><strong>{money(kpis.budget)}</strong><small>evidované zdroje financovania</small></article>
-        <article><span>Čerpanie</span><strong>{money(kpis.spent)}</strong><small>{kpis.budget ? Math.round(kpis.spent / kpis.budget * 100) : 0}% rozpočtu</small></article>
-        <article><span>Míľniky po termíne</span><strong>{kpis.overdueMilestones}</strong><small>vyžadujú pozornosť</small></article>
+        <button type="button" className={projectQuickFilter === 'active' && tab === 'projects' ? 'active' : ''} onClick={() => { setTab('projects'); setProjectQuickFilter('active') }}><span>Aktívne projekty</span><strong>{kpis.active}</strong><small>klik = aktívne portfólio</small></button>
+        <button type="button" className={projectQuickFilter === 'attention' && tab === 'projects' ? 'active' : ''} onClick={() => { setTab('projects'); setProjectQuickFilter('attention'); setProjectSort('attention') }}><span>Ohrozené / pozornosť</span><strong>{projectFilterCounts.attention}</strong><small>oranžový alebo červený health</small></button>
+        <button type="button" onClick={() => { setTab('projects'); setProjectQuickFilter('all'); setProjectSort('budget') }}><span>Rozpočet</span><strong>{money(kpis.budget)}</strong><small>klik = zoradiť podľa rozpočtu</small></button>
+        <button type="button" onClick={() => { setTab('projects'); setProjectQuickFilter('all'); setProjectSort('budget') }}><span>Čerpanie</span><strong>{money(kpis.spent)}</strong><small>{kpis.budget ? Math.round(kpis.spent / kpis.budget * 100) : 0}% rozpočtu · klik pre portfólio</small></button>
+        <button type="button" className={projectQuickFilter === 'overdue' && tab === 'projects' ? 'active' : ''} onClick={() => { setTab('projects'); setProjectQuickFilter('overdue'); setProjectSort('due') }}><span>Míľniky / termíny po termíne</span><strong>{projectFilterCounts.overdue}</strong><small>klik = projekty vyžadujúce zásah</small></button>
       </section>
 
       <div className="project-tabs">
-        {([['overview','Prehľad'],...(!isProjectMemberRole ? [['control','Control Center']] : []),['projects','Projekty'],['capacity',isProjectMemberRole ? 'Moje kapacity' : 'Kapacity'],...(role === 'admin' ? [['assignments','Zaradenia']] : [])] as [PortfolioTab,string][]).map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}
+        {([...(!isProjectMemberRole ? [['control','Control Center']] : []),['projects','Projekty'],['capacity',isProjectMemberRole ? 'Moje kapacity' : 'Kapacity'],...(role === 'admin' ? [['assignments','Zaradenia']] : [])] as [PortfolioTab,string][]).map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}
       </div>
 
-      {(tab === 'overview' || tab === 'projects') && <>
-        <div className="project-toolbar"><div className="project-search"><Icon name="search" size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Hľadať projekt, fázu, manažéra…"/></div><span>{filteredProjects.length} projektov</span></div>
+      {tab === 'projects' && <>
+        <div className="project-toolbar project-toolbar-portfolio">
+          <div className="project-search"><Icon name="search" size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Hľadať projekt, fázu, manažéra…"/></div>
+          <div className="project-toolbar-actions"><label><span>Zoradiť</span><select value={projectSort} onChange={(e) => setProjectSort(e.target.value as ProjectSort)}><option value="attention">Podľa pozornosti</option><option value="due">Podľa termínu</option><option value="budget">Podľa rozpočtu</option><option value="progress">Podľa delivery</option><option value="name">Podľa názvu</option></select></label><span>{filteredProjects.length} projektov</span></div>
+        </div>
+        <div className="project-quick-filters" aria-label="Rýchle filtre projektov">
+          {([['all','Všetky',projectFilterCounts.all],['attention','Vyžadujú pozornosť',projectFilterCounts.attention],['active','Aktívne',projectFilterCounts.active],['unfunded','Bez financovania',projectFilterCounts.unfunded],['overdue','Po termíne',projectFilterCounts.overdue]] as [ProjectQuickFilter,string,number][]).map(([key,label,count]) => <button type="button" key={key} className={projectQuickFilter === key ? 'active' : ''} onClick={() => setProjectQuickFilter(key)}><span>{label}</span><b>{count}</b></button>)}
+        </div>
         {filteredProjects.length === 0 ? <Empty title={isProjectMemberRole ? 'Nemáte priradený projekt' : 'Žiadne projekty'} text={isProjectMemberRole ? 'Projekt sa zobrazí automaticky, keď vás Admin alebo projektový manažér zaradí do projektového tímu.' : role === 'project_manager' ? 'Vytvorte vlastný projekt alebo vás Admin priradí do existujúceho projektu.' : 'Vytvorte prvý projekt alebo upravte vyhľadávanie.'}/> : <section className="project-portfolio-grid">{filteredProjects.map((project) => {
           const projectTasksAll = data.tasks.filter((task) => task.projectId === project.id)
           const taskCount = projectTasksAll.length
