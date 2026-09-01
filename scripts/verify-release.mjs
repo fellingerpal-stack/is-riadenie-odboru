@@ -4,10 +4,10 @@ import { dirname, extname, join, resolve } from 'node:path'
 const root = resolve(new URL('..', import.meta.url).pathname)
 const src = join(root, 'src')
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-const expectedVersion = '0.57.1'
+const expectedVersion = '0.57.2'
 const errors = []
 
-if (pkg.version !== expectedVersion) console.warn(`[v0.57.1 verify] WARNING package.json version=${pkg.version}, expected=${expectedVersion}; build continues because this is metadata only`)
+if (pkg.version !== expectedVersion) console.warn(`[v0.57.2 verify] WARNING package.json version=${pkg.version}, expected=${expectedVersion}; build continues because this is metadata only`)
 for (const required of [
   'src/App.tsx',
   'src/types.ts',
@@ -71,8 +71,8 @@ for (const file of sourceFiles) {
 }
 
 if (errors.length) {
-  console.error('[v0.57.1 verify] FAILED')
+  console.error('[v0.57.2 verify] FAILED')
   for (const error of errors) console.error(`- ${error}`)
   process.exit(1)
 }
-console.log(`[v0.57.1 verify] OK; sourceFiles=${sourceFiles.length}; version=${pkg.version}`)
+console.log(`[v0.57.2 verify] OK; sourceFiles=${sourceFiles.length}; version=${pkg.version}`)
